@@ -1,39 +1,98 @@
-import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
-import { useFonts } from 'expo-font';
-import { Stack } from 'expo-router';
-import * as SplashScreen from 'expo-splash-screen';
-import { StatusBar } from 'expo-status-bar';
-import { useEffect } from 'react';
-import 'react-native-reanimated';
+import React from "react";
+import { createNativeStackNavigator } from "@react-navigation/native-stack";
+import { ActivityIndicator, View, Text, StyleSheet } from "react-native";
+import WelcomeScreen from "./WelcomeScreen";
+import HomeScreen from "./HomeScreen";
+import LoginScreen from "./LoginScreen";
+import SignUpScreen from "./SignUpScreen";
+import PreferencesScreen from "./PreferencesScreen";
+import MeetUpScreen from "./MeetUpScreen";
+import SwipeScreen from "./SwipeScreen";
+import useAuth from "../hooks/useAuth";
 
-import { useColorScheme } from '@/hooks/useColorScheme';
+const Stack = createNativeStackNavigator();
 
-// Prevent the splash screen from auto-hiding before asset loading is complete.
-SplashScreen.preventAutoHideAsync();
+export default function Layout() {
+  const { user, preferencesCompleted, loading } = useAuth();
 
-export default function RootLayout() {
-  const colorScheme = useColorScheme();
-  const [loaded] = useFonts({
-    SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
-  });
-
-  useEffect(() => {
-    if (loaded) {
-      SplashScreen.hideAsync();
-    }
-  }, [loaded]);
-
-  if (!loaded) {
-    return null;
+  // Show a loading screen while the authentication state is being checked
+  if (loading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#0000ff" />
+        <Text>Loading...</Text>
+      </View>
+    );
   }
 
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <Stack>
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="+not-found" />
-      </Stack>
-      <StatusBar style="auto" />
-    </ThemeProvider>
+    <Stack.Navigator
+      initialRouteName={user ? (preferencesCompleted ? "Home" : "Preferences") : "Welcome"}
+      screenOptions={({ route }) => ({
+        animationTypeForReplace: "pop",
+        animation: route.name === "Home" ? "slide_from_right" : "slide_from_left",
+        headerShown: false,
+      })}
+    >
+      {user ? (
+        <>
+          {!preferencesCompleted && (
+            <Stack.Screen
+              name="Preferences"
+              component={PreferencesScreen}
+              options={{ headerShown: false }}
+            />
+          )}
+          <Stack.Screen
+            name="Home"
+            component={HomeScreen}
+            options={{
+              animation: "slide_from_left",
+            }}
+          />
+          <Stack.Screen
+            name="MeetUp"
+            component={MeetUpScreen}
+            options={{
+              animation: "slide_from_right",
+            }}
+          />
+          <Stack.Screen
+            name="SwipeScreen"
+            component={SwipeScreen}
+            options={{
+              animation: "slide_from_right",
+            }}
+          />
+        </>
+      ) : (
+        <>
+          <Stack.Screen
+            name="Welcome"
+            component={WelcomeScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="Login"
+            component={LoginScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen
+            name="SignUp"
+            component={SignUpScreen}
+            options={{ headerShown: false }}
+          />
+        </>
+      )}
+    </Stack.Navigator>
   );
 }
+
+const styles = StyleSheet.create({
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "#fff",
+  },
+});
