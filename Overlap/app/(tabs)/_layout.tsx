@@ -1,92 +1,82 @@
-import { View, Text, Image } from 'react-native'
-import React from 'react'
-import { Tabs, Redirect } from 'expo-router';
+import { useEffect, useState } from "react";
+import { getAuth } from "firebase/auth";
+import { getFirestore, doc, getDoc } from "firebase/firestore";
+import { Tabs, Redirect } from "expo-router";
 
-import { icons } from '../../constants';
-
-const TabIcon = ({ icon, color, name, focused}) => {
-    return (
-        <View className="items-center justify-center gap-2">
-            <Image
-                source={icon}
-                resizeMode='contain'
-                tintColor={color}
-                className="w-6 h-6"
-            />
-            <Text className={`${focused ? 'font-psemibold' : 'font-pregular'} text-xs`} style={{ color: color, fontSize: 9 }}
-            numberOfLines={1} >
-                {name}
-            </Text>
-        </View>
-    )
-}
+const auth = getAuth();
+const firestore = getFirestore();
 
 const TabsLayout = () => {
+  const [loading, setLoading] = useState(true);
+  const [needsPreferences, setNeedsPreferences] = useState(false);
+
+  useEffect(() => {
+    const checkPreferences = async () => {
+      const user = auth.currentUser;
+      if (user) {
+        const docRef = doc(firestore, "preferences", user.uid);
+        const docSnap = await getDoc(docRef);
+
+        // If user has no preferences, setNeedsPreferences to true
+        setNeedsPreferences(!docSnap.exists());
+      }
+      setLoading(false);
+    };
+
+    checkPreferences();
+  }, []);
+
+  if (loading) return null; // Prevent flickering during auth check
+
+  // ✅ Correct Redirect to Preferences inside (tabs)
+  if (needsPreferences) return <Redirect href="/(tabs)/preferences" />;
+
   return (
-    <>
-        <Tabs
-            screenOptions={{
-                tabBarShowLabel: false,
-                tabBarActiveTintColor: '#FFA001',
-                tabBarInactiveTintColor: '#CDCDE0',
-                tabBarStyle: {
-                    backgroundColor: '#161622',
-                    borderTopWidth: 1,
-                    borderTopColor: '#232533',
-                    height: 84
-                }
-            }}
-        >
-            <Tabs.Screen
-                name="home"
-                options={{
-                    title: 'Home',
-                    headerShown: false,
-                    tabBarIcon: ({ color,focused }) => (
-                        <TabIcon 
-                            icon={icons.home}
-                            color={color}
-                            name="Home"
-                            focused={focused}
-                        />
-                    )
-                }}  
-            />
+    <Tabs
+      screenOptions={{
+        tabBarShowLabel: false,
+        tabBarActiveTintColor: "#FFA001",
+        tabBarInactiveTintColor: "#CDCDE0",
+        tabBarStyle: {
+          backgroundColor: "#161622",
+          borderTopWidth: 1,
+          borderTopColor: "#232533",
+          height: 84,
+        },
+      }}
+    >
+      <Tabs.Screen
+        name="home"
+        options={{
+          title: "Home",
+          headerShown: false,
+        }}
+      />
+      <Tabs.Screen
+        name="meetup"
+        options={{
+          title: "Meetup",
+          headerShown: false,
+        }}
+      />
+      <Tabs.Screen
+        name="profile"
+        options={{
+          title: "Profile",
+          headerShown: false,
+        }}
+      />
+      {/* ✅ Add Preferences to Tabs Navigation */}
+      <Tabs.Screen
+        name="preferences"
+        options={{
+          title: "Preferences",
+          headerShown: false,
+          tabBarStyle: { display: "none" }, // Hide tab bar on Preferences screen
+        }}
+      />
+    </Tabs>
+  );
+};
 
-            <Tabs.Screen
-                name="meetup"
-                options={{
-                    title: 'Meetup',
-                    headerShown: false,
-                    tabBarIcon: ({ color,focused }) => (
-                        <TabIcon 
-                            icon={icons.bookmark}
-                            color={color}
-                            name="Meetup"
-                            focused={focused}
-                        />
-                    )
-                }}  
-            />
-
-            <Tabs.Screen
-                name="profile"
-                options={{
-                    title: 'Profile',
-                    headerShown: false,
-                    tabBarIcon: ({ color,focused }) => (
-                        <TabIcon 
-                            icon={icons.profile}
-                            color={color}
-                            name="Profile"
-                            focused={focused}
-                        />
-                    )
-                }}  
-            />
-        </Tabs>
-    </>
-  )
-}
-
-export default TabsLayout
+export default TabsLayout;
