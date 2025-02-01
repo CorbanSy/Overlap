@@ -10,13 +10,21 @@ import {
   TextInput,
   ActivityIndicator,
   Modal,
+  ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import Fuse from 'fuse.js';
 import * as Location from 'expo-location';
 import { getAuth } from 'firebase/auth';
-import { getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot } from 'firebase/firestore';
+import {
+  getFirestore,
+  collection,
+  doc,
+  setDoc,
+  deleteDoc,
+  onSnapshot,
+} from 'firebase/firestore';
 import { useRouter } from 'expo-router';
 import { useFilters } from '../../context/FiltersContext';
 
@@ -41,6 +49,24 @@ function deg2rad(deg: number) {
 
 const GOOGLE_PLACES_API_KEY = 'AIzaSyDcTuitQdQGXwuLp90NqQ_ZwhnMSGrr8mY';
 
+// Array of categories to be shown in the Sort dropdown.
+const SORT_CATEGORIES = [
+  'Dining',
+  'Fitness',
+  'Outdoors',
+  'Movies',
+  'Gaming',
+  'Social',
+  'Music',
+  'Shopping',
+  'Travel',
+  'Art',
+  'Relaxing',
+  'Learning',
+  'Cooking',
+  'Nightlife',
+];
+
 export default function HomeScreen() {
   const navigation = useNavigation();
   const router = useRouter();
@@ -56,6 +82,9 @@ export default function HomeScreen() {
   // New states for the location modal and manual input
   const [locationModalVisible, setLocationModalVisible] = useState(false);
   const [manualLocationInput, setManualLocationInput] = useState('');
+
+  // New state for the Sort dropdown modal visibility
+  const [sortModalVisible, setSortModalVisible] = useState(false);
 
   // ----- Pull filterState & setFilterState from the context -----
   const { filterState, setFilterState } = useFilters();
@@ -107,13 +136,15 @@ export default function HomeScreen() {
 
     try {
       const radius = filterState.distance ?? 5000;
+      // Use the selected sort category as the keyword, default to 'activities'
+      const keyword = filterState.sort ? filterState.sort : 'activities';
 
       let url =
         `https://maps.googleapis.com/maps/api/place/nearbysearch/json?key=${GOOGLE_PLACES_API_KEY}` +
         `&location=${userLocation.lat},${userLocation.lng}` +
         `&radius=${radius}` +
         `&type=tourist_attraction` +
-        `&keyword=activities`;
+        `&keyword=${encodeURIComponent(keyword)}`;
 
       // If openNow is toggled:
       if (filterState.openNow) { 
@@ -176,27 +207,7 @@ export default function HomeScreen() {
       list = results.map((r) => r.item);
     }
   
-    // Sorting: if sort is 'distance', sort by distance; if 'rating', sort by rating descending
-    if (filterState.sort === 'distance' && userLocation) {
-      list = list.slice().sort((a, b) => {
-        const distA = getDistanceFromLatLonInKm(
-          userLocation.lat,
-          userLocation.lng,
-          a.geometry.location.lat,
-          a.geometry.location.lng
-        );
-        const distB = getDistanceFromLatLonInKm(
-          userLocation.lat,
-          userLocation.lng,
-          b.geometry.location.lat,
-          b.geometry.location.lng
-        );
-        return distA - distB;
-      });
-    } else if (filterState.sort === 'rating') {
-      list = list.slice().sort((a, b) => b.rating - a.rating);
-    }
-  
+    // (Additional sorting logic could be added here if needed.)
     // Mark liked
     return list.map((item) => ({
       ...item,
@@ -225,13 +236,6 @@ export default function HomeScreen() {
     setFilterState((prev) => ({
       ...prev,
       openNow: !prev.openNow,
-    }));
-  };
-
-  const toggleSort = () => {
-    setFilterState((prev) => ({
-      ...prev,
-      sort: prev.sort === 'distance' ? 'rating' : 'distance',
     }));
   };
 
@@ -329,8 +333,13 @@ export default function HomeScreen() {
 
         {/* Filter Row */}
         <View style={styles.filterContainer}>
-          <TouchableOpacity style={styles.filterButton} onPress={toggleSort}>
-            <Text style={styles.filterText}>Sort</Text>
+          <TouchableOpacity
+            style={styles.filterButton}
+            onPress={() => setSortModalVisible(true)}
+          >
+            <Text style={styles.filterText}>
+              {filterState.sort ? filterState.sort : 'Sort'}
+            </Text>
           </TouchableOpacity>
 
           <TouchableOpacity
@@ -352,6 +361,33 @@ export default function HomeScreen() {
             <Text style={styles.filterText}>More Filters</Text>
           </TouchableOpacity>
         </View>
+
+        {/* Sort Dropdown Modal */}
+        {sortModalVisible && (
+          <Modal visible={sortModalVisible} transparent animationType="fade">
+            <View style={styles.modalContainer}>
+              <View style={styles.sortModalContent}>
+                <ScrollView>
+                  {SORT_CATEGORIES.map((category, index) => (
+                    <TouchableOpacity
+                      key={index}
+                      style={styles.sortModalItem}
+                      onPress={() => handleSelectSortCategory(category)}
+                    >
+                      <Text style={styles.sortModalItemText}>{category}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+                <TouchableOpacity
+                  style={[styles.modalButton, { marginTop: 10 }]}
+                  onPress={() => setSortModalVisible(false)}
+                >
+                  <Text style={styles.modalButtonText}>Cancel</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </Modal>
+        )}
 
         {/* Location Modal */}
         {locationModalVisible && (
@@ -497,6 +533,22 @@ const styles = StyleSheet.create({
     padding: 20,
     borderRadius: 10,
     alignItems: 'center',
+  },
+  sortModalContent: {
+    width: '80%',
+    maxHeight: '60%',
+    backgroundColor: '#fff',
+    padding: 20,
+    borderRadius: 10,
+  },
+  sortModalItem: {
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+  },
+  sortModalItemText: {
+    fontSize: 16,
+    color: '#333',
   },
   modalTitle: {
     fontSize: 18,
