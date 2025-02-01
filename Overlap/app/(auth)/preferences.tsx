@@ -10,7 +10,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useNavigation } from "@react-navigation/native";
 import { getAuth } from "firebase/auth";
-import { markPreferencesComplete } from '../utils/storage'; // adjust the path as needed
+import { markPreferencesComplete, savePreferences } from '../utils/storage'; // adjust the path as needed
 import { router } from 'expo-router'
 const { width, height } = Dimensions.get("window");
 
@@ -166,13 +166,27 @@ export default function PreferencesScreen() {
   };
 
   const handleSubmitPreferences = async () => {
+    const auth = getAuth();
     if (!auth.currentUser) return;
-  try {
-    await markPreferencesComplete();
-    router.push('/home'); // Navigate using expo-router
-  } catch (error) {
-    console.error("Error submitting preferences:", error);
-  }
+
+    try {
+      // Gather final top categories from rankLabels
+      // rankLabels is an array of length 5 with each category or "Unassigned"
+      const finalRanks = rankLabels.filter(
+        (label) => label && label !== "Unassigned"
+      );
+
+      // If you need exactly 5, ensure finalRanks.length === 5, or do nothing
+      await savePreferences(finalRanks);
+
+      // Also set local "preferencesComplete" in AsyncStorage
+      await markPreferencesComplete();
+
+      // Navigate away
+      router.push('/home');
+    } catch (error) {
+      console.error("Error submitting preferences:", error);
+    }
   };
 
   return (
