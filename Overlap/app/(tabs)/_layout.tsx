@@ -1,35 +1,27 @@
+// app/(tabs)/_layout.tsx
 import { useEffect, useState } from "react";
-import { getAuth } from "firebase/auth";
-import { getFirestore, doc, getDoc } from "firebase/firestore";
 import { Tabs, Redirect } from "expo-router";
-
-const auth = getAuth();
-const firestore = getFirestore();
+import { checkPreferencesComplete } from "../utils/storage"; // Adjust the path as needed
 
 const TabsLayout = () => {
   const [loading, setLoading] = useState(true);
   const [needsPreferences, setNeedsPreferences] = useState(false);
 
   useEffect(() => {
-    const checkPreferences = async () => {
-      const user = auth.currentUser;
-      if (user) {
-        const docRef = doc(firestore, "preferences", user.uid);
-        const docSnap = await getDoc(docRef);
-
-        // If user has no preferences, setNeedsPreferences to true
-        setNeedsPreferences(!docSnap.exists());
-      }
+    const verifyPreferences = async () => {
+      const completed = await checkPreferencesComplete();
+      // If the flag is not set (i.e. not complete), the user needs to complete preferences.
+      setNeedsPreferences(!completed);
       setLoading(false);
     };
 
-    checkPreferences();
+    verifyPreferences();
   }, []);
 
-  if (loading) return null; // Prevent flickering during auth check
+  if (loading) return null; // Optionally, show a loading indicator here
 
-  // ✅ Correct Redirect to Preferences inside (tabs)
-  if (needsPreferences) return <Redirect href="/(tabs)/preferences" />;
+  // Redirect to the auth preferences screen if preferences are not complete.
+  if (needsPreferences) return <Redirect href="/(auth)/preferences" />;
 
   return (
     <Tabs
@@ -66,7 +58,7 @@ const TabsLayout = () => {
           headerShown: false,
         }}
       />
-      {/* ✅ Add Preferences to Tabs Navigation */}
+      {/* Include Preferences as a screen in the tabs for navigation if needed */}
       <Tabs.Screen
         name="preferences"
         options={{

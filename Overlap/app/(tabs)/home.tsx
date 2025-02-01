@@ -9,6 +9,7 @@ import {
   TouchableOpacity,
   TextInput,
   ActivityIndicator,
+  Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -52,8 +53,12 @@ export default function HomeScreen() {
   const [userLikes, setUserLikes] = useState<Record<string, boolean>>({});
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
 
+  // New states for the location modal and manual input
+  const [locationModalVisible, setLocationModalVisible] = useState(false);
+  const [manualLocationInput, setManualLocationInput] = useState('');
+
   // ----- Pull filterState & setFilterState from the context -----
-  const { filterState, setFilterState } = useFilters(); // CHANGED (no "filters" here)
+  const { filterState, setFilterState } = useFilters();
 
   const auth = getAuth();
   const firestore = getFirestore();
@@ -78,7 +83,7 @@ export default function HomeScreen() {
     if (userLocation) {
       fetchPlaces();
     }
-  }, [userLocation, filterState]); // CHANGED: Use "filterState" instead of "filters"
+  }, [userLocation, filterState]);
 
   // Listen for user likes
   useEffect(() => {
@@ -114,7 +119,6 @@ export default function HomeScreen() {
       if (filterState.openNow) { 
         url += `&opennow=true`;
       }
-      // If you had categories, do so here. If you had filterState.distance, override radius, etc.
 
       if (pageToken) {
         url += `&pagetoken=${pageToken}`;
@@ -165,20 +169,15 @@ export default function HomeScreen() {
   // Filter & sort places
   const getDisplayedPlaces = useCallback(() => {
     let list = places;
-
-    // Fuzzy search
+  
+    // Fuzzy search filtering
     if (searchQuery && fuseRef.current) {
       const results = fuseRef.current.search(searchQuery);
       list = results.map((r) => r.item);
     }
-
-    // If user wants only ratings >= 4
-    if (filterState.ratings) { // CHANGED
-      list = list.filter((item) => item.rating >= 4.0);
-    }
-
-    // Sort by distance or rating
-    if (filterState.sort === 'distance' && userLocation) { // CHANGED
+  
+    // Sorting: if sort is 'distance', sort by distance; if 'rating', sort by rating descending
+    if (filterState.sort === 'distance' && userLocation) {
       list = list.slice().sort((a, b) => {
         const distA = getDistanceFromLatLonInKm(
           userLocation.lat,
@@ -194,11 +193,10 @@ export default function HomeScreen() {
         );
         return distA - distB;
       });
-    } else if (filterState.sort === 'rating') { // CHANGED
-      // sort by rating desc
+    } else if (filterState.sort === 'rating') {
       list = list.slice().sort((a, b) => b.rating - a.rating);
     }
-
+  
     // Mark liked
     return list.map((item) => ({
       ...item,
@@ -230,13 +228,6 @@ export default function HomeScreen() {
     }));
   };
 
-  const toggleRatings = () => {
-    setFilterState((prev) => ({
-      ...prev,
-      ratings: !prev.ratings,
-    }));
-  };
-
   const toggleSort = () => {
     setFilterState((prev) => ({
       ...prev,
@@ -246,6 +237,29 @@ export default function HomeScreen() {
 
   const handlePressMoreFilters = () => {
     router.push('/morefilters');
+  };
+
+  // New: Handler to set location based on manual input (or keep current if empty)
+  const handleSetLocation = async () => {
+    if (manualLocationInput.trim() !== '') {
+      try {
+        const response = await fetch(
+          `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(
+            manualLocationInput
+          )}&key=${GOOGLE_PLACES_API_KEY}`
+        );
+        const data = await response.json();
+        if (data.status === 'OK' && data.results.length > 0) {
+          const { lat, lng } = data.results[0].geometry.location;
+          setUserLocation({ lat, lng });
+        } else {
+          console.error('Location not found.');
+        }
+      } catch (err) {
+        console.error('Geocoding error:', err);
+      }
+    }
+    setLocationModalVisible(false);
   };
 
   // Render each place (DoorDash style)
@@ -320,32 +334,48 @@ export default function HomeScreen() {
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={[
-              styles.filterButton,
-              filterState.openNow && styles.filterButtonActive,
-            ]}
+            style={[styles.filterButton, filterState.openNow && styles.filterButtonActive]}
             onPress={toggleOpenNow}
           >
             <Text style={styles.filterText}>Open Now</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity
-            style={[
-              styles.filterButton,
-              filterState.ratings && styles.filterButtonActive,
-            ]}
-            onPress={toggleRatings}
-          >
-            <Text style={styles.filterText}>Ratings</Text>
-          </TouchableOpacity>
-
+          {/* Replace Ratings button with Location button */}
           <TouchableOpacity
             style={styles.filterButton}
-            onPress={handlePressMoreFilters}
+            onPress={() => setLocationModalVisible(true)}
           >
+            <Text style={styles.filterText}>Location</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity style={styles.filterButton} onPress={handlePressMoreFilters}>
             <Text style={styles.filterText}>More Filters</Text>
           </TouchableOpacity>
         </View>
+
+        {/* Location Modal */}
+        {locationModalVisible && (
+          <Modal visible={locationModalVisible} transparent animationType="slide">
+            <View style={styles.modalContainer}>
+              <View style={styles.modalContent}>
+                <Text style={styles.modalTitle}>Set Location</Text>
+                <TextInput
+                  style={styles.modalInput}
+                  placeholder="Enter a location (leave blank for current)"
+                  placeholderTextColor="#aaa"
+                  value={manualLocationInput}
+                  onChangeText={setManualLocationInput}
+                />
+                <TouchableOpacity style={styles.modalButton} onPress={handleSetLocation}>
+                  <Text style={styles.modalButtonText}>Confirm</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.modalButton} onPress={() => setLocationModalVisible(false)}>
+                  <Text style={styles.modalButtonText}>Cancel</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </Modal>
+        )}
 
         {/* Places List */}
         <FlatList
@@ -453,5 +483,43 @@ const styles = StyleSheet.create({
     color: '#AAAAAA',
     fontSize: 14,
     marginTop: 4,
+  },
+  // Modal styles
+  modalContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.5)',
+  },
+  modalContent: {
+    width: '80%',
+    backgroundColor: '#fff',
+    padding: 20,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 10,
+  },
+  modalInput: {
+    width: '100%',
+    borderWidth: 1,
+    borderColor: '#ccc',
+    borderRadius: 5,
+    padding: 10,
+    marginBottom: 10,
+  },
+  modalButton: {
+    backgroundColor: '#F5A623',
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 5,
+    marginTop: 5,
+  },
+  modalButtonText: {
+    color: '#fff',
+    fontWeight: 'bold',
   },
 });
