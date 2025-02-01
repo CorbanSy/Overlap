@@ -6,17 +6,21 @@ import { useRouter } from 'expo-router';
 import { useFilters } from '../context/FiltersContext';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-const ALL_CATEGORIES = [   'dining', 'fitness', 'outdoors', 'movies', 'gaming', 'social',
+const ALL_CATEGORIES = [
+  'dining', 'fitness', 'outdoors', 'movies', 'gaming', 'social',
   'music', 'shopping', 'travel', 'art', 'learning', 'relaxing',
-  'cooking', 'nightlife', ];
+  'cooking', 'nightlife',
+];
 
 export default function MoreFiltersScreen() {
   const router = useRouter();
   const { filterState, setFilterState } = useFilters();
 
-  // local state is initialized from filterState
+  // Local state is initialized from filterState.
   const [distance, setDistance] = useState(filterState.distance);
   const [selectedCategories, setSelectedCategories] = useState<string[]>(filterState.categories);
+  // Local state for sort order: 'distance' or 'rating'
+  const [sortOption, setSortOption] = useState<'distance' | 'rating'>(filterState.sort);
 
   function handleToggleCategory(category: string) {
     if (selectedCategories.includes(category)) {
@@ -27,21 +31,32 @@ export default function MoreFiltersScreen() {
   }
 
   function handleApply() {
-    // Merge local changes into the global store
+    // Merge local changes into the global store.
     setFilterState(prev => ({
       ...prev,
       distance,
       categories: selectedCategories,
+      sort: sortOption,  // Save the chosen sort order
     }));
-    // Go back 
+    // Go back.
+    router.back();
+  }
+
+  // Back button handler: you can use router.back() or router.push('/home')
+  function handleBack() {
     router.back();
   }
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <ScrollView style={styles.container}>
+      {/* Header with Back Button */}
+      <View style={styles.header}>
+        <TouchableOpacity style={styles.backButton} onPress={handleBack}>
+          <Text style={styles.backButtonText}>{'< Back'}</Text>
+        </TouchableOpacity>
         <Text style={styles.title}>More Filters</Text>
-
+      </View>
+      <ScrollView style={styles.container}>
         <Text style={styles.sectionLabel}>Distance (meters)</Text>
         <View style={{ alignItems: 'stretch', paddingHorizontal: 10 }}>
           <Slider
@@ -55,6 +70,23 @@ export default function MoreFiltersScreen() {
             thumbTintColor="#F5A623"
           />
           <Text style={{ color: '#fff', marginTop: 5 }}>Selected: {distance} meters</Text>
+        </View>
+
+        {/* Sort Options */}
+        <Text style={styles.sectionLabel}>Sort By</Text>
+        <View style={styles.sortContainer}>
+          <TouchableOpacity
+            style={[styles.sortButton, sortOption === 'distance' && styles.sortButtonActive]}
+            onPress={() => setSortOption('distance')}
+          >
+            <Text style={styles.sortButtonText}>Distance</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.sortButton, sortOption === 'rating' && styles.sortButtonActive]}
+            onPress={() => setSortOption('rating')}
+          >
+            <Text style={styles.sortButtonText}>Highest Rated</Text>
+          </TouchableOpacity>
         </View>
 
         {/* Categories */}
@@ -88,17 +120,29 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#0D1117',
   },
-  container: {
-    flex: 1,
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
     backgroundColor: '#0D1117',
-    paddingTop: 20,
+  },
+  backButton: {
+    marginRight: 10,
+  },
+  backButtonText: {
+    color: '#F5A623',
+    fontSize: 16,
   },
   title: {
     color: '#fff',
     fontSize: 24,
-    marginHorizontal: 16,
-    marginBottom: 16,
     fontWeight: 'bold',
+  },
+  container: {
+    flex: 1,
+    backgroundColor: '#0D1117',
+    paddingTop: 20,
   },
   sectionLabel: {
     color: '#fff',
@@ -106,6 +150,25 @@ const styles = StyleSheet.create({
     marginHorizontal: 16,
     marginTop: 10,
     marginBottom: 8,
+    fontWeight: '600',
+  },
+  sortContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginHorizontal: 16,
+    marginBottom: 10,
+  },
+  sortButton: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+  },
+  sortButtonActive: {
+    backgroundColor: '#F5A623',
+  },
+  sortButtonText: {
+    color: '#0D1117',
     fontWeight: '600',
   },
   categoryContainer: {

@@ -3,7 +3,7 @@ import { Redirect, router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import React from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { images } from '../constants';
+import images from '../constants/images';
 import CustomButton from '../components/CustomButton';
 
 export default function App() {
@@ -11,7 +11,7 @@ export default function App() {
     <SafeAreaView className="bg-primary h-full">
       <View style={{ flex: 1 }}>
         <Image
-          source={images.home_screen}
+          source={images.welcome_screen}  // Using the directly imported image
           style={{ 
             position: 'absolute',
             top: 0,
@@ -21,7 +21,7 @@ export default function App() {
             width: '100%',
             height: '100%',
           }}
-          resizeMode='cover'
+          resizeMode="cover"
         />
         <View style={{ flex: 1, justifyContent: 'flex-end', alignItems: 'center', paddingBottom: 20 }}>
           <CustomButton
@@ -31,7 +31,7 @@ export default function App() {
           />
         </View>
       </View>
-      <StatusBar backgroundColor='#161622' style='light'/>
+      <StatusBar backgroundColor="#161622" style="light" />
     </SafeAreaView>
   );
-} 
+}

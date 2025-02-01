@@ -3,25 +3,26 @@ import {
   View,
   Text,
   TouchableOpacity,
-  ActivityIndicator,
+  Dimensions,
   Modal,
   StyleSheet,
-  Dimensions,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useRouter } from "expo-router";
+import { useNavigation } from "@react-navigation/native";
 import { getAuth } from "firebase/auth";
-import { getFirestore, collection, doc, setDoc } from "firebase/firestore";
-import { useFilters } from "../../context/FiltersContext";
-
+import { markPreferencesComplete } from '../utils/storage'; // adjust the path as needed
+import { router } from 'expo-router'
 const { width, height } = Dimensions.get("window");
 
-// Activity Labels
-const activityLabels = [
-  "Dining", "Fitness", "Outdoors", "Movies", "Gaming", "Social", "Music",
-  "Shopping", "Travel", "Art", "Relaxing", "Learning", "Cooking", "Nightlife",
-];
+// Define Theme Colors
+const themeColors = {
+  bg: "#0D1117",
+  primary: "#F5A623",
+  white: "#FFFFFF",
+  secondary: "#1B1F24",
+};
 
+// Define Bubble Type
 type Bubble = {
   id: string;
   label: string;
@@ -31,14 +32,20 @@ type Bubble = {
   rank: number | null;
 };
 
-// Function to create bubbles with spiral layout
+// Initial activity labels
+const activityLabels: string[] = [
+  "Dining", "Fitness", "Outdoors", "Movies", "Gaming", "Social", "Music",
+  "Shopping", "Travel", "Art", "Relaxing", "Learning", "Cooking", "Nightlife",
+];
+
+// Function to create initial bubbles with a spiral layout
 const createBubbles = (): Bubble[] => {
   const bubbles: Bubble[] = [];
   const centerX = width / 2;
   const centerY = height / 2.5;
   let currentDistance = 50;
   let currentAngle = 0;
-  const angleStep = (2 * Math.PI) / 10; 
+  const angleStep = (2 * Math.PI) / 10;
 
   activityLabels.forEach((label) => {
     const x = centerX + Math.cos(currentAngle) * currentDistance;
@@ -58,17 +65,13 @@ const createBubbles = (): Bubble[] => {
 };
 
 export default function PreferencesScreen() {
-  const router = useRouter();
+  const navigation = useNavigation();
   const auth = getAuth();
-  const { filterState, setFilterState } = useFilters();
-
   const [bubbles, setBubbles] = useState<Bubble[]>(createBubbles());
   const [selectedRank, setSelectedRank] = useState<number | null>(null);
-  const [rankLabels, setRankLabels] = useState<Array<string | null>>(Array(5).fill(null));
-  const [isDisclaimerVisible, setIsDisclaimerVisible] = useState(true);
-  const [loading, setLoading] = useState(false);
+  const [rankLabels, setRankLabels] = useState<(string | null)[]>(Array(5).fill(null));
+  const [isDisclaimerVisible, setIsDisclaimerVisible] = useState<boolean>(true);
 
-  // Apply gravity effect initially
   useEffect(() => {
     const gravityInterval = setInterval(() => applyGravity(), 50);
     const stopGravityTimeout = setTimeout(() => clearInterval(gravityInterval), 2000);
@@ -77,9 +80,8 @@ export default function PreferencesScreen() {
       clearInterval(gravityInterval);
       clearTimeout(stopGravityTimeout);
     };
-  }, []);
+  }, [bubbles]);
 
-  // Gravity function: pulls bubbles towards the center
   const applyGravity = () => {
     const centerX = width / 2;
     const centerY = height / 2.5;
@@ -95,7 +97,11 @@ export default function PreferencesScreen() {
           dx = (dx / distance) * pullStrength;
           dy = (dy / distance) * pullStrength;
 
-          return { ...bubble, x: bubble.x + dx, y: bubble.y + dy };
+          return {
+            ...bubble,
+            x: bubble.x + dx,
+            y: bubble.y + dy,
+          };
         }
         return bubble;
       })
@@ -104,7 +110,6 @@ export default function PreferencesScreen() {
     adjustNeighbors();
   };
 
-  // Adjust overlapping bubbles
   const adjustNeighbors = () => {
     setBubbles((prevBubbles) => {
       const updatedBubbles = [...prevBubbles];
@@ -133,7 +138,6 @@ export default function PreferencesScreen() {
     });
   };
 
-  // Assign ranking to bubbles
   const assignRank = (bubbleId: string) => {
     if (!selectedRank) return;
 
@@ -141,43 +145,49 @@ export default function PreferencesScreen() {
       prevBubbles.map((bubble) =>
         bubble.id === bubbleId
           ? { ...bubble, rank: selectedRank, size: 50 + selectedRank * 10 }
+          : bubble.rank === selectedRank
+          ? { ...bubble, rank: null, size: 50 }
           : bubble
       )
     );
 
     setRankLabels((prevLabels) => {
       const updatedLabels = [...prevLabels];
-      updatedLabels[selectedRank - 1] = activityLabels.find((label) => label === bubbleId) || null;
+      const bubble = bubbles.find((b) => b.id === bubbleId);
+      if (bubble) {
+        updatedLabels[selectedRank - 1] = bubble.label;
+      }
       return updatedLabels;
     });
   };
 
-  // Submit preferences
+  const selectRank = (rank: number) => {
+    setSelectedRank((prevRank) => (prevRank === rank ? null : rank));
+  };
+
   const handleSubmitPreferences = async () => {
     if (!auth.currentUser) return;
-    setLoading(true);
-    try {
-      const firestore = getFirestore();
-      const userRef = doc(collection(firestore, "preferences"), auth.currentUser.uid);
-      await setDoc(userRef, { preferences: rankLabels });
-      setLoading(false);
-      router.replace('/(tabs)/home');
-    } catch (error) {
-      console.error("Error submitting preferences:", error);
-      setLoading(false);
-    }
+  try {
+    await markPreferencesComplete();
+    router.push('/home'); // Navigate using expo-router
+  } catch (error) {
+    console.error("Error submitting preferences:", error);
+  }
   };
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      {/* Modal for Instructions */}
+    <SafeAreaView style={styles.container}>
       <Modal visible={isDisclaimerVisible} transparent animationType="fade">
         <View style={styles.modalContainer}>
           <View style={styles.modalContent}>
             <Text style={styles.modalText}>
-              Rank your preferences to personalize your experience. You can change these later.
+              Welcome! Ranking your preferences helps us personalize your
+              experience. Don't worry—these can be updated later!
             </Text>
-            <TouchableOpacity style={styles.modalButton} onPress={() => setIsDisclaimerVisible(false)}>
+            <TouchableOpacity
+              style={styles.modalButton}
+              onPress={() => setIsDisclaimerVisible(false)}
+            >
               <Text style={styles.modalButtonText}>Got it</Text>
             </TouchableOpacity>
           </View>
@@ -186,22 +196,50 @@ export default function PreferencesScreen() {
 
       <Text style={styles.header}>Rank Your Preferences</Text>
 
-      {/* Bubbles */}
+      <View style={styles.rankContainer}>
+        {Array.from({ length: 5 }).map((_, index) => (
+          <View key={index + 1} style={styles.rankBoxContainer}>
+            <TouchableOpacity
+              style={[
+                styles.rankBox,
+                { backgroundColor: selectedRank === index + 1 ? themeColors.primary : "#FFFFFF" },
+              ]}
+              onPress={() => selectRank(index + 1)}
+            >
+              <Text
+                style={[styles.rankBoxText, { color: selectedRank === index + 1 ? "#FFFFFF" : "#000000" }]}
+              >
+                {index + 1} Rank
+              </Text>
+            </TouchableOpacity>
+            <Text style={styles.rankLabel}>{rankLabels[index] || "Unassigned"}</Text>
+          </View>
+        ))}
+      </View>
+
       <View style={styles.bubblesContainer}>
         {bubbles.map((bubble) => (
           <TouchableOpacity
             key={bubble.id}
-            style={[styles.bubble, { width: bubble.size, height: bubble.size, borderRadius: bubble.size / 2 }]}
+            style={[
+              styles.bubble,
+              {
+                width: bubble.size,
+                height: bubble.size,
+                borderRadius: bubble.size / 2,
+                transform: [{ translateX: bubble.x - width / 2 }, { translateY: bubble.y - height / 2.5 }],
+                backgroundColor: bubble.rank ? themeColors.primary : themeColors.secondary,
+              },
+            ]}
             onPress={() => assignRank(bubble.id)}
           >
-            <Text style={styles.bubbleText}>{bubble.label} {bubble.rank ? `(${bubble.rank})` : ""}</Text>
+            <Text style={styles.bubbleText}>{bubble.label}{bubble.rank ? ` (${bubble.rank})` : ""}</Text>
           </TouchableOpacity>
         ))}
       </View>
 
-      {/* Submit Button */}
-      <TouchableOpacity style={styles.submitButton} onPress={handleSubmitPreferences} disabled={loading}>
-        {loading ? <ActivityIndicator size="small" color="#fff" /> : <Text style={styles.submitButtonText}>Submit</Text>}
+      <TouchableOpacity style={styles.submitButton} onPress={handleSubmitPreferences}>
+        <Text style={styles.submitButtonText}>Submit</Text>
       </TouchableOpacity>
     </SafeAreaView>
   );
@@ -209,125 +247,102 @@ export default function PreferencesScreen() {
 
 // ---------- STYLES ------------
 const styles = StyleSheet.create({
-  safeArea: {
+  container: {
     flex: 1,
-    backgroundColor: "#0D1117", // Dark mode background to match Home.tsx
-    paddingHorizontal: 16,
-    justifyContent: "center",
-  },
-  searchBar: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#FFFFFF",
-    borderRadius: 10,
-    paddingHorizontal: 15,
-    height: 40,
-    marginBottom: 15,
-  },
-  searchInput: {
-    flex: 1,
-    fontSize: 16,
-    color: "#0D1117",
-  },
-  header: {
-    fontSize: 22,
-    fontWeight: "bold",
-    color: "#FFFFFF",
-    textAlign: "center",
-    marginBottom: 20,
-  },
-  rankContainer: {
-    flexDirection: "row",
-    justifyContent: "center",
-    marginBottom: 20,
-  },
-  rankBoxContainer: {
-    alignItems: "center",
-    marginHorizontal: 8,
-  },
-  rankBox: {
-    width: 60,
-    height: 60,
-    borderRadius: 8,
-    backgroundColor: "#FFFFFF",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  rankBoxActive: {
-    backgroundColor: "#F5A623", // Highlighted when selected
-  },
-  rankBoxText: {
-    fontSize: 16,
-    fontWeight: "bold",
-    color: "#0D1117",
-  },
-  rankLabel: {
-    color: "#AAAAAA",
-    marginTop: 8,
-    fontSize: 14,
-  },
-  bubblesContainer: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    justifyContent: "center",
-    marginBottom: 20,
-  },
-  bubble: {
-    backgroundColor: "#1B1F24",
-    paddingHorizontal: 15,
-    paddingVertical: 8,
-    borderRadius: 15,
-    margin: 5,
-    borderWidth: 1,
-    borderColor: "#FFFFFF",
-  },
-  bubbleSelected: {
-    backgroundColor: "#F5A623",
-  },
-  bubbleText: {
-    color: "#FFFFFF",
-    fontWeight: "bold",
-  },
-  submitButton: {
-    backgroundColor: "#F5A623",
-    paddingVertical: 12,
-    borderRadius: 8,
-    alignItems: "center",
-  },
-  submitButtonText: {
-    color: "#0D1117",
-    fontWeight: "bold",
-    fontSize: 16,
-  },
-  modalContainer: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.6)",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  modalContent: {
-    backgroundColor: "#1B1F24",
-    padding: 20,
-    borderRadius: 8,
-    width: "80%",
-    alignItems: "center",
-  },
-  modalText: {
-    color: "#FFFFFF",
-    fontSize: 16,
-    textAlign: "center",
-    marginBottom: 15,
+    backgroundColor: themeColors.bg,
+    paddingHorizontal: 20,
+    paddingTop: 20,
   },
   modalButton: {
     backgroundColor: "#F5A623",
     paddingVertical: 10,
     paddingHorizontal: 20,
-    borderRadius: 6,
+    borderRadius: 5,
   },
   modalButtonText: {
+    color: "#FFFFFF",
+    fontWeight: "bold",
+  },
+  modalContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: "rgba(0, 0, 0, 0.7)",
+  },
+  modalContent: {
+    width: "80%",
+    backgroundColor: themeColors.white,
+    borderRadius: 10,
+    padding: 20,
+    alignItems: "center",
+  },
+  modalText: {
+    fontSize: 16,
     color: "#0D1117",
+    textAlign: "center",
+    marginBottom: 20,
+  },
+  header: {
+    fontSize: 24,
+    fontWeight: "bold",
+    color: themeColors.white,
+    textAlign: "center",
+    marginTop: 20,
+  },
+  bubblesContainer: {
+    flex: 1,
+    position: "relative", // Ensures all bubbles are positioned within this container
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  bubble: {
+    position: "absolute", // Ensures the bubbles move correctly in the container
+    justifyContent: "center",
+    alignItems: "center",
+    backgroundColor: themeColors.primary, // Teal background for bubbles
+  },
+  bubbleText: {
+    color: themeColors.white,
+    fontWeight: "bold",
+  },
+  rankContainer: {
+    flexDirection: "row",
+    justifyContent: "space-around",
+    marginVertical: 10,
+    paddingHorizontal: 20,
+  },
+  rankBoxContainer: {
+    alignItems: "center",
+  },
+  rankBox: {
+    width: width / 6,
+    height: 40,
+    justifyContent: "center",
+    alignItems: "center",
+    borderRadius: 8,
+    borderWidth: 1,
+    backgroundColor: themeColors.primary, // Teal background
+    borderColor: themeColors.primary, // Match border color with teal
+  },
+  rankBoxText: {
     fontWeight: "bold",
     fontSize: 14,
+    color: themeColors.white, // White text for rank boxes
+  },
+  rankLabel: {
+    color: themeColors.white,
+    marginTop: 5,
+    fontSize: 12,
+  },
+  submitButton: {
+    backgroundColor: themeColors.primary,
+    padding: 15,
+    borderRadius: 8,
+    alignSelf: "center",
+  },
+  submitButtonText: {
+    color: themeColors.white,
+    fontWeight: "bold",
   },
 });
 

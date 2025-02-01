@@ -6,5 +6,5 @@ import logo from "../assets/images/logo.png";
 import logoSmall from "../assets/images/logo-small.png";
 import empty from "../assets/images/empty.png";
 import home_screen from "../assets/images/home_screen.png";
-
-export default { profile, thumbnail, cards, path, logo, logoSmall, empty, home_screen };
+import welcome_screen from "../assets/images/Welcome.png";
+export default { profile, thumbnail, cards, path, logo, logoSmall, empty, home_screen, welcome_screen };
