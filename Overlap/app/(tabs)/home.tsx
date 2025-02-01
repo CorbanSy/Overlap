@@ -1,4 +1,6 @@
 // home.tsx
+const GOOGLE_PLACES_API_KEY = 'AIzaSyDcTuitQdQGXwuLp90NqQ_ZwhnMSGrr8mY';
+// home.tsx
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
@@ -27,8 +29,9 @@ import {
 } from 'firebase/firestore';
 import { useRouter } from 'expo-router';
 import { useFilters } from '../../context/FiltersContext';
+import { getPreferences, likePlace, unlikePlace } from '../utils/storage';
 
-// Helpers (distance, etc.)
+// --------------- HELPERS ---------------
 function getDistanceFromLatLonInKm(lat1: number, lon1: number, lat2: number, lon2: number) {
   const R = 6371;
   const dLat = deg2rad(lat2 - lat1);
@@ -47,25 +50,39 @@ function deg2rad(deg: number) {
   return deg * (Math.PI / 180);
 }
 
-const GOOGLE_PLACES_API_KEY = 'AIzaSyDcTuitQdQGXwuLp90NqQ_ZwhnMSGrr8mY';
+function capitalize(word: string) {
+  return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+}
 
-// Array of categories to be shown in the Sort dropdown.
-const SORT_CATEGORIES = [
-  'Dining',
-  'Fitness',
-  'Outdoors',
-  'Movies',
-  'Gaming',
-  'Social',
-  'Music',
-  'Shopping',
-  'Travel',
-  'Art',
-  'Relaxing',
-  'Learning',
-  'Cooking',
-  'Nightlife',
-];
+// Example: map Google place types to your 14 categories
+function mapGoogleTypesToCategory(googleTypes: string[]): string[] {
+  if (!googleTypes || !Array.isArray(googleTypes)) return ['other'];
+
+  const categories: string[] = [];
+  // Add whichever logic you want to cover your 14 categories:
+  if (googleTypes.includes('restaurant') || googleTypes.includes('food')) {
+    categories.push('Dining');
+  }
+  if (googleTypes.includes('gym')) {
+    categories.push('Fitness');
+  }
+  if (googleTypes.includes('park') || googleTypes.includes('campground')) {
+    categories.push('Outdoors');
+  }
+  if (googleTypes.includes('movie_theater')) {
+    categories.push('Movies');
+  }
+  if (googleTypes.includes('casino') || googleTypes.includes('arcade')) {
+    categories.push('Gaming');
+  }
+  if (googleTypes.includes('bar') || googleTypes.includes('night_club')) {
+    categories.push('Nightlife');
+  }
+  // ... keep mapping to "Social", "Music", "Shopping", "Travel", "Art", "Relaxing", "Learning", "Cooking"
+
+  return categories.length ? categories : ['other'];
+}
+
 
 export default function HomeScreen() {
   const navigation = useNavigation();
@@ -79,15 +96,17 @@ export default function HomeScreen() {
   const [userLikes, setUserLikes] = useState<Record<string, boolean>>({});
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
 
-  // New states for the location modal and manual input
+  // For the new "Sort" modal (Recommended, Distance, Rating)
+  const [sortModalVisible, setSortModalVisible] = useState(false);
+
+  // For the new location modal
   const [locationModalVisible, setLocationModalVisible] = useState(false);
   const [manualLocationInput, setManualLocationInput] = useState('');
 
-  // New state for the Sort dropdown modal visibility
-  const [sortModalVisible, setSortModalVisible] = useState(false);
-
-  // ----- Pull filterState & setFilterState from the context -----
   const { filterState, setFilterState } = useFilters();
+
+  // To set userPrefs state
+  const [userTopPrefs, setUserTopPrefs] = useState([]);
 
   const auth = getAuth();
   const firestore = getFirestore();
@@ -95,8 +114,21 @@ export default function HomeScreen() {
 
   // For fuzzy search
   const fuseRef = useRef<Fuse<any> | null>(null);
+  // On mount, load user's preferences from Firestore
+  useEffect(() => {
+    async function loadUserPrefs() {
+      try {
+        const prefs = await getPreferences();
+        setUserTopPrefs(prefs);
+        // Then fetch places or do weighting logic
+      } catch (err) {
+        console.error("Error loading user prefs:", err);
+      }
+    }
+    loadUserPrefs();
+  }, []);
 
-  // Request location once
+  // 1) Request location once
   useEffect(() => {
     (async () => {
       const { status } = await Location.requestForegroundPermissionsAsync();
@@ -107,14 +139,14 @@ export default function HomeScreen() {
     })();
   }, []);
 
-  // --- FETCH places whenever location or filterState changes ---
+  // 2) Fetch places whenever location or filterState changes
   useEffect(() => {
     if (userLocation) {
       fetchPlaces();
     }
   }, [userLocation, filterState]);
 
-  // Listen for user likes
+  // 3) Listen for user likes in Firestore
   useEffect(() => {
     if (user) {
       const likesRef = collection(firestore, `users/${user.uid}/likes`);
@@ -129,28 +161,32 @@ export default function HomeScreen() {
     }
   }, [user]);
 
-  // ------ Fetching Logic ------
+  // ----------------- Fetching Logic -----------------
   const fetchPlaces = async (pageToken?: string) => {
     if (!userLocation) return;
     setLoading(true);
 
     try {
       const radius = filterState.distance ?? 5000;
-      // Use the selected sort category as the keyword, default to 'activities'
-      const keyword = filterState.sort ? filterState.sort : 'activities';
+      // We'll use a default "activities" keyword if sort is "recommended"
+      let keyword = 'activities';
+      if (filterState.sort === 'Movies') {
+        keyword = 'movies';
+      } else if (filterState.sort === 'Dining') {
+        keyword = 'restaurant';
+      }
+      // etc. (If you want to tie your preferences to the keyword, you can do so.)
 
       let url =
         `https://maps.googleapis.com/maps/api/place/nearbysearch/json?key=${GOOGLE_PLACES_API_KEY}` +
         `&location=${userLocation.lat},${userLocation.lng}` +
         `&radius=${radius}` +
-        `&type=tourist_attraction` +
+        `&type=establishment` + // keep it or change to establishment
         `&keyword=${encodeURIComponent(keyword)}`;
 
-      // If openNow is toggled:
-      if (filterState.openNow) { 
+      if (filterState.openNow) {
         url += `&opennow=true`;
       }
-
       if (pageToken) {
         url += `&pagetoken=${pageToken}`;
       }
@@ -167,6 +203,8 @@ export default function HomeScreen() {
           userRatingsTotal: p.user_ratings_total || 0,
           photoReference: p.photos ? p.photos[0].photo_reference : null,
           geometry: p.geometry,
+          // store types so we can do local weighting
+          types: p.types ?? [],
           liked: false,
         }));
         setPlaces((prev) => (pageToken ? [...prev, ...newPlaces] : newPlaces));
@@ -180,14 +218,14 @@ export default function HomeScreen() {
     }
   };
 
-  // Infinite scrolling
+  // 4) Infinite scrolling
   const loadMore = () => {
     if (nextPageToken) {
       fetchPlaces(nextPageToken);
     }
   };
 
-  // Fuzzy search
+  // 5) Fuzzy search
   useEffect(() => {
     if (places.length) {
       fuseRef.current = new Fuse(places, {
@@ -197,17 +235,55 @@ export default function HomeScreen() {
     }
   }, [places]);
 
-  // Filter & sort places
+  // -------------- getDisplayedPlaces / Local Sorting + Preferences --------------
   const getDisplayedPlaces = useCallback(() => {
     let list = places;
-  
-    // Fuzzy search filtering
+
+    // 1) Fuzzy search
     if (searchQuery && fuseRef.current) {
       const results = fuseRef.current.search(searchQuery);
       list = results.map((r) => r.item);
     }
-  
-    // (Additional sorting logic could be added here if needed.)
+
+    // 2) Weighted approach if sort === "Recommended"
+    // We'll "boost" places that match user's top categories
+    if (filterState.sort === 'recommended' || !filterState.sort) {
+      list = list.map((place) => {
+        const placeCategories = mapGoogleTypesToCategory(place.types);
+        let preferenceScore = 0;
+        placeCategories.forEach((cat) => {
+          const rankIndex = userTopPrefs.indexOf(cat);
+          if (rankIndex !== -1) {
+            preferenceScore += (5 - rankIndex);
+          }
+        });
+        return { ...place, preferenceScore };
+      });
+      list.sort((a, b) => (b.preferenceScore || 0) - (a.preferenceScore || 0));
+    }
+    // 3) If sort === "distance", sort by nearest
+    else if (filterState.sort === 'distance' && userLocation) {
+      list = list.slice().sort((a, b) => {
+        const distA = getDistanceFromLatLonInKm(
+          userLocation.lat,
+          userLocation.lng,
+          a.geometry.location.lat,
+          a.geometry.location.lng
+        );
+        const distB = getDistanceFromLatLonInKm(
+          userLocation.lat,
+          userLocation.lng,
+          b.geometry.location.lat,
+          b.geometry.location.lng
+        );
+        return distA - distB;
+      });
+    }
+    // 4) If sort === "rating", sort by rating descending
+    else if (filterState.sort === 'rating') {
+      list = list.slice().sort((a, b) => b.rating - a.rating);
+    }
+
     // Mark liked
     return list.map((item) => ({
       ...item,
@@ -215,23 +291,22 @@ export default function HomeScreen() {
     }));
   }, [places, searchQuery, filterState, userLikes, userLocation]);
 
-  // Like/unlike
+  // -------------- Like/unlike --------------
   const handleLikePress = async (placeId: string) => {
     if (!user) return;
-    const docRef = doc(firestore, `users/${user.uid}/likes`, placeId);
     const isLiked = !!userLikes[placeId];
     try {
       if (isLiked) {
-        await deleteDoc(docRef);
+        await unlikePlace(placeId);
       } else {
-        await setDoc(docRef, { placeId, createdAt: new Date() });
+        await likePlace(placeId);
       }
     } catch (err) {
       console.error('Failed to toggle like:', err);
     }
   };
 
-  // Filter Toggles
+  // -------------- Filter Toggles --------------
   const toggleOpenNow = () => {
     setFilterState((prev) => ({
       ...prev,
@@ -239,14 +314,11 @@ export default function HomeScreen() {
     }));
   };
 
-  const handlePressMoreFilters = () => {
-    router.push('/morefilters');
-  };
-
-  // New: Handler to set location based on manual input (or keep current if empty)
+  // -------------- Location Modal --------------
   const handleSetLocation = async () => {
     if (manualLocationInput.trim() !== '') {
       try {
+        // geocode the user's typed location
         const response = await fetch(
           `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(
             manualLocationInput
@@ -266,7 +338,19 @@ export default function HomeScreen() {
     setLocationModalVisible(false);
   };
 
-  // Render each place (DoorDash style)
+  // -------------- Sort Modal (Distance, Rating, Recommended) --------------
+  const SORT_OPTIONS = ['recommended', 'distance', 'rating'];
+
+  // The user picks one of these => update filterState.sort
+  const handleSelectSortOption = (option: string) => {
+    setFilterState((prev) => ({
+      ...prev,
+      sort: option,
+    }));
+    setSortModalVisible(false);
+  };
+
+  // -------------- Render each place (DoorDash style) --------------
   const renderPlaceItem = ({ item }: { item: any }) => {
     const photoUrl = item.photoReference
       ? `https://maps.googleapis.com/maps/api/place/photo?maxwidth=800&photoreference=${item.photoReference}&key=${GOOGLE_PLACES_API_KEY}`
@@ -316,7 +400,7 @@ export default function HomeScreen() {
     );
   };
 
-  // Main Render
+  // -------------- Main Render --------------
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.container}>
@@ -333,15 +417,19 @@ export default function HomeScreen() {
 
         {/* Filter Row */}
         <View style={styles.filterContainer}>
+          {/* Sort (Distance, Rating, Recommended) */}
           <TouchableOpacity
             style={styles.filterButton}
             onPress={() => setSortModalVisible(true)}
           >
-            <Text style={styles.filterText}>
-              {filterState.sort ? filterState.sort : 'Sort'}
-            </Text>
+          <Text style={styles.filterText}>
+            {filterState.sort && filterState.sort !== 'recommended'
+              ? `Sort: ${capitalize(filterState.sort)}`
+              : 'Sort ↓'}
+          </Text>
           </TouchableOpacity>
 
+          {/* Open Now */}
           <TouchableOpacity
             style={[styles.filterButton, filterState.openNow && styles.filterButtonActive]}
             onPress={toggleOpenNow}
@@ -349,7 +437,7 @@ export default function HomeScreen() {
             <Text style={styles.filterText}>Open Now</Text>
           </TouchableOpacity>
 
-          {/* Replace Ratings button with Location button */}
+          {/* Location */}
           <TouchableOpacity
             style={styles.filterButton}
             onPress={() => setLocationModalVisible(true)}
@@ -357,27 +445,27 @@ export default function HomeScreen() {
             <Text style={styles.filterText}>Location</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.filterButton} onPress={handlePressMoreFilters}>
+          <TouchableOpacity style={styles.filterButton} onPress={() => router.push('/morefilters')}>
             <Text style={styles.filterText}>More Filters</Text>
           </TouchableOpacity>
         </View>
 
-        {/* Sort Dropdown Modal */}
+        {/* Sort Modal */}
         {sortModalVisible && (
           <Modal visible={sortModalVisible} transparent animationType="fade">
             <View style={styles.modalContainer}>
               <View style={styles.sortModalContent}>
-                <ScrollView>
-                  {SORT_CATEGORIES.map((category, index) => (
-                    <TouchableOpacity
-                      key={index}
-                      style={styles.sortModalItem}
-                      onPress={() => handleSelectSortCategory(category)}
-                    >
-                      <Text style={styles.sortModalItemText}>{category}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
+                {SORT_OPTIONS.map((option) => (
+                  <TouchableOpacity
+                    key={option}
+                    style={styles.sortModalItem}
+                    onPress={() => handleSelectSortOption(option)}
+                  >
+                    <Text style={styles.sortModalItemText}>
+                      {option.charAt(0).toUpperCase() + option.slice(1)}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
                 <TouchableOpacity
                   style={[styles.modalButton, { marginTop: 10 }]}
                   onPress={() => setSortModalVisible(false)}
@@ -405,7 +493,10 @@ export default function HomeScreen() {
                 <TouchableOpacity style={styles.modalButton} onPress={handleSetLocation}>
                   <Text style={styles.modalButtonText}>Confirm</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={styles.modalButton} onPress={() => setLocationModalVisible(false)}>
+                <TouchableOpacity
+                  style={styles.modalButton}
+                  onPress={() => setLocationModalVisible(false)}
+                >
                   <Text style={styles.modalButtonText}>Cancel</Text>
                 </TouchableOpacity>
               </View>
@@ -422,9 +513,7 @@ export default function HomeScreen() {
           onEndReached={() => {
             if (!loading) loadMore();
           }}
-          ListFooterComponent={
-            loading ? <ActivityIndicator size="small" color="#fff" /> : null
-          }
+          ListFooterComponent={loading ? <ActivityIndicator size="small" color="#fff" /> : null}
           contentContainerStyle={styles.listContent}
         />
       </View>
@@ -527,16 +616,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: 'rgba(0,0,0,0.5)',
   },
-  modalContent: {
-    width: '80%',
-    backgroundColor: '#fff',
-    padding: 20,
-    borderRadius: 10,
-    alignItems: 'center',
-  },
   sortModalContent: {
     width: '80%',
-    maxHeight: '60%',
     backgroundColor: '#fff',
     padding: 20,
     borderRadius: 10,
@@ -550,10 +631,18 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#333',
   },
+  modalContent: {
+    width: '80%',
+    backgroundColor: '#fff',
+    padding: 20,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
   modalTitle: {
     fontSize: 18,
     fontWeight: 'bold',
     marginBottom: 10,
+    color: '#0D1117',
   },
   modalInput: {
     width: '100%',
