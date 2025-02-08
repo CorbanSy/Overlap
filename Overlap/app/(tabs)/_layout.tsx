@@ -26,14 +26,14 @@ const TabsLayout = () => {
   return (
     <Tabs
       screenOptions={{
-        tabBarShowLabel: false,
+        tabBarShowLabel: true,
         tabBarActiveTintColor: "#FFA001",
         tabBarInactiveTintColor: "#CDCDE0",
         tabBarStyle: {
           backgroundColor: "#161622",
-          borderTopWidth: 1,
-          borderTopColor: "#232533",
-          height: 84,
+          borderTopWidth: 0,
+          borderTopColor: '#161622',
+          height: 80,
         },
       }}
     >
@@ -56,15 +56,6 @@ const TabsLayout = () => {
         options={{
           title: "Profile",
           headerShown: false,
-        }}
-      />
-      {/* Include Preferences as a screen in the tabs for navigation if needed */}
-      <Tabs.Screen
-        name="preferences"
-        options={{
-          title: "Preferences",
-          headerShown: false,
-          tabBarStyle: { display: "none" }, // Hide tab bar on Preferences screen
         }}
       />
     </Tabs>
