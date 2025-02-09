@@ -1,6 +1,7 @@
 // home.tsx
 const GOOGLE_PLACES_API_KEY = 'AIzaSyDcTuitQdQGXwuLp90NqQ_ZwhnMSGrr8mY';
-// home.tsx
+// HomeScreen.tsx
+
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
@@ -31,7 +32,12 @@ import { useRouter } from 'expo-router';
 import { useFilters } from '../../context/FiltersContext';
 import { getPreferences, likePlace, unlikePlace } from '../utils/storage';
 
-// --------------- HELPERS ---------------
+// === Import your ExploreMoreCard here ===
+import ExploreMoreCard from './ExploreMoreCard';
+
+/* --------------------------------------------------
+   Helpers
+-------------------------------------------------- */
 function getDistanceFromLatLonInKm(lat1: number, lon1: number, lat2: number, lon2: number) {
   const R = 6371;
   const dLat = deg2rad(lat2 - lat1);
@@ -43,8 +49,7 @@ function getDistanceFromLatLonInKm(lat1: number, lon1: number, lat2: number, lon
       Math.sin(dLon / 2) *
       Math.sin(dLon / 2);
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  const d = R * c;
-  return d;
+  return R * c;
 }
 function deg2rad(deg: number) {
   return deg * (Math.PI / 180);
@@ -59,7 +64,6 @@ function mapGoogleTypesToCategory(googleTypes: string[]): string[] {
   if (!googleTypes || !Array.isArray(googleTypes)) return ['other'];
 
   const categories: string[] = [];
-  // Add whichever logic you want to cover your 14 categories:
   if (googleTypes.includes('restaurant') || googleTypes.includes('food')) {
     categories.push('Dining');
   }
@@ -78,35 +82,37 @@ function mapGoogleTypesToCategory(googleTypes: string[]): string[] {
   if (googleTypes.includes('bar') || googleTypes.includes('night_club')) {
     categories.push('Nightlife');
   }
-  // ... keep mapping to "Social", "Music", "Shopping", "Travel", "Art", "Relaxing", "Learning", "Cooking"
+  // ... (etc.)
 
   return categories.length ? categories : ['other'];
 }
 
-
+/* --------------------------------------------------
+   Main Component
+-------------------------------------------------- */
 export default function HomeScreen() {
   const navigation = useNavigation();
   const router = useRouter();
 
-  // ------ State ------
+  /* -------------------
+     State & Firebase
+  ------------------- */
   const [places, setPlaces] = useState<any[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState<boolean>(false);
   const [nextPageToken, setNextPageToken] = useState<string | null>(null);
+
   const [userLikes, setUserLikes] = useState<Record<string, boolean>>({});
+  const [userSaves, setUserSaves] = useState<Record<string, boolean>>({});
+
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
 
-  // For the new "Sort" modal (Recommended, Distance, Rating)
   const [sortModalVisible, setSortModalVisible] = useState(false);
-
-  // For the new location modal
   const [locationModalVisible, setLocationModalVisible] = useState(false);
   const [manualLocationInput, setManualLocationInput] = useState('');
 
   const { filterState, setFilterState } = useFilters();
-
-  // To set userPrefs state
-  const [userTopPrefs, setUserTopPrefs] = useState([]);
+  const [userTopPrefs, setUserTopPrefs] = useState<string[]>([]);
 
   const auth = getAuth();
   const firestore = getFirestore();
@@ -114,21 +120,28 @@ export default function HomeScreen() {
 
   // For fuzzy search
   const fuseRef = useRef<Fuse<any> | null>(null);
-  // On mount, load user's preferences from Firestore
+
+  // We'll ref our FlatList so we can scroll to top
+  const flatListRef = useRef<FlatList<any>>(null);
+
+  /* -------------------------
+     Load user preferences
+  ------------------------- */
   useEffect(() => {
     async function loadUserPrefs() {
       try {
         const prefs = await getPreferences();
         setUserTopPrefs(prefs);
-        // Then fetch places or do weighting logic
       } catch (err) {
-        console.error("Error loading user prefs:", err);
+        console.error('Error loading user prefs:', err);
       }
     }
     loadUserPrefs();
   }, []);
 
-  // 1) Request location once
+  /* -------------------------
+     Request location once
+  ------------------------- */
   useEffect(() => {
     (async () => {
       const { status } = await Location.requestForegroundPermissionsAsync();
@@ -139,14 +152,18 @@ export default function HomeScreen() {
     })();
   }, []);
 
-  // 2) Fetch places whenever location or filterState changes
+  /* ----------------------------------------------
+     Fetch places whenever location or filter changes
+  ---------------------------------------------- */
   useEffect(() => {
     if (userLocation) {
       fetchPlaces();
     }
   }, [userLocation, filterState]);
 
-  // 3) Listen for user likes in Firestore
+  /* --------------------
+     Listen for user likes
+  -------------------- */
   useEffect(() => {
     if (user) {
       const likesRef = collection(firestore, `users/${user.uid}/likes`);
@@ -161,31 +178,49 @@ export default function HomeScreen() {
     }
   }, [user]);
 
-  // ----------------- Fetching Logic -----------------
+  /* ---------------------
+     Listen for user saves
+  --------------------- */
+  useEffect(() => {
+    if (user) {
+      const savesRef = collection(firestore, `users/${user.uid}/collections`);
+      const unsubscribe = onSnapshot(savesRef, (snapshot) => {
+        const newSaves: Record<string, boolean> = {};
+        snapshot.forEach((doc) => {
+          newSaves[doc.id] = true;
+        });
+        setUserSaves(newSaves);
+      });
+      return () => unsubscribe();
+    }
+  }, [user]);
+
+  /* -------------------------
+     Fetching places logic
+  ------------------------- */
   const fetchPlaces = async (pageToken?: string) => {
     if (!userLocation) return;
     setLoading(true);
 
     try {
       const radius = filterState.distance ?? 5000;
-      // We'll use a default "activities" keyword if sort is "recommended"
-      let keyword = 'activities';
+      let keyword = 'activities'; // default
       if (filterState.sort === 'Movies') {
         keyword = 'movies';
       } else if (filterState.sort === 'Dining') {
         keyword = 'restaurant';
       }
-      // etc. (If you want to tie your preferences to the keyword, you can do so.)
+      // etc.
 
       let url =
         `https://maps.googleapis.com/maps/api/place/nearbysearch/json?key=${GOOGLE_PLACES_API_KEY}` +
         `&location=${userLocation.lat},${userLocation.lng}` +
         `&radius=${radius}` +
-        `&type=establishment` + // keep it or change to establishment
+        `&type=establishment` +
         `&keyword=${encodeURIComponent(keyword)}`;
 
       if (filterState.openNow) {
-        url += `&opennow=true`;
+        url += '&opennow=true';
       }
       if (pageToken) {
         url += `&pagetoken=${pageToken}`;
@@ -203,9 +238,8 @@ export default function HomeScreen() {
           userRatingsTotal: p.user_ratings_total || 0,
           photoReference: p.photos ? p.photos[0].photo_reference : null,
           geometry: p.geometry,
-          // store types so we can do local weighting
           types: p.types ?? [],
-          liked: false,
+          liked: false, // will be updated from Firestore
         }));
         setPlaces((prev) => (pageToken ? [...prev, ...newPlaces] : newPlaces));
       } else {
@@ -218,14 +252,76 @@ export default function HomeScreen() {
     }
   };
 
-  // 4) Infinite scrolling
+  /* -------------------------
+     We add a new fetchPlacesByKeyword
+     that also scrolls to top.
+  ------------------------- */
+  const fetchPlacesByKeyword = async (keyword: string) => {
+    if (!userLocation) return;
+    setLoading(true);
+    try {
+      // Clear next page so we start fresh
+      setNextPageToken(null);
+
+      const radius = filterState.distance ?? 5000;
+      let url =
+        `https://maps.googleapis.com/maps/api/place/nearbysearch/json?key=${GOOGLE_PLACES_API_KEY}` +
+        `&location=${userLocation.lat},${userLocation.lng}` +
+        `&radius=${radius}` +
+        `&type=establishment` +
+        `&keyword=${encodeURIComponent(keyword)}`;
+
+      if (filterState.openNow) {
+        url += '&opennow=true';
+      }
+
+      const resp = await fetch(url);
+      const data = await resp.json();
+
+      if (data.status === 'OK') {
+        setNextPageToken(data.next_page_token || null);
+
+        const newPlaces = data.results.map((p: any) => ({
+          id: p.place_id,
+          name: p.name,
+          rating: p.rating || 0,
+          userRatingsTotal: p.user_ratings_total || 0,
+          photoReference: p.photos ? p.photos[0].photo_reference : null,
+          geometry: p.geometry,
+          types: p.types ?? [],
+          liked: false,
+        }));
+
+        setPlaces(newPlaces);
+
+        // Scroll to top after new data is set
+        // We wait a tick so that state updates, or we can do it right here.
+        setTimeout(() => {
+          flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
+        }, 100);
+
+      } else {
+        console.warn('Google Places API error:', data.status);
+      }
+    } catch (err) {
+      console.error('fetchPlacesByKeyword error:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  /* -----------------------
+     Infinite scrolling
+  ----------------------- */
   const loadMore = () => {
     if (nextPageToken) {
       fetchPlaces(nextPageToken);
     }
   };
 
-  // 5) Fuzzy search
+  /* ---------------------
+     Fuzzy search setup
+  --------------------- */
   useEffect(() => {
     if (places.length) {
       fuseRef.current = new Fuse(places, {
@@ -235,7 +331,9 @@ export default function HomeScreen() {
     }
   }, [places]);
 
-  // -------------- getDisplayedPlaces / Local Sorting + Preferences --------------
+  /* --------------------------------------------------------
+     getDisplayedPlaces => sorting, search, preferences
+  -------------------------------------------------------- */
   const getDisplayedPlaces = useCallback(() => {
     let list = places;
 
@@ -245,8 +343,7 @@ export default function HomeScreen() {
       list = results.map((r) => r.item);
     }
 
-    // 2) Weighted approach if sort === "Recommended"
-    // We'll "boost" places that match user's top categories
+    // 2) Weighted approach if sort === "recommended"
     if (filterState.sort === 'recommended' || !filterState.sort) {
       list = list.map((place) => {
         const placeCategories = mapGoogleTypesToCategory(place.types);
@@ -254,14 +351,14 @@ export default function HomeScreen() {
         placeCategories.forEach((cat) => {
           const rankIndex = userTopPrefs.indexOf(cat);
           if (rankIndex !== -1) {
-            preferenceScore += (5 - rankIndex);
+            preferenceScore += 5 - rankIndex;
           }
         });
         return { ...place, preferenceScore };
       });
       list.sort((a, b) => (b.preferenceScore || 0) - (a.preferenceScore || 0));
     }
-    // 3) If sort === "distance", sort by nearest
+    // 3) If sort === "distance"
     else if (filterState.sort === 'distance' && userLocation) {
       list = list.slice().sort((a, b) => {
         const distA = getDistanceFromLatLonInKm(
@@ -279,19 +376,22 @@ export default function HomeScreen() {
         return distA - distB;
       });
     }
-    // 4) If sort === "rating", sort by rating descending
+    // 4) If sort === "rating"
     else if (filterState.sort === 'rating') {
       list = list.slice().sort((a, b) => b.rating - a.rating);
     }
 
-    // Mark liked
+    // Mark liked & saved
     return list.map((item) => ({
       ...item,
       liked: !!userLikes[item.id],
+      saved: !!userSaves[item.id],
     }));
-  }, [places, searchQuery, filterState, userLikes, userLocation]);
+  }, [places, searchQuery, filterState, userLikes, userSaves, userLocation]);
 
-  // -------------- Like/unlike --------------
+  /* ----------------------
+     Like / Unlike
+  ---------------------- */
   const handleLikePress = async (placeId: string) => {
     if (!user) return;
     const isLiked = !!userLikes[placeId];
@@ -306,7 +406,30 @@ export default function HomeScreen() {
     }
   };
 
-  // -------------- Filter Toggles --------------
+  /* ----------------------
+     Save / Unsave
+  ---------------------- */
+  const handleSavePress = async (placeId: string, placeName: string) => {
+    if (!user) return;
+    const isSaved = !!userSaves[placeId];
+    try {
+      if (isSaved) {
+        await deleteDoc(doc(firestore, `users/${user.uid}/collections`, placeId));
+      } else {
+        await setDoc(doc(firestore, `users/${user.uid}/collections`, placeId), {
+          placeId,
+          name: placeName,
+          timestamp: Date.now(),
+        });
+      }
+    } catch (err) {
+      console.error('Failed to toggle save:', err);
+    }
+  };
+
+  /* ----------------------
+     Filter toggles
+  ---------------------- */
   const toggleOpenNow = () => {
     setFilterState((prev) => ({
       ...prev,
@@ -314,11 +437,12 @@ export default function HomeScreen() {
     }));
   };
 
-  // -------------- Location Modal --------------
+  /* -------------------------------------
+     Location Modal => handleSetLocation
+  ------------------------------------- */
   const handleSetLocation = async () => {
     if (manualLocationInput.trim() !== '') {
       try {
-        // geocode the user's typed location
         const response = await fetch(
           `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(
             manualLocationInput
@@ -338,10 +462,10 @@ export default function HomeScreen() {
     setLocationModalVisible(false);
   };
 
-  // -------------- Sort Modal (Distance, Rating, Recommended) --------------
+  /* ------------------------
+     Sort Modal Options
+  ------------------------ */
   const SORT_OPTIONS = ['recommended', 'distance', 'rating'];
-
-  // The user picks one of these => update filterState.sort
   const handleSelectSortOption = (option: string) => {
     setFilterState((prev) => ({
       ...prev,
@@ -350,8 +474,54 @@ export default function HomeScreen() {
     setSortModalVisible(false);
   };
 
-  // -------------- Render each place (DoorDash style) --------------
-  const renderPlaceItem = ({ item }: { item: any }) => {
+  /* -------------------------
+     Build final data array
+     => Show ExploreMoreCard after every 20 items
+  ------------------------- */
+  const getFinalData = () => {
+    const displayed = getDisplayedPlaces();
+    const finalData: any[] = [];
+
+    // Insert ExploreMoreCard after every 20 items
+    for (let i = 0; i < displayed.length; i++) {
+      finalData.push(displayed[i]);
+      // After every 20 items, insert a card
+      if ((i + 1) % 20 === 0) {
+        finalData.push({ _type: 'exploreMoreCard', key: `exploreMore_${i + 1}` });
+      }
+    }
+    // If the total is not a multiple of 20, still insert one at the end
+    if (displayed.length === 0) {
+      // If no places, we won't show any card
+      return finalData;
+    } else if (displayed.length % 20 !== 0) {
+      finalData.push({ _type: 'exploreMoreCard', key: 'exploreMore_end' });
+    }
+
+    return finalData;
+  };
+
+  /* --------------------------------
+     Render each item
+  -------------------------------- */
+  const renderItem = ({ item }: { item: any }) => {
+    // If it's our special ExploreMoreCard item
+    if (item._type === 'exploreMoreCard') {
+      return (
+        <ExploreMoreCard
+          style={styles.exploreCard}
+          onCategoryPress={(keyword) => {
+            // 1) fetch new places with that keyword
+            fetchPlacesByKeyword(keyword);
+            // 2) Immediately scroll to top (or do in fetchPlacesByKeyword)
+            // We can do it here for immediate feedback:
+            flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
+          }}
+        />
+      );
+    }
+
+    // Otherwise, render a normal place card
     const photoUrl = item.photoReference
       ? `https://maps.googleapis.com/maps/api/place/photo?maxwidth=800&photoreference=${item.photoReference}&key=${GOOGLE_PLACES_API_KEY}`
       : null;
@@ -376,14 +546,28 @@ export default function HomeScreen() {
             <View style={[styles.dashImage, { backgroundColor: '#333' }]} />
           )}
 
-          <TouchableOpacity
-            style={styles.likeIconContainer}
-            onPress={() => handleLikePress(item.id)}
-          >
-            <Text style={[styles.likeIcon, item.liked && { color: 'red' }]}>
-              {item.liked ? '♥' : '♡'}
-            </Text>
-          </TouchableOpacity>
+          {/* Icon row at bottom-right corner */}
+          <View style={styles.iconRow}>
+            {/* Like button */}
+            <TouchableOpacity
+              style={styles.iconContainer}
+              onPress={() => handleLikePress(item.id)}
+            >
+              <Text style={[styles.iconText, item.liked && { color: 'red' }]}>
+                {item.liked ? '♥' : '♡'}
+              </Text>
+            </TouchableOpacity>
+
+            {/* Save-to-collections button */}
+            <TouchableOpacity
+              style={styles.iconContainer}
+              onPress={() => handleSavePress(item.id, item.name)}
+            >
+              <Text style={[styles.iconText, item.saved && { color: '#F5A623' }]}>
+                {item.saved ? '🔖' : '📑'}
+              </Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         <View style={styles.dashInfoContainer}>
@@ -400,7 +584,11 @@ export default function HomeScreen() {
     );
   };
 
-  // -------------- Main Render --------------
+  /* --------------------------------
+     Main render
+  -------------------------------- */
+  const finalData = getFinalData();
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.container}>
@@ -417,19 +605,17 @@ export default function HomeScreen() {
 
         {/* Filter Row */}
         <View style={styles.filterContainer}>
-          {/* Sort (Distance, Rating, Recommended) */}
           <TouchableOpacity
             style={styles.filterButton}
             onPress={() => setSortModalVisible(true)}
           >
-          <Text style={styles.filterText}>
-            {filterState.sort && filterState.sort !== 'recommended'
-              ? `Sort: ${capitalize(filterState.sort)}`
-              : 'Sort ↓'}
-          </Text>
+            <Text style={styles.filterText}>
+              {filterState.sort && filterState.sort !== 'recommended'
+                ? `Sort: ${capitalize(filterState.sort)}`
+                : 'Sort ↓'}
+            </Text>
           </TouchableOpacity>
 
-          {/* Open Now */}
           <TouchableOpacity
             style={[styles.filterButton, filterState.openNow && styles.filterButtonActive]}
             onPress={toggleOpenNow}
@@ -437,7 +623,6 @@ export default function HomeScreen() {
             <Text style={styles.filterText}>Open Now</Text>
           </TouchableOpacity>
 
-          {/* Location */}
           <TouchableOpacity
             style={styles.filterButton}
             onPress={() => setLocationModalVisible(true)}
@@ -445,7 +630,10 @@ export default function HomeScreen() {
             <Text style={styles.filterText}>Location</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity style={styles.filterButton} onPress={() => router.push('/morefilters')}>
+          <TouchableOpacity
+            style={styles.filterButton}
+            onPress={() => router.push('/morefilters')}
+          >
             <Text style={styles.filterText}>More Filters</Text>
           </TouchableOpacity>
         </View>
@@ -485,7 +673,7 @@ export default function HomeScreen() {
                 <Text style={styles.modalTitle}>Set Location</Text>
                 <TextInput
                   style={styles.modalInput}
-                  placeholder="Enter a location (leave blank for current)"
+                  placeholder="Enter a location (or leave blank)"
                   placeholderTextColor="#aaa"
                   value={manualLocationInput}
                   onChangeText={setManualLocationInput}
@@ -504,11 +692,14 @@ export default function HomeScreen() {
           </Modal>
         )}
 
-        {/* Places List */}
+        {/* Places List + ExploreMoreCard */}
         <FlatList
-          data={getDisplayedPlaces()}
-          keyExtractor={(item) => item.id}
-          renderItem={renderPlaceItem}
+          ref={flatListRef}
+          data={finalData}
+          keyExtractor={(item, index) =>
+            item._type === 'exploreMoreCard' ? item.key : item.id
+          }
+          renderItem={renderItem}
           onEndReachedThreshold={0.5}
           onEndReached={() => {
             if (!loading) loadMore();
@@ -521,7 +712,9 @@ export default function HomeScreen() {
   );
 }
 
-// ---------- STYLES ------------
+/* ------------------------------------
+   Styles
+------------------------------------ */
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
@@ -584,15 +777,19 @@ const styles = StyleSheet.create({
     height: '100%',
     resizeMode: 'cover',
   },
-  likeIconContainer: {
+  iconRow: {
     position: 'absolute',
     right: 10,
     bottom: 10,
+    flexDirection: 'row',
+  },
+  iconContainer: {
     backgroundColor: 'rgba(0,0,0,0.4)',
     borderRadius: 20,
     padding: 8,
+    marginLeft: 8,
   },
-  likeIcon: {
+  iconText: {
     fontSize: 20,
     color: '#fff',
   },
@@ -609,7 +806,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     marginTop: 4,
   },
-  // Modal styles
+  // Modals
   modalContainer: {
     flex: 1,
     justifyContent: 'center',
@@ -663,4 +860,11 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: 'bold',
   },
+  // Optional styling for ExploreMoreCard
+  exploreCard: {
+    marginVertical: 20,
+    marginTop: 5,
+  },
 });
+
+
