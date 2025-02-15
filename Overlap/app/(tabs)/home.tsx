@@ -32,7 +32,7 @@ import { useRouter } from 'expo-router';
 import { useFilters } from '../../context/FiltersContext';
 import { getPreferences, likePlace, unlikePlace } from '../utils/storage';
 
-// === Import your ExploreMoreCard here ===
+
 import ExploreMoreCard from './ExploreMoreCard';
 
 /* --------------------------------------------------
@@ -505,7 +505,7 @@ export default function HomeScreen() {
      Render each item
   -------------------------------- */
   const renderItem = ({ item }: { item: any }) => {
-    // If it's our special ExploreMoreCard item
+    // If it's our special ExploreMoreCard item, render accordingly.
     if (item._type === 'exploreMoreCard') {
       return (
         <ExploreMoreCard
@@ -513,19 +513,18 @@ export default function HomeScreen() {
           onCategoryPress={(keyword) => {
             // 1) fetch new places with that keyword
             fetchPlacesByKeyword(keyword);
-            // 2) Immediately scroll to top (or do in fetchPlacesByKeyword)
-            // We can do it here for immediate feedback:
+            // 2) Immediately scroll to top
             flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
           }}
         />
       );
     }
-
-    // Otherwise, render a normal place card
+  
+    // Build photo URL as before.
     const photoUrl = item.photoReference
       ? `https://maps.googleapis.com/maps/api/place/photo?maxwidth=800&photoreference=${item.photoReference}&key=${GOOGLE_PLACES_API_KEY}`
       : null;
-
+  
     let distanceText = '';
     if (userLocation && item.geometry?.location) {
       const dist = getDistanceFromLatLonInKm(
@@ -536,40 +535,32 @@ export default function HomeScreen() {
       );
       distanceText = `${dist.toFixed(2)} km`;
     }
-
+  
     return (
-      <TouchableOpacity style={styles.dashCard} onPress={() => {}}>
+      <TouchableOpacity
+        style={styles.dashCard}
+        onPress={() => router.push(`/moreInfo?placeId=${item.id}`)}
+      >
         <View style={styles.dashImageContainer}>
           {photoUrl ? (
             <Image source={{ uri: photoUrl }} style={styles.dashImage} />
           ) : (
             <View style={[styles.dashImage, { backgroundColor: '#333' }]} />
           )}
-
-          {/* Icon row at bottom-right corner */}
+          {/* Like and Save icons */}
           <View style={styles.iconRow}>
-            {/* Like button */}
-            <TouchableOpacity
-              style={styles.iconContainer}
-              onPress={() => handleLikePress(item.id)}
-            >
+            <TouchableOpacity style={styles.iconContainer} onPress={() => handleLikePress(item.id)}>
               <Text style={[styles.iconText, item.liked && { color: 'red' }]}>
                 {item.liked ? '♥' : '♡'}
               </Text>
             </TouchableOpacity>
-
-            {/* Save-to-collections button */}
-            <TouchableOpacity
-              style={styles.iconContainer}
-              onPress={() => handleSavePress(item.id, item.name)}
-            >
+            <TouchableOpacity style={styles.iconContainer} onPress={() => handleSavePress(item.id, item.name)}>
               <Text style={[styles.iconText, item.saved && { color: '#F5A623' }]}>
                 {item.saved ? '🔖' : '📑'}
               </Text>
             </TouchableOpacity>
           </View>
         </View>
-
         <View style={styles.dashInfoContainer}>
           <Text style={styles.dashTitle} numberOfLines={1}>
             {item.name}
