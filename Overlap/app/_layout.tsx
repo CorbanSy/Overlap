@@ -38,6 +38,7 @@ export default function RootLayout() {
         <Stack.Screen name="(auth)" options={{ headerShown: false }} />
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="morefilters" options={{ title: 'More Filters', headerShown: false }} />
+        <Stack.Screen name="moreInfo" options={{ title: 'More Info', headerShown: false }} />
       </Stack>
     </FiltersProvider>
   );
