@@ -576,7 +576,7 @@ export default function HomeScreen() {
         <FlatList
           data={getDisplayedPlaces()}
           keyExtractor={(item) => item.id}
-          renderItem={renderPlaceItem}
+          renderItem={renderItem}  // ✅ Corrected function name
           onEndReachedThreshold={0.5}
           onEndReached={() => {
             if (!loading) loadMore();
