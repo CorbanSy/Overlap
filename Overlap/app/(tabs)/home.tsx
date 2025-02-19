@@ -31,7 +31,12 @@ import { useRouter } from 'expo-router';
 import { useFilters } from '../../context/FiltersContext';
 import { getPreferences, likePlace, unlikePlace } from '../utils/storage';
 
-// --------------- HELPERS ---------------
+
+import ExploreMoreCard from './ExploreMoreCard';
+
+/* --------------------------------------------------
+   Helpers
+-------------------------------------------------- */
 function getDistanceFromLatLonInKm(lat1: number, lon1: number, lat2: number, lon2: number) {
   const R = 6371;
   const dLat = deg2rad(lat2 - lat1);
@@ -362,12 +367,57 @@ export default function HomeScreen() {
     setSortModalVisible(false);
   };
 
-  // -------------- Render each place (DoorDash style) --------------
-  const renderPlaceItem = ({ item }: { item: any }) => {
+  /* -------------------------
+     Build final data array
+     => Show ExploreMoreCard after every 20 items
+  ------------------------- */
+  const getFinalData = () => {
+    const displayed = getDisplayedPlaces();
+    const finalData: any[] = [];
+
+    // Insert ExploreMoreCard after every 20 items
+    for (let i = 0; i < displayed.length; i++) {
+      finalData.push(displayed[i]);
+      // After every 20 items, insert a card
+      if ((i + 1) % 20 === 0) {
+        finalData.push({ _type: 'exploreMoreCard', key: `exploreMore_${i + 1}` });
+      }
+    }
+    // If the total is not a multiple of 20, still insert one at the end
+    if (displayed.length === 0) {
+      // If no places, we won't show any card
+      return finalData;
+    } else if (displayed.length % 20 !== 0) {
+      finalData.push({ _type: 'exploreMoreCard', key: 'exploreMore_end' });
+    }
+
+    return finalData;
+  };
+
+  /* --------------------------------
+     Render each item
+  -------------------------------- */
+  const renderItem = ({ item }: { item: any }) => {
+    // If it's our special ExploreMoreCard item, render accordingly.
+    if (item._type === 'exploreMoreCard') {
+      return (
+        <ExploreMoreCard
+          style={styles.exploreCard}
+          onCategoryPress={(keyword) => {
+            // 1) fetch new places with that keyword
+            fetchPlacesByKeyword(keyword);
+            // 2) Immediately scroll to top
+            flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
+          }}
+        />
+      );
+    }
+  
+    // Build photo URL as before.
     const photoUrl = item.photoReference
       ? `https://maps.googleapis.com/maps/api/place/photo?maxwidth=800&photoreference=${item.photoReference}&key=${GOOGLE_PLACES_API_KEY}`
       : null;
-
+  
     let distanceText = '';
     if (userLocation && item.geometry?.location) {
       const dist = getDistanceFromLatLonInKm(
@@ -378,26 +428,32 @@ export default function HomeScreen() {
       );
       distanceText = `${dist.toFixed(2)} km`;
     }
-
+  
     return (
-      <TouchableOpacity style={styles.dashCard} onPress={() => {}}>
+      <TouchableOpacity
+        style={styles.dashCard}
+        onPress={() => router.push(`/moreInfo?placeId=${item.id}`)}
+      >
         <View style={styles.dashImageContainer}>
           {photoUrl ? (
             <Image source={{ uri: photoUrl }} style={styles.dashImage} />
           ) : (
             <View style={[styles.dashImage, { backgroundColor: '#333' }]} />
           )}
-
-          <TouchableOpacity
-            style={styles.likeIconContainer}
-            onPress={() => handleLikePress(item.id)}
-          >
-            <Text style={[styles.likeIcon, item.liked && { color: 'red' }]}>
-              {item.liked ? '♥' : '♡'}
-            </Text>
-          </TouchableOpacity>
+          {/* Like and Save icons */}
+          <View style={styles.iconRow}>
+            <TouchableOpacity style={styles.iconContainer} onPress={() => handleLikePress(item.id)}>
+              <Text style={[styles.iconText, item.liked && { color: 'red' }]}>
+                {item.liked ? '♥' : '♡'}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.iconContainer} onPress={() => handleSavePress(item.id, item.name)}>
+              <Text style={[styles.iconText, item.saved && { color: '#F5A623' }]}>
+                {item.saved ? '🔖' : '📑'}
+              </Text>
+            </TouchableOpacity>
+          </View>
         </View>
-
         <View style={styles.dashInfoContainer}>
           <Text style={styles.dashTitle} numberOfLines={1}>
             {item.name}
