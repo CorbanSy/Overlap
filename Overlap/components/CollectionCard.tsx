@@ -2,10 +2,10 @@ import React from 'react';
 import { View, Text, Image, StyleSheet, TouchableOpacity } from 'react-native';
 
 const CollectionCard = ({ collection, onPress }) => {
+  if (!collection?.activities) return null; // Prevent errors if no activities
+
   // Get up to 4 activity images for the preview
-  const previewImages = collection.activities
-    .slice(0, 4)
-    .map((activity) => activity.photoReference);
+  const previewImages = collection.activities.slice(0, 4).map((activity) => activity.photoReference);
 
   return (
     <TouchableOpacity style={styles.card} onPress={() => onPress(collection)}>
@@ -15,17 +15,15 @@ const CollectionCard = ({ collection, onPress }) => {
           <Image
             key={index}
             source={{
-              uri: `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photoreference=${uri}&key=YOUR_GOOGLE_API_KEY`,
+              uri: `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photoreference=${uri}&key=AIzaSyDcTuitQdQGXwuLp90NqQ_ZwhnMSGrr8mY`,
             }}
             style={styles.image}
           />
         ))}
         {/* Fill remaining empty slots if fewer than 4 images */}
-        {Array(4 - previewImages.length)
-          .fill(null)
-          .map((_, index) => (
-            <View key={index + previewImages.length} style={[styles.image, styles.emptyImage]} />
-          ))}
+        {Array.from({ length: 4 - previewImages.length }).map((_, index) => (
+          <View key={index + previewImages.length} style={[styles.image, styles.emptyImage]} />
+        ))}
       </View>
 
       {/* Collection Title */}
@@ -36,9 +34,9 @@ const CollectionCard = ({ collection, onPress }) => {
 
 const styles = StyleSheet.create({
   card: {
-    flex: 1,
-    aspectRatio: 1, // Keeps it square
-    margin: 8,
+    width: '48%',  // ✅ Makes sure two cards fit in a row
+    aspectRatio: 1,  // ✅ Ensures square aspect ratio
+    margin: 6,  // ✅ Adds uniform spacing
     backgroundColor: '#1B1F24',
     borderRadius: 8,
     alignItems: 'center',
@@ -51,11 +49,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
   },
   image: {
-    width: '50%', // 2x2 grid
+    width: '50%', // ✅ Forces a 2x2 grid
     height: '50%',
   },
   emptyImage: {
-    backgroundColor: '#333', // Placeholder color
+    backgroundColor: '#333',
   },
   title: {
     color: '#FFFFFF',
@@ -65,5 +63,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 });
+
 
 export default CollectionCard;
