@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, Image, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, Image, StyleSheet } from 'react-native';
 
 const FullProfileInfo = () => (
   <View style={styles.fullProfileSection}>
@@ -12,12 +12,6 @@ const FullProfileInfo = () => (
         <Text style={styles.name}>John Doe</Text>
         <Text style={styles.username}>@johndoe</Text>
         <Text style={styles.tagline}>"Always up for an adventure!"</Text>
-        <TouchableOpacity
-          style={styles.editProfileButton}
-          onPress={() => console.log('Edit Profile')}
-        >
-          <Text style={styles.editProfileButtonText}>Edit Profile</Text>
-        </TouchableOpacity>
       </View>
     </View>
   </View>
@@ -31,8 +25,6 @@ const styles = StyleSheet.create({
   name: { fontSize: 24, fontWeight: 'bold', color: '#FFFFFF' },
   username: { fontSize: 16, color: '#DDDDDD', marginBottom: 8 },
   tagline: { fontSize: 16, fontStyle: 'italic', color: '#DDDDDD', marginBottom: 8 },
-  editProfileButton: { backgroundColor: '#FFFFFF', paddingVertical: 8, paddingHorizontal: 20, borderRadius: 20 },
-  editProfileButtonText: { color: '#0D1117', fontWeight: 'bold' },
 });
 
 export default FullProfileInfo;
