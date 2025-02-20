@@ -2,7 +2,8 @@ import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 
 const TabBar = ({ activeTab, onTabPress }) => {
-  const tabs = ['Liked Activities', 'Collections', 'Friends'];
+  const tabs = ['Liked Activities', 'Collections']; // ✅ Removed 'Friends'
+
   return (
     <View style={styles.tabContainer}>
       {tabs.map((tab) => (
