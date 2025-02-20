@@ -64,14 +64,24 @@ export async function getPreferences() {
    3) Firestore: Likes Subcollection
       /users/{uid}/likes/{placeId}
    ------------------------------------------------------------------ */
-export async function likePlace(placeId) {
-  const auth = getAuth();
-  const user = auth.currentUser;
-  if (!user) throw new Error('No user is signed in');
-
-  const likeDocRef = doc(db, 'users', user.uid, 'likes', placeId);
-  await setDoc(likeDocRef, { createdAt: new Date() });
-}
+   export async function likePlace(place) {
+    const auth = getAuth();
+    const user = auth.currentUser;
+    if (!user) throw new Error('No user is signed in');
+  
+    const likeDocRef = doc(db, 'users', user.uid, 'likes', place.id);
+  
+    // Save full place details in Firestore
+    await setDoc(likeDocRef, {
+      name: place.name,
+      rating: place.rating || 0,
+      userRatingsTotal: place.userRatingsTotal || 0,
+      photoReference: place.photoReference || null,
+      types: place.types || [],
+      createdAt: new Date(),
+    });
+  }
+  
 
 export async function unlikePlace(placeId) {
   const auth = getAuth();
@@ -90,6 +100,12 @@ export async function getAllLikes() {
 
   const likesColRef = collection(db, 'users', user.uid, 'likes');
   const snap = await getDocs(likesColRef);
-  return snap.docs.map((doc) => doc.id);
+  
+  // Return full place details
+  return snap.docs.map((doc) => ({
+    id: doc.id,
+    ...doc.data(), // This will now include name, rating, photo, etc.
+  }));
 }
+
 
