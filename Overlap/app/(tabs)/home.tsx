@@ -112,6 +112,9 @@ export default function HomeScreen() {
 
   // To set userPrefs state
   const [userTopPrefs, setUserTopPrefs] = useState([]);
+  const [collectionModalVisible, setCollectionModalVisible] = useState(false);
+  const [selectedActivity, setSelectedActivity] = useState<any | null>(null);
+  const [collections, setCollections] = useState<any[]>([]);
 
   const auth = getAuth();
   const firestore = getFirestore();
@@ -166,6 +169,46 @@ export default function HomeScreen() {
     }
   }, [user]);
 
+  useEffect(() => {
+    if (user) {
+      const collectionsRef = collection(firestore, `users/${user.uid}/collections`);
+      const unsubscribe = onSnapshot(collectionsRef, (snapshot) => {
+        const userCollections = snapshot.docs.map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+        }));
+        setCollections(userCollections);
+      });
+  
+      return () => unsubscribe();
+    }
+  }, [user]);
+  
+  const handleCollectionPress = (activity: any) => {
+    setSelectedActivity(activity);
+    setCollectionModalVisible(true);
+  };
+
+  const addToCollection = async (collectionId: string) => {
+    if (!user || !selectedActivity) return;
+  
+    try {
+      const collectionRef = doc(firestore, `users/${user.uid}/collections`, collectionId);
+      await setDoc(
+        collectionRef,
+        {
+          activities: [...(collections.find((col) => col.id === collectionId)?.activities || []), selectedActivity],
+        },
+        { merge: true }
+      );
+  
+      setCollectionModalVisible(false);
+      setSelectedActivity(null);
+    } catch (error) {
+      console.error("Error adding to collection:", error);
+    }
+  };
+  
   // ----------------- Fetching Logic -----------------
   const fetchPlaces = async (pageToken?: string) => {
     if (!userLocation) return;
@@ -447,7 +490,7 @@ export default function HomeScreen() {
                 {item.liked ? '♥' : '♡'}
               </Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.iconContainer} onPress={() => handleSavePress(item.id, item.name)}>
+            <TouchableOpacity style={styles.iconContainer} onPress={() => handleCollectionPress(item)}>
               <Text style={[styles.iconText, item.saved && { color: '#F5A623' }]}>
                 {item.saved ? '🔖' : '📑'}
               </Text>
@@ -537,6 +580,31 @@ export default function HomeScreen() {
                 <TouchableOpacity
                   style={[styles.modalButton, { marginTop: 10 }]}
                   onPress={() => setSortModalVisible(false)}
+                >
+                  <Text style={styles.modalButtonText}>Cancel</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </Modal>
+        )}
+
+        {collectionModalVisible && (
+          <Modal visible={collectionModalVisible} transparent animationType="slide">
+            <View style={styles.modalContainer}>
+              <View style={styles.modalContent}>
+                <Text style={styles.modalTitle}>Add to Collection</Text>
+                {collections.map((collection) => (
+                  <TouchableOpacity
+                    key={collection.id}
+                    style={styles.modalButton}
+                    onPress={() => addToCollection(collection.id)}
+                  >
+                    <Text style={styles.modalButtonText}>{collection.title}</Text>
+                  </TouchableOpacity>
+                ))}
+                <TouchableOpacity
+                  style={[styles.modalButton, { backgroundColor: 'gray' }]}
+                  onPress={() => setCollectionModalVisible(false)}
                 >
                   <Text style={styles.modalButtonText}>Cancel</Text>
                 </TouchableOpacity>
