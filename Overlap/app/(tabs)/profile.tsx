@@ -188,9 +188,15 @@ function ProfileScreen() {
         </TouchableOpacity>
       )}
 
-      {selectedCollection && (
+      {/* Updated Title with Back Button */}
+    {selectedCollection && (
+      <View style={styles.collectionHeader}>
+        <TouchableOpacity onPress={() => setSelectedCollection(null)} style={styles.backButton}>
+          <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
+        </TouchableOpacity>
         <Text style={styles.collectionTitle}>Activities in {selectedCollection.title}</Text>
-      )}
+      </View>
+    )}
     </>
   );
 
@@ -323,7 +329,20 @@ const styles = StyleSheet.create({
   },
   addCollectionButton: { backgroundColor: '#F5A623', padding: 10, borderRadius: 10, margin: 10 },
   addCollectionText: { color: '#0D1117', fontWeight: 'bold', textAlign: 'center' },
-  collectionTitle: { fontSize: 16, color: '#FFFFFF', fontWeight: 'bold', textAlign: 'center', marginVertical: 10 },
+  collectionTitle: {
+    fontSize: 16,
+    color: '#FFFFFF',
+    fontWeight: 'bold',
+  },
+  collectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: 10,
+    paddingHorizontal: 16,
+  },
+  backButton: {
+    marginRight: 10,
+  },
   modalContainer: { 
     flex: 1, 
     justifyContent: 'center', 

@@ -32,41 +32,74 @@ const CollectionCard = ({ collection, onPress, onDelete }) => {
   return (
     <View style={styles.container}>
       {/* Collection Card */}
-      <TouchableOpacity
-        style={styles.card}
-        onPress={() => {
-          setExpanded(!expanded);
-          onPress(collection);
-        }}
-      >
-        {/* Collection Image Grid */}
-        <View style={styles.imageGrid}>
-          {previewImages.map((uri, index) => (
-            <Image
-              key={index}
-              source={{
-                uri: `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photoreference=${uri}&key=AIzaSyDcTuitQdQGXwuLp90NqQ_ZwhnMSGrr8mY`,
-              }}
-              style={styles.image}
-            />
-          ))}
-          {/* Fill remaining empty slots if fewer than 4 images */}
-          {Array.from({ length: 4 - previewImages.length }).map((_, index) => (
-            <View key={index + previewImages.length} style={[styles.image, styles.emptyImage]} />
-          ))}
-        </View>
-
-        {/* Collection Title */}
-        <Text style={styles.title}>{collection.title}</Text>
-
-        {/* Dropdown Menu Button */}
-        <TouchableOpacity 
-          style={styles.menuButton} 
-          onPress={() => setIsMenuVisible(!isMenuVisible)}
+      {!expanded ? (
+        <TouchableOpacity
+          style={styles.card}
+          onPress={() => {
+            setExpanded(true);
+            onPress(collection);
+          }}
         >
-          <Ionicons name="ellipsis-vertical" size={20} color="#FFFFFF" />
+          {/* Collection Image Grid */}
+          <View style={styles.imageGrid}>
+            {previewImages.map((uri, index) => (
+              <Image
+                key={index}
+                source={{
+                  uri: `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photoreference=${uri}&key=AIzaSyDcTuitQdQGXwuLp90NqQ_ZwhnMSGrr8mY`,
+                }}
+                style={styles.image}
+              />
+            ))}
+            {/* Fill remaining empty slots if fewer than 4 images */}
+            {Array.from({ length: 4 - previewImages.length }).map((_, index) => (
+              <View key={index + previewImages.length} style={[styles.image, styles.emptyImage]} />
+            ))}
+          </View>
+
+          {/* Collection Title */}
+          <Text style={styles.title}>{collection.title}</Text>
+
+          {/* Dropdown Menu Button */}
+          <TouchableOpacity 
+            style={styles.menuButton} 
+            onPress={() => setIsMenuVisible(!isMenuVisible)}
+          >
+            <Ionicons name="ellipsis-vertical" size={20} color="#FFFFFF" />
+          </TouchableOpacity>
         </TouchableOpacity>
-      </TouchableOpacity>
+      ) : (
+        /* Expanded View - List of Activities */
+        <View style={styles.expandedView}>
+          {/* Back Button & Title */}
+          <View style={styles.header}>
+            <TouchableOpacity onPress={() => setExpanded(false)} style={styles.backButton}>
+              <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
+            </TouchableOpacity>
+            <Text style={styles.expandedTitle}>{collection.title}</Text>
+          </View>
+
+          {/* Collection Description */}
+          {collection.description ? (
+            <Text style={styles.description}>{collection.description}</Text>
+          ) : (
+            <Text style={styles.description}>No description available.</Text>
+          )}
+
+          {/* Placeholder for Activity List (Replace with actual activity rendering) */}
+          <View style={styles.activityList}>
+            {collection.activities.length > 0 ? (
+              collection.activities.map((activity, index) => (
+                <Text key={index} style={styles.activityItem}>
+                  {activity.name}
+                </Text>
+              ))
+            ) : (
+              <Text style={styles.noActivitiesText}>No activities in this collection.</Text>
+            )}
+          </View>
+        </View>
+      )}
 
       {/* Dropdown Menu (Appears when menu button is clicked) */}
       {isMenuVisible && (
@@ -81,37 +114,25 @@ const CollectionCard = ({ collection, onPress, onDelete }) => {
           </TouchableOpacity>
         </View>
       )}
-
-      {/* Expanded View (Shows when expanded) */}
-      {expanded && (
-        <View style={styles.expandedView}>
-          {/* Collection Description */}
-          {collection.description ? (
-            <Text style={styles.description}>{collection.description}</Text>
-          ) : (
-            <Text style={styles.description}>No description available.</Text>
-          )}
-        </View>
-      )}
     </View>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
-    flexDirection: 'row', // ✅ Aligns items in a row
-    flexWrap: 'wrap', // ✅ Allows wrapping to the next line when needed
-    justifyContent: 'space-between', // ✅ Ensures cards are evenly spaced
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'space-between',
   },
   card: {
-    width: '60%', // ✅ Ensures two cards fit per row while accounting for spacing
+    width: '48%',
     aspectRatio: 1,
     backgroundColor: '#1B1F24',
     borderRadius: 8,
     alignItems: 'center',
     justifyContent: 'center',
     position: 'relative',
-    marginBottom: 10, // ✅ Adds space below each row but not too much
+    marginBottom: 10,
   },
   imageGrid: {
     width: '100%',
@@ -165,12 +186,26 @@ const styles = StyleSheet.create({
     marginLeft: 6,
   },
   expandedView: {
-    width: '90%',
+    width: '100%',
     backgroundColor: '#1B1F24',
-    padding: 10,
+    padding: 16,
     borderRadius: 8,
     marginTop: 8,
     alignItems: 'center',
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    width: '100%',
+    marginBottom: 10,
+  },
+  backButton: {
+    marginRight: 10,
+  },
+  expandedTitle: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: 'bold',
   },
   description: {
     color: '#AAAAAA',
@@ -178,9 +213,21 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginBottom: 8,
   },
+  activityList: {
+    marginTop: 10,
+    width: '100%',
+    alignItems: 'center',
+  },
+  activityItem: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    marginVertical: 4,
+  },
+  noActivitiesText: {
+    color: '#888888',
+    fontSize: 14,
+    marginTop: 10,
+  },
 });
-
-
-
 
 export default CollectionCard;
