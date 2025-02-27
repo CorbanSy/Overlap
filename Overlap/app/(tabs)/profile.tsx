@@ -13,7 +13,7 @@ import {
 import { getAuth } from 'firebase/auth';
 import { getFirestore, collection, addDoc, onSnapshot, doc, updateDoc } from 'firebase/firestore';
 import { Ionicons } from '@expo/vector-icons';
-
+import { Share } from 'react-native';
 // Import components
 import FullProfileInfo from '../../components/FullProfileInfo';
 import TabBar from '../../components/TabBar';
@@ -95,7 +95,18 @@ function ProfileScreen() {
     }
   };
   
-
+  //share
+  const handleShare = async () => {
+    try {
+      const message = `Check out this activity: ${item.name}\nRating: ${item.rating}⭐\nMore details: ${item.url || 'N/A'}`;
+      await Share.share({
+        message,
+      });
+    } catch (error) {
+      console.error('Error sharing activity:', error);
+    }
+  };
+  
   // Remove activity from collection
   const removeFromCollection = async (collectionId, activityId) => {
     if (!user) return;
