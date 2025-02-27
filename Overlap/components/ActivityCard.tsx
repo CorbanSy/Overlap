@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, Image, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, Image, TouchableOpacity, StyleSheet, Share } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
 const ActivityCard = ({ 
@@ -10,6 +10,17 @@ const ActivityCard = ({
   isInCollection 
 }) => {
   const [expanded, setExpanded] = useState(false);
+
+  const handleShare = async () => {
+    try {
+      const message = `Check out this activity: ${item.name}\nRating: ${item.rating}⭐\nMore details: ${item.url || 'N/A'}`;
+      await Share.share({
+        message,
+      });
+    } catch (error) {
+      console.error('Error sharing activity:', error);
+    }
+  };
 
   return (
     <View style={styles.card}>
@@ -33,30 +44,24 @@ const ActivityCard = ({
               {item.rating} ⭐ ({item.userRatingsTotal}+ ratings)
             </Text>
 
-            {/* Buttons */}
+            {/* Action Buttons */}
             <View style={styles.buttonContainer}>
-              {/* Remove from Collection (only if inside a collection) */}
-              {isInCollection && (
-                <TouchableOpacity style={styles.removeButton} onPress={() => onRemoveFromCollection(item.id)}>
-                  <Text style={styles.removeButtonText}>Remove from Collection</Text>
-                </TouchableOpacity>
-              )}
-
               {/* Remove from Liked */}
-              <TouchableOpacity style={styles.removeButton} onPress={() => onRemoveFromLiked(item.id)}>
-                <Text style={styles.removeButtonText}>Remove from Liked</Text>
+              <TouchableOpacity style={[styles.iconButton, styles.removeButton]} onPress={() => onRemoveFromLiked(item.id)}>
+                <Ionicons name="trash-outline" size={20} color="#FFFFFF" />
               </TouchableOpacity>
 
               {/* Add to Collection (only if in Liked Activities tab) */}
               {!isInCollection && (
-                <TouchableOpacity style={styles.addButton} onPress={() => {
-                  console.log("Add to Collection Pressed:", item);  // ✅ Debugging log
-                  onAddToCollection(item);
-                }}>
-                  <Text style={styles.addButtonText}>Add to Collection</Text>
+                <TouchableOpacity style={[styles.iconButton, styles.addButton]} onPress={() => onAddToCollection(item)}>
+                  <Ionicons name="add-outline" size={20} color="#000" />
                 </TouchableOpacity>
-                
               )}
+
+              {/* Share Activity */}
+              <TouchableOpacity style={[styles.iconButton, styles.shareButton]} onPress={handleShare}>
+                <Ionicons name="share-social-outline" size={20} color="#FFFFFF" />
+              </TouchableOpacity>
             </View>
           </View>
         )}
@@ -77,11 +82,26 @@ const styles = StyleSheet.create({
   cardTitle: { fontSize: 16, fontWeight: 'bold', color: '#FFFFFF' },
   cardSubtitle: { fontSize: 14, color: '#AAAAAA', marginTop: 4 },
   expandButton: { alignSelf: 'flex-end', marginTop: 5 },
-  buttonContainer: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 8 },
-  removeButton: { backgroundColor: '#FF5555', paddingVertical: 6, paddingHorizontal: 12, borderRadius: 6 },
-  removeButtonText: { color: '#FFFFFF', fontWeight: 'bold' },
-  addButton: { backgroundColor: '#FFA500', paddingVertical: 6, paddingHorizontal: 12, borderRadius: 6 },
-  addButtonText: { color: '#000', fontWeight: 'bold' },
+
+  buttonContainer: { 
+    flexDirection: 'row', 
+    justifyContent: 'space-between', 
+    marginTop: 8 
+  },
+
+  // Icon Button
+  iconButton: { 
+    width: 40, 
+    height: 40, 
+    borderRadius: 20, 
+    alignItems: 'center', 
+    justifyContent: 'center' 
+  },
+
+  // Button Styles
+  removeButton: { backgroundColor: '#FF5555' },
+  addButton: { backgroundColor: '#FFA500' },
+  shareButton: { backgroundColor: '#1E90FF' },
 });
 
 export default ActivityCard;
