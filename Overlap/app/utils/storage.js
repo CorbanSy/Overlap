@@ -43,7 +43,6 @@ export async function savePreferences(topCategories) {
     lastUpdated: new Date(),
   });
 }
-
 // Read the user's preferences (array of categories)
 export async function getPreferences() {
   const auth = getAuth();
@@ -59,6 +58,7 @@ export async function getPreferences() {
     return [];
   }
 }
+
 
 /* ------------------------------------------------------------------
    3) Firestore: Likes Subcollection
@@ -78,9 +78,15 @@ export async function getPreferences() {
       userRatingsTotal: place.userRatingsTotal || 0,
       photoReference: place.photoReference || null,
       types: place.types || [],
+      formatted_address: place.formatted_address || '',
+      phoneNumber: place.phoneNumber || '',
+      website: place.website || '',
+      openingHours: place.openingHours || [],
+      description: place.description || '',
       createdAt: new Date(),
     });
   }
+  
   
 
 export async function unlikePlace(placeId) {

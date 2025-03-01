@@ -236,8 +236,13 @@ export default function HomeScreen() {
           photoReference: p.photos ? p.photos[0].photo_reference : null,
           geometry: p.geometry,
           types: p.types ?? [],
-          liked: false, // will be updated from Firestore
-        }));
+          formatted_address: p.vicinity || '', // Example for address
+          phoneNumber: p.international_phone_number || '', // Example for phone number
+          website: p.website || '',
+          openingHours: p.opening_hours ? p.opening_hours.weekday_text : [],
+          description: p.description || '',
+          liked: false,
+        }));        
         setPlaces((prev) => (pageToken ? [...prev, ...newPlaces] : newPlaces));
       } else {
         console.warn('Google Places API error:', data.status);
@@ -388,19 +393,22 @@ export default function HomeScreen() {
   /* ----------------------
      Like / Unlike
   ---------------------- */
-  const handleLikePress = async (placeId: string) => {
+  const handleLikePress = async (place) => {
     if (!user) return;
-    const isLiked = !!userLikes[placeId];
+    const isLiked = !!userLikes[place.id];
     try {
       if (isLiked) {
-        await unlikePlace(placeId);
+        // `unlikePlace` only needs the ID
+        await unlikePlace(place.id);
       } else {
-        await likePlace(placeId);
+        // `likePlace` needs the ENTIRE place object
+        await likePlace(place);
       }
     } catch (err) {
       console.error('Failed to toggle like:', err);
     }
   };
+  
 
   /* ----------------------
      Save / Unsave
@@ -548,12 +556,13 @@ export default function HomeScreen() {
             {/* Like button */}
             <TouchableOpacity
               style={styles.iconContainer}
-              onPress={() => handleLikePress(item.id)}
+              onPress={() => handleLikePress(item)} // ✅ Pass the full object
             >
               <Text style={[styles.iconText, item.liked && { color: 'red' }]}>
                 {item.liked ? '♥' : '♡'}
               </Text>
             </TouchableOpacity>
+
 
             {/* Save-to-collections button */}
             <TouchableOpacity
