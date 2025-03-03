@@ -1,4 +1,4 @@
-import { View, Text, ScrollView } from 'react-native';
+import { View, Text, ScrollView, Image } from 'react-native';
 import React, { useState } from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Link, router } from 'expo-router';
@@ -6,6 +6,7 @@ import { Link, router } from 'expo-router';
 import FormField from '../../components/FormField';
 import CustomButton from '../../components/CustomButton';
 import { signUp } from './auth';
+import { images } from '../../constants';
 
 const SignUp = () => {
   const [form, setForm] = useState({
@@ -34,8 +35,19 @@ const SignUp = () => {
   return (
     <SafeAreaView className="bg-primary h-full">
       <ScrollView>
-        <View className='w-full justify-center min-h-[83vh] px-4 my-6'>
-          <Text className='text-4xl text-white text-semibold mt-10 font-psemibold'>Sign up to Overlap</Text>
+        <View className="w-full justify-center min-h-[83vh] px-4 my-6">
+          
+          {/* Logo Image */}
+          <View className="w-full items-center mt-10">
+            <Image 
+              source={images.overlap} 
+              style={{ width: 100, height: 100, resizeMode: 'contain' }} 
+            />
+          </View>
+
+          <Text className="text-4xl text-white text-semibold mt-10 font-psemibold">
+            Sign up to Overlap
+          </Text>
 
           <FormField 
             title="Username"
@@ -61,7 +73,7 @@ const SignUp = () => {
           />
 
           <CustomButton 
-            title={'Sign Up'}
+            title="Sign Up"
             handlePress={handleSignUp}
             containerStyles="mt-7"
             isLoading={isSubmitting}
@@ -71,7 +83,9 @@ const SignUp = () => {
             <Text className="text-lg text-gray-100 font-pregular">
               Have an account already?
             </Text>
-            <Link href="/sign-in" className='text-lg font-psemibold text-secondary'>Sign In</Link>
+            <Link href="/sign-in" className="text-lg font-psemibold text-secondary">
+              Sign In
+            </Link>
           </View>
 
         </View>
