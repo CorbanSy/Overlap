@@ -23,8 +23,10 @@ import {
   collection,
   doc,
   setDoc,
+  getDocs,
   deleteDoc,
   onSnapshot,
+  updateDoc,
 } from 'firebase/firestore';
 import { useRouter } from 'expo-router';
 import { useFilters } from '../../context/FiltersContext';
@@ -87,7 +89,7 @@ function mapGoogleTypesToCategory(googleTypes: string[]): string[] {
 /* --------------------------------------------------
    Main Component
 -------------------------------------------------- */
-export default function HomeScreen() {
+function HomeScreen() {
   const navigation = useNavigation();
   const router = useRouter();
 
@@ -110,7 +112,11 @@ export default function HomeScreen() {
 
   const { filterState, setFilterState } = useFilters();
   const [userTopPrefs, setUserTopPrefs] = useState<string[]>([]);
-
+  // Update type so that each collection has a title and activities array:
+  const [userCollections, setUserCollections] = useState<Record<string, { title: string; activities: any[] }>>({});
+  const [selectedActivity, setSelectedActivity] = useState<any | null>(null);
+  const [collectionModalVisible, setCollectionModalVisible] = useState(false);
+  
   const auth = getAuth();
   const firestore = getFirestore();
   const user = auth.currentUser;
@@ -121,6 +127,30 @@ export default function HomeScreen() {
   // We'll ref our FlatList so we can scroll to top
   const flatListRef = useRef<FlatList<any>>(null);
 
+  async function getUserCollections() {
+    if (!user) return {};
+  
+    const collectionsRef = collection(firestore, `users/${user.uid}/collections`);
+  
+    try {
+      const snapshot = await getDocs(collectionsRef);
+      const collections: Record<string, { title: string; activities: any[] }> = {};
+  
+      snapshot.forEach((doc) => {
+        const data = doc.data();
+        collections[doc.id] = {
+          title: data.title || "Unnamed Collection",
+          activities: Array.isArray(data.activities) ? data.activities : [],
+        };
+      });
+  
+      return collections;
+    } catch (error) {
+      console.error("Error fetching user collections:", error);
+      return {};
+    }
+  }
+  
   /* -------------------------
      Load user preferences
   ------------------------- */
@@ -176,21 +206,19 @@ export default function HomeScreen() {
   }, [user]);
 
   /* ---------------------
-     Listen for user saves
+     Listen for user collections
   --------------------- */
   useEffect(() => {
-    if (user) {
-      const savesRef = collection(firestore, `users/${user.uid}/collections`);
-      const unsubscribe = onSnapshot(savesRef, (snapshot) => {
-        const newSaves: Record<string, boolean> = {};
-        snapshot.forEach((doc) => {
-          newSaves[doc.id] = true;
-        });
-        setUserSaves(newSaves);
-      });
-      return () => unsubscribe();
+    async function fetchUserCollections() {
+      try {
+        const collections = await getUserCollections();
+        setUserCollections(collections || {});
+      } catch (error) {
+        console.error('Error fetching collections:', error);
+      }
     }
-  }, [user]);
+    fetchUserCollections();
+  }, []);
 
   /* -------------------------
      Fetching places logic
@@ -236,8 +264,8 @@ export default function HomeScreen() {
           photoReference: p.photos ? p.photos[0].photo_reference : null,
           geometry: p.geometry,
           types: p.types ?? [],
-          formatted_address: p.vicinity || '', // Example for address
-          phoneNumber: p.international_phone_number || '', // Example for phone number
+          formatted_address: p.vicinity || '',
+          phoneNumber: p.international_phone_number || '',
           website: p.website || '',
           openingHours: p.opening_hours ? p.opening_hours.weekday_text : [],
           description: p.description || '',
@@ -255,16 +283,13 @@ export default function HomeScreen() {
   };
 
   /* -------------------------
-     We add a new fetchPlacesByKeyword
-     that also scrolls to top.
+     New fetchPlacesByKeyword that scrolls to top.
   ------------------------- */
   const fetchPlacesByKeyword = async (keyword: string) => {
     if (!userLocation) return;
     setLoading(true);
     try {
-      // Clear next page so we start fresh
       setNextPageToken(null);
-
       const radius = filterState.distance ?? 5000;
       let url =
         `https://maps.googleapis.com/maps/api/place/nearbysearch/json?key=${GOOGLE_PLACES_API_KEY}` +
@@ -282,7 +307,6 @@ export default function HomeScreen() {
 
       if (data.status === 'OK') {
         setNextPageToken(data.next_page_token || null);
-
         const newPlaces = data.results.map((p: any) => ({
           id: p.place_id,
           name: p.name,
@@ -295,8 +319,6 @@ export default function HomeScreen() {
         }));
 
         setPlaces(newPlaces);
-
-        // Scroll to top after new data is set
         setTimeout(() => {
           flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
         }, 100);
@@ -320,6 +342,52 @@ export default function HomeScreen() {
     }
   };
 
+  const sanitizeActivity = (activity: any) => {
+    return {
+      id: activity.id,
+      name: activity.name,
+      rating: activity.rating || 0,
+      userRatingsTotal: activity.userRatingsTotal || 0,
+      photoReference: activity.photoReference || null,
+      formatted_address: activity.formatted_address || '',
+      phoneNumber: activity.phoneNumber || '',
+      website: activity.website || '',
+      openingHours: activity.openingHours || [],
+      description: activity.description || '',
+      // Add other fields as needed—but only if they have defined values.
+    };
+  };
+  
+  const toggleActivityInCollection = async (collectionId: string) => {
+    if (!selectedActivity || !user) return;
+  
+    try {
+      const collectionRef = doc(firestore, `users/${user.uid}/collections`, collectionId);
+      const currentCollection = userCollections[collectionId] || { title: "New Collection", activities: [] };
+  
+      // Create a sanitized version of the selected activity.
+      const sanitizedActivity = sanitizeActivity(selectedActivity);
+  
+      const isAlreadyAdded = currentCollection.activities.some(a => a.id === sanitizedActivity.id);
+      const updatedActivities = isAlreadyAdded
+        ? currentCollection.activities.filter(a => a.id !== sanitizedActivity.id)
+        : [...currentCollection.activities, sanitizedActivity];
+  
+      // Update Firestore with the new activities array.
+      await updateDoc(collectionRef, { activities: updatedActivities });
+  
+      // Update local state.
+      setUserCollections(prev => ({
+        ...prev,
+        [collectionId]: { ...currentCollection, activities: updatedActivities }
+      }));
+  
+    } catch (error) {
+      console.error("Error updating collection:", error);
+    }
+  };
+  
+
   /* ---------------------
      Fuzzy search setup
   --------------------- */
@@ -337,14 +405,11 @@ export default function HomeScreen() {
   -------------------------------------------------------- */
   const getDisplayedPlaces = useCallback(() => {
     let list = places;
-
-    // 1) Fuzzy search
     if (searchQuery && fuseRef.current) {
       const results = fuseRef.current.search(searchQuery);
       list = results.map((r) => r.item);
     }
 
-    // 2) Weighted approach if sort === "recommended"
     if (filterState.sort === 'recommended' || !filterState.sort) {
       list = list.map((place) => {
         const placeCategories = mapGoogleTypesToCategory(place.types);
@@ -358,9 +423,7 @@ export default function HomeScreen() {
         return { ...place, preferenceScore };
       });
       list.sort((a, b) => (b.preferenceScore || 0) - (a.preferenceScore || 0));
-    }
-    // 3) If sort === "distance"
-    else if (filterState.sort === 'distance' && userLocation) {
+    } else if (filterState.sort === 'distance' && userLocation) {
       list = list.slice().sort((a, b) => {
         const distA = getDistanceFromLatLonInKm(
           userLocation.lat,
@@ -376,19 +439,25 @@ export default function HomeScreen() {
         );
         return distA - distB;
       });
-    }
-    // 4) If sort === "rating"
-    else if (filterState.sort === 'rating') {
+    } else if (filterState.sort === 'rating') {
       list = list.slice().sort((a, b) => b.rating - a.rating);
     }
 
-    // Mark liked & saved
     return list.map((item) => ({
       ...item,
       liked: !!userLikes[item.id],
       saved: !!userSaves[item.id],
     }));
-  }, [places, searchQuery, filterState, userLikes, userSaves, userLocation]);
+  }, [places, searchQuery, filterState, userLikes, userSaves, userLocation, userTopPrefs]);
+
+  const isActivityInCollection = (collectionId: string, activityId: string) => {
+    const collection = userCollections[collectionId];
+    return (
+      collection &&
+      Array.isArray(collection.activities) &&
+      collection.activities.some(activity => activity.id === activityId)
+    );
+  };
 
   /* ----------------------
      Like / Unlike
@@ -398,37 +467,23 @@ export default function HomeScreen() {
     const isLiked = !!userLikes[place.id];
     try {
       if (isLiked) {
-        // `unlikePlace` only needs the ID
         await unlikePlace(place.id);
       } else {
-        // `likePlace` needs the ENTIRE place object
         await likePlace(place);
       }
     } catch (err) {
       console.error('Failed to toggle like:', err);
     }
   };
-  
 
   /* ----------------------
-     Save / Unsave
+     Save / Open Collections Modal
+     (Removed previous undefined references)
   ---------------------- */
-  const handleSavePress = async (placeId: string, placeName: string) => {
+  const handleSavePress = (place: any) => {
     if (!user) return;
-    const isSaved = !!userSaves[placeId];
-    try {
-      if (isSaved) {
-        await deleteDoc(doc(firestore, `users/${user.uid}/collections`, placeId));
-      } else {
-        await setDoc(doc(firestore, `users/${user.uid}/collections`, placeId), {
-          placeId,
-          name: placeName,
-          timestamp: Date.now(),
-        });
-      }
-    } catch (err) {
-      console.error('Failed to toggle save:', err);
-    }
+    setSelectedActivity(place);
+    setCollectionModalVisible(true);
   };
 
   /* ----------------------
@@ -486,21 +541,17 @@ export default function HomeScreen() {
     const displayed = getDisplayedPlaces();
     const finalData: any[] = [];
 
-    // Insert ExploreMoreCard after every 20 items
     for (let i = 0; i < displayed.length; i++) {
       finalData.push(displayed[i]);
-      // After every 20 items, insert a card
       if ((i + 1) % 20 === 0) {
         finalData.push({ _type: 'exploreMoreCard', key: `exploreMore_${i + 1}` });
       }
     }
-    // If the total is not a multiple of 20, still insert one at the end
     if (displayed.length === 0) {
       return finalData;
     } else if (displayed.length % 20 !== 0) {
       finalData.push({ _type: 'exploreMoreCard', key: 'exploreMore_end' });
     }
-
     return finalData;
   };
 
@@ -508,22 +559,18 @@ export default function HomeScreen() {
      Render each item
   -------------------------------- */
   const renderItem = ({ item }: { item: any }) => {
-    // If it's our special ExploreMoreCard item
     if (item._type === 'exploreMoreCard') {
       return (
         <ExploreMoreCard
           style={styles.exploreCard}
           onCategoryPress={(keyword) => {
-            // 1) fetch new places with that keyword
             fetchPlacesByKeyword(keyword);
-            // 2) Immediately scroll to top (or do in fetchPlacesByKeyword)
             flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
           }}
         />
       );
     }
 
-    // Otherwise, render a normal place card
     const photoUrl = item.photoReference
       ? `https://maps.googleapis.com/maps/api/place/photo?maxwidth=800&photoreference=${item.photoReference}&key=${GOOGLE_PLACES_API_KEY}`
       : null;
@@ -551,27 +598,22 @@ export default function HomeScreen() {
             <View style={[styles.dashImage, { backgroundColor: '#333' }]} />
           )}
 
-          {/* Icon row at bottom-right corner */}
           <View style={styles.iconRow}>
-            {/* Like button */}
             <TouchableOpacity
               style={styles.iconContainer}
-              onPress={() => handleLikePress(item)} // ✅ Pass the full object
+              onPress={() => handleLikePress(item)}
             >
               <Text style={[styles.iconText, item.liked && { color: 'red' }]}>
                 {item.liked ? '♥' : '♡'}
               </Text>
             </TouchableOpacity>
 
-
-            {/* Save-to-collections button */}
             <TouchableOpacity
               style={styles.iconContainer}
-              onPress={() => handleSavePress(item.id, item.name)}
+              onPress={() => handleSavePress(item)}
             >
-              <Text style={[styles.iconText, item.saved && { color: '#F5A623' }]}>
-                {item.saved ? '🔖' : '📑'}
-              </Text>
+              {/* Simply display a save icon; the collection modal will list collections */}
+              <Text style={styles.iconText}>💾</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -598,7 +640,6 @@ export default function HomeScreen() {
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.container}>
-        {/* Header / Search */}
         <View style={styles.header}>
           <TextInput
             style={styles.searchInput}
@@ -609,7 +650,6 @@ export default function HomeScreen() {
           />
         </View>
 
-        {/* Filter Row */}
         <View style={styles.filterContainer}>
           <TouchableOpacity
             style={styles.filterButton}
@@ -644,7 +684,6 @@ export default function HomeScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* Sort Modal */}
         {sortModalVisible && (
           <Modal visible={sortModalVisible} transparent animationType="fade">
             <View style={styles.modalContainer}>
@@ -671,7 +710,6 @@ export default function HomeScreen() {
           </Modal>
         )}
 
-        {/* Location Modal */}
         {locationModalVisible && (
           <Modal visible={locationModalVisible} transparent animationType="slide">
             <View style={styles.modalContainer}>
@@ -698,7 +736,38 @@ export default function HomeScreen() {
           </Modal>
         )}
 
-        {/* Places List + ExploreMoreCard */}
+        {collectionModalVisible && selectedActivity && (
+          <Modal visible={collectionModalVisible} transparent animationType="slide">
+            <View style={styles.modalContainer}>
+              <View style={styles.modalContent}>
+                <Text style={styles.modalTitle}>Select a Collection</Text>
+                <ScrollView style={{ maxHeight: 300 }}>
+                  {Object.entries(userCollections).map(([collectionId, collectionData]) => {
+                    const isAdded = isActivityInCollection(collectionId, selectedActivity.id);
+                    return (
+                      <TouchableOpacity
+                        key={collectionId}
+                        style={[styles.modalButton, isAdded ? styles.selectedCollection : {}]}
+                        onPress={() => toggleActivityInCollection(collectionId)}
+                      >
+                        <Text style={[styles.modalButtonText, isAdded ? { color: '#0D1117' } : {}]}>
+                          {isAdded ? `✓ ${collectionData.title}` : collectionData.title}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+                <TouchableOpacity
+                  style={styles.modalButton}
+                  onPress={() => setCollectionModalVisible(false)}
+                >
+                  <Text style={styles.modalButtonText}>Close</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </Modal>
+        )}
+
         <FlatList
           ref={flatListRef}
           data={finalData}
@@ -868,6 +937,9 @@ const styles = StyleSheet.create({
   exploreCard: {
     marginVertical: 20,
     marginTop: 5,
+  },
+  selectedCollection: {
+    backgroundColor: '#ccc',
   },
 });
 
