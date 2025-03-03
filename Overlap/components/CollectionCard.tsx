@@ -30,102 +30,74 @@ const CollectionCard = ({ collection, onPress, onDelete }) => {
   };
 
   return (
-    <View style={styles.container}>
-      {/* Collection Card */}
-      {!expanded ? (
-        <TouchableOpacity
-          style={styles.card}
-          onPress={() => {
-            setExpanded(true);
-            onPress(collection);
-          }}
-        >
-          {/* Collection Image Grid */}
-          <View style={styles.imageGrid}>
-            {previewImages.map((uri, index) => (
-              <Image
-                key={index}
-                source={{
-                  uri: `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photoreference=${uri}&key=AIzaSyDcTuitQdQGXwuLp90NqQ_ZwhnMSGrr8mY`,
-                }}
-                style={styles.image}
-              />
-            ))}
-            {/* Fill remaining empty slots if fewer than 4 images */}
-            {Array.from({ length: 4 - previewImages.length }).map((_, index) => (
-              <View key={index + previewImages.length} style={[styles.image, styles.emptyImage]} />
-            ))}
-          </View>
+    // Removed the outer View with container style so that FlatList controls the grid layout.
+    !expanded ? (
+      <TouchableOpacity
+        style={styles.card}
+        onPress={() => {
+          setExpanded(true);
+          onPress(collection);
+        }}
+      >
+        {/* Collection Image Grid */}
+        <View style={styles.imageGrid}>
+          {previewImages.map((uri, index) => (
+            <Image
+              key={index}
+              source={{
+                uri: `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photoreference=${uri}&key=AIzaSyDcTuitQdQGXwuLp90NqQ_ZwhnMSGrr8mY`,
+              }}
+              style={styles.image}
+            />
+          ))}
+          {/* Fill remaining empty slots if fewer than 4 images */}
+          {Array.from({ length: 4 - previewImages.length }).map((_, index) => (
+            <View key={index + previewImages.length} style={[styles.image, styles.emptyImage]} />
+          ))}
+        </View>
 
-          {/* Collection Title */}
-          <Text style={styles.title}>{collection.title}</Text>
+        {/* Collection Title */}
+        <Text style={styles.title}>{collection.title}</Text>
 
-          {/* Dropdown Menu Button */}
-          <TouchableOpacity 
-            style={styles.menuButton} 
-            onPress={() => setIsMenuVisible(!isMenuVisible)}
-          >
-            <Ionicons name="ellipsis-vertical" size={20} color="#FFFFFF" />
-          </TouchableOpacity>
+        {/* Dropdown Menu Button */}
+        <TouchableOpacity style={styles.menuButton} onPress={() => setIsMenuVisible(!isMenuVisible)}>
+          <Ionicons name="ellipsis-vertical" size={20} color="#FFFFFF" />
         </TouchableOpacity>
-      ) : (
-        /* Expanded View - List of Activities */
-        <View style={styles.expandedView}>
-          {/* Back Button & Title */}
-          <View style={styles.header}>
-            <TouchableOpacity onPress={() => setExpanded(false)} style={styles.backButton}>
-              <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
-            </TouchableOpacity>
-            <Text style={styles.expandedTitle}>{collection.title}</Text>
-          </View>
-
-          {/* Collection Description */}
-          {collection.description ? (
-            <Text style={styles.description}>{collection.description}</Text>
+      </TouchableOpacity>
+    ) : (
+      // Expanded View
+      <View style={styles.expandedView}>
+        <View style={styles.header}>
+          <TouchableOpacity onPress={() => setExpanded(false)} style={styles.backButton}>
+            <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
+          </TouchableOpacity>
+          <Text style={styles.expandedTitle}>{collection.title}</Text>
+        </View>
+        {collection.description ? (
+          <Text style={styles.description}>{collection.description}</Text>
+        ) : (
+          <Text style={styles.description}>No description available.</Text>
+        )}
+        <View style={styles.activityList}>
+          {collection.activities.length > 0 ? (
+            collection.activities.map((activity, index) => (
+              <Text key={index} style={styles.activityItem}>
+                {activity.name}
+              </Text>
+            ))
           ) : (
-            <Text style={styles.description}>No description available.</Text>
+            <Text style={styles.noActivitiesText}>No activities in this collection.</Text>
           )}
-
-          {/* Placeholder for Activity List (Replace with actual activity rendering) */}
-          <View style={styles.activityList}>
-            {collection.activities.length > 0 ? (
-              collection.activities.map((activity, index) => (
-                <Text key={index} style={styles.activityItem}>
-                  {activity.name}
-                </Text>
-              ))
-            ) : (
-              <Text style={styles.noActivitiesText}>No activities in this collection.</Text>
-            )}
-          </View>
         </View>
-      )}
-
-      {/* Dropdown Menu (Appears when menu button is clicked) */}
-      {isMenuVisible && (
-        <View style={styles.dropdownMenu}>
-          <TouchableOpacity style={styles.dropdownItem} onPress={handleShare}>
-            <Ionicons name="share-social-outline" size={18} color="#FFFFFF" />
-            <Text style={styles.dropdownText}>Share</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.dropdownItem} onPress={() => onDelete(collection.id)}>
-            <Ionicons name="trash-outline" size={18} color="#FF5555" />
-            <Text style={[styles.dropdownText, { color: '#FF5555' }]}>Delete</Text>
-          </TouchableOpacity>
-        </View>
-      )}
-    </View>
+      </View>
+    )
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'space-between',
-  },
+  // Removed container style because FlatList will handle the grid.
   card: {
-    width: '48%',
+    width: '48%', // This allows 2 cards per row in FlatList.
     aspectRatio: 1,
     backgroundColor: '#1B1F24',
     borderRadius: 8,
