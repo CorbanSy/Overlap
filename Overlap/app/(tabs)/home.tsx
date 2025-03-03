@@ -112,7 +112,6 @@ function HomeScreen() {
 
   const { filterState, setFilterState } = useFilters();
   const [userTopPrefs, setUserTopPrefs] = useState<string[]>([]);
-  // Update type so that each collection has a title and activities array:
   const [userCollections, setUserCollections] = useState<Record<string, { title: string; activities: any[] }>>({});
   const [selectedActivity, setSelectedActivity] = useState<any | null>(null);
   const [collectionModalVisible, setCollectionModalVisible] = useState(false);
@@ -354,7 +353,6 @@ function HomeScreen() {
       website: activity.website || '',
       openingHours: activity.openingHours || [],
       description: activity.description || '',
-      // Add other fields as needed—but only if they have defined values.
     };
   };
   
@@ -365,18 +363,14 @@ function HomeScreen() {
       const collectionRef = doc(firestore, `users/${user.uid}/collections`, collectionId);
       const currentCollection = userCollections[collectionId] || { title: "New Collection", activities: [] };
   
-      // Create a sanitized version of the selected activity.
       const sanitizedActivity = sanitizeActivity(selectedActivity);
-  
       const isAlreadyAdded = currentCollection.activities.some(a => a.id === sanitizedActivity.id);
       const updatedActivities = isAlreadyAdded
         ? currentCollection.activities.filter(a => a.id !== sanitizedActivity.id)
         : [...currentCollection.activities, sanitizedActivity];
   
-      // Update Firestore with the new activities array.
       await updateDoc(collectionRef, { activities: updatedActivities });
   
-      // Update local state.
       setUserCollections(prev => ({
         ...prev,
         [collectionId]: { ...currentCollection, activities: updatedActivities }
@@ -478,7 +472,6 @@ function HomeScreen() {
 
   /* ----------------------
      Save / Open Collections Modal
-     (Removed previous undefined references)
   ---------------------- */
   const handleSavePress = (place: any) => {
     if (!user) return;
@@ -612,7 +605,6 @@ function HomeScreen() {
               style={styles.iconContainer}
               onPress={() => handleSavePress(item)}
             >
-              {/* Simply display a save icon; the collection modal will list collections */}
               <Text style={styles.iconText}>💾</Text>
             </TouchableOpacity>
           </View>
@@ -650,7 +642,12 @@ function HomeScreen() {
           />
         </View>
 
-        <View style={styles.filterContainer}>
+        {/* Horizontal scrollable filters */}
+        <ScrollView 
+          horizontal 
+          showsHorizontalScrollIndicator={false} 
+          contentContainerStyle={styles.filterScrollContainer}
+        >
           <TouchableOpacity
             style={styles.filterButton}
             onPress={() => setSortModalVisible(true)}
@@ -682,7 +679,7 @@ function HomeScreen() {
           >
             <Text style={styles.filterText}>More Filters</Text>
           </TouchableOpacity>
-        </View>
+        </ScrollView>
 
         {sortModalVisible && (
           <Modal visible={sortModalVisible} transparent animationType="fade">
@@ -811,26 +808,27 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     color: '#0D1117',
   },
-  filterContainer: {
-    flexDirection: 'row',
+  filterScrollContainer: {
     paddingHorizontal: 16,
     paddingVertical: 8,
     backgroundColor: '#0D1117',
-    justifyContent: 'space-between',
   },
   filterButton: {
     backgroundColor: '#FFFFFF',
     borderRadius: 8,
     paddingHorizontal: 12,
-    paddingVertical: 8,
     marginRight: 8,
+    justifyContent: 'center',
   },
   filterButtonActive: {
     backgroundColor: '#F5A623',
   },
   filterText: {
     color: '#0D1117',
+    fontSize: 14,
+    lineHeight: 30,
     fontWeight: '600',
+    textAlign: 'center',
   },
   listContent: {
     paddingBottom: 16,
