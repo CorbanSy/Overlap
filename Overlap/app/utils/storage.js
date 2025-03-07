@@ -1,6 +1,6 @@
 // storage.js
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { doc, setDoc, deleteDoc, getDoc, collection, getDocs } from 'firebase/firestore';
+import { doc, setDoc, deleteDoc, getDoc, collection, getDocs, addDoc } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
 import { db } from '../../FirebaseConfig'; // your "db" or "firestore" export
 
@@ -30,33 +30,41 @@ export async function checkPreferencesComplete() {
       /users/{uid}/preferences/main
    ------------------------------------------------------------------ */
 
-// Save an array of categories (the user's top preferences)
-export async function savePreferences(topCategories) {
+/**
+ * Save or update the user's profile with topCategories (and anything else).
+ * This merges so you don't overwrite existing fields like keywords.
+ */
+export async function saveProfileData(topCategories) {
   const auth = getAuth();
   const user = auth.currentUser;
   if (!user) throw new Error('No user is signed in');
 
-  // doc path => /users/{uid}/preferences/main
-  const prefDocRef = doc(db, 'users', user.uid, 'preferences', 'main');
-  await setDoc(prefDocRef, {
-    topCategories,
-    lastUpdated: new Date(),
-  });
+  const profileRef = doc(db, 'users', user.uid, 'profile', 'main');
+  await setDoc(
+    profileRef,
+    {
+      topCategories,         // array of default categories
+      lastUpdated: new Date(),
+    },
+    { merge: true }         // merge to avoid overwriting existing data
+  );
 }
 
-// Read the user's preferences (array of categories)
-export async function getPreferences() {
+/**
+ * Get the user's profile data from /users/{uid}/profile/main.
+ * Returns an object with fields like { topCategories, keywords, ... }
+ */
+export async function getProfileData() {
   const auth = getAuth();
   const user = auth.currentUser;
   if (!user) throw new Error('No user is signed in');
 
-  const prefDocRef = doc(db, 'users', user.uid, 'preferences', 'main');
-  const snap = await getDoc(prefDocRef);
+  const profileRef = doc(db, 'users', user.uid, 'profile', 'main');
+  const snap = await getDoc(profileRef);
   if (snap.exists()) {
-    const data = snap.data();
-    return data.topCategories || [];
+    return snap.data();
   } else {
-    return [];
+    return null; // doc doesn't exist yet
   }
 }
 
@@ -64,48 +72,64 @@ export async function getPreferences() {
    3) Firestore: Likes Subcollection
       /users/{uid}/likes/{placeId}
    ------------------------------------------------------------------ */
-   export async function likePlace(place) {
-    const auth = getAuth();
-    const user = auth.currentUser;
-    if (!user) throw new Error('No user is signed in');
+ // Instead of just placeId, we pass the full 'place' object, so we store details
+export async function likePlace(place) {
+  const auth = getAuth();
+  const user = auth.currentUser;
+  console.log('Current user:', user);
+  if (!user) throw new Error("No user is signed in");
   
-    const likeDocRef = doc(db, 'users', user.uid, 'likes', place.id);
-  
-    // Save full place details in Firestore
-    await setDoc(likeDocRef, {
-      name: place.name,
-      rating: place.rating || 0,
-      userRatingsTotal: place.userRatingsTotal || 0,
-      photoReference: place.photoReference || null,
-      types: place.types || [],
-      createdAt: new Date(),
-    });
-  }
-  
+  const likeDocRef = doc(db, "users", user.uid, "likes", place.id);
+  await setDoc(likeDocRef, {
+    name: place.name,
+    rating: place.rating || 0,
+    userRatingsTotal: place.userRatingsTotal || 0,
+    photoReference: place.photoReference || null,
+    types: place.types || [],
+    createdAt: new Date()
+  });
+}
 
 export async function unlikePlace(placeId) {
   const auth = getAuth();
+  console.log('Current user:', auth.currentUser);
   const user = auth.currentUser;
-  if (!user) throw new Error('No user is signed in');
+  if (!user) throw new Error("No user is signed in");
 
-  const likeDocRef = doc(db, 'users', user.uid, 'likes', placeId);
+  const likeDocRef = doc(db, "users", user.uid, "likes", placeId);
   await deleteDoc(likeDocRef);
 }
 
-// Return an array of placeIds the user has liked
+// Return an array of place docs the user has liked
 export async function getAllLikes() {
   const auth = getAuth();
   const user = auth.currentUser;
-  if (!user) throw new Error('No user is signed in');
+  if (!user) throw new Error("No user is signed in");
 
-  const likesColRef = collection(db, 'users', user.uid, 'likes');
+  const likesColRef = collection(db, "users", user.uid, "likes");
   const snap = await getDocs(likesColRef);
   
-  // Return full place details
-  return snap.docs.map((doc) => ({
-    id: doc.id,
-    ...doc.data(), // This will now include name, rating, photo, etc.
+  return snap.docs.map((d) => ({
+    id: d.id,
+    ...d.data() // name, rating, photo, etc.
   }));
 }
 
+/* ------------------------------------------------------------------
+   4) Firestore: Store Reviews 
+      /places/{placeId}/reviews/{autoId}
+   ------------------------------------------------------------------ */
+export async function storeReviewsForPlace(placeId, reviews) {
+  for (let i = 0; i < reviews.length; i++) {
+    const r = reviews[i];
+    // Each doc is an individual review
+    await addDoc(collection(db, "places", placeId, "reviews"), {
+      text: r.text || "",
+      rating: r.rating || 0,
+      authorName: r.author_name || "",
+      relativeTime: r.relative_time_description || "",
+      createdAt: new Date()
+    });
+  }
+}
 
