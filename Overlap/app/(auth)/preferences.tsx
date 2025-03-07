@@ -10,7 +10,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useNavigation } from "@react-navigation/native";
 import { getAuth } from "firebase/auth";
-import { markPreferencesComplete, savePreferences } from '../utils/storage'; // adjust the path as needed
+import { markPreferencesComplete, saveProfileData } from '../utils/storage'; // adjust the path as needed
 import { router } from 'expo-router'
 const { width, height } = Dimensions.get("window");
 
@@ -177,7 +177,7 @@ export default function PreferencesScreen() {
       );
 
       // If you need exactly 5, ensure finalRanks.length === 5, or do nothing
-      await savePreferences(finalRanks);
+      await saveProfileData(finalRanks);
 
       // Also set local "preferencesComplete" in AsyncStorage
       await markPreferencesComplete();

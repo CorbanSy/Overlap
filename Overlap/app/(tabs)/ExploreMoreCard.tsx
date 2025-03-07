@@ -1,101 +1,186 @@
-import React from 'react';
+// ExploreMoreCard.tsx
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
   TouchableOpacity,
   StyleSheet,
   ScrollView,
-  Image,
-  useWindowDimensions,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { logEvent } from '../utils/analytics';
-import { Dimensions } from 'react-native';
 
-const { width, height } = Dimensions.get('window');
+// New unified function from storage.js
+import { getProfileData } from '../utils/storage';
 
-type CategoryItem = {
-  label: string;
-  image: any; // local require(...) or { uri: string }
-  description: string;
-  keyword: string;
-};
+// Broad categories for "Expand Your Search"
+const EXPAND_CATEGORIES = [
+  'Dining', 'Outdoors', 'Nightlife', 'Movies', 'Fitness', 'Gaming',
+  'Social', 'Music', 'Shopping', 'Travel', 'Art', 'Relaxing',
+  'Learning', 'Cooking',
+];
 
-type ExploreMoreCardProps = {
+type Props = {
+  style?: any;
   onCategoryPress?: (keyword: string) => void;
 };
 
-export default function ExploreMoreCard({ onCategoryPress }: ExploreMoreCardProps) {
-  const insets = useSafeAreaInsets();
-  const { height } = useWindowDimensions();
-  const cardHeight = height * 0.8;
+const ExploreMoreCard: React.FC<Props> = ({ style, onCategoryPress }) => {
+  const [topKeywords, setTopKeywords] = useState<string[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
 
-  const exploreMoreItems: CategoryItem[] = [
-    { label: 'Outdoors', image: require('../../assets/categoryImg/outdoors.jpg'), description: 'Parks, hiking trails, etc.', keyword: 'park' },
-    { label: 'Shopping', image: require('../../assets/categoryImg/shopping.jpg'), description: 'Malls, outlets, local shops', keyword: 'shopping_mall' },
-    { label: 'Fitness', image: require('../../assets/categoryImg/fitness.jpg'), description: 'Gyms, yoga studios, etc.', keyword: 'gym' },
-    { label: 'Travel', image: require('../../assets/categoryImg/travel.jpg'), description: 'Hotels, tourist spots, etc.', keyword: 'lodging' },
-  ];
+  useEffect(() => {
+    loadProfileData();
+  }, []);
 
-  const handlePress = (item: CategoryItem) => {
-    logEvent('explore_category_selected', { category: item.label });
-    onCategoryPress?.(item.keyword);
-  };
+  async function loadProfileData() {
+    try {
+      setLoading(true);
+      const profile = await getProfileData();
+      if (!profile) {
+        // doc doesn't exist => no categories => no dynamic keywords
+        setTopKeywords([]);
+      } else {
+        const keywordsMap = profile.keywords || {};     // from Cloud Function
+        const defaults = profile.topCategories || [];   // from your signup flow
 
-  const handleNarrowDown = () => {
-    logEvent('explore_more_narrow', {});
-  };
+        // If user has no dynamic keywords, fallback to topCategories
+        if (Object.keys(keywordsMap).length === 0) {
+          setTopKeywords(defaults);
+        } else {
+          // Convert keywords map => sorted array => take top 10
+          const sorted = Object.keys(keywordsMap).sort(
+            (a, b) => keywordsMap[b] - keywordsMap[a]
+          );
+          setTopKeywords(sorted.slice(0, 10));
+        }
+      }
+    } catch (err) {
+      console.error('Failed to load profile data:', err);
+      setTopKeywords([]);
+    } finally {
+      setLoading(false);
+    }
+  }
 
-  const handleExploreOther = () => {
-    logEvent('explore_more_other', {});
-  };
+  function handleCategoryPress(keyword: string) {
+    onCategoryPress?.(keyword);
+  }
 
   return (
-    <View style={[styles.container, { height: cardHeight, paddingBottom: insets.bottom + 20 }]}>
+    <View style={[styles.container, style]}>
       <Text style={styles.title}>Explore More</Text>
       <Text style={styles.subtitle}>
         Customize your feed by narrowing your search or exploring other categories.
       </Text>
 
+      {/* Narrow Down */}
       <View style={styles.section}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.scrollContainer}>
-          {exploreMoreItems.map((item, index) => (
-            <TouchableOpacity key={`explore-${index}`} style={styles.bigImageTile} onPress={() => handlePress(item)}>
-              <Image source={item.image} style={styles.tileImage} />
-              <View style={styles.overlay}>
-                <Text style={styles.overlayLabel}>{item.label}</Text>
-                <Text style={styles.overlayDescription}>{item.description}</Text>
-              </View>
+        <Text style={styles.sectionTitle}>Narrow Down</Text>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.optionsContainer}
+        >
+          {loading ? (
+            <Text style={styles.loadingText}>Loading...</Text>
+          ) : topKeywords.length === 0 ? (
+            <Text style={styles.noKeywordsText}>
+              No preferences found
+            </Text>
+          ) : (
+            topKeywords.map((kw, index) => (
+              <TouchableOpacity
+                key={`narrow-${index}-${kw}`}
+                style={styles.optionButton}
+                onPress={() => handleCategoryPress(kw)}
+              >
+                <Text style={styles.optionText}>{kw}</Text>
+              </TouchableOpacity>
+            ))
+          )}
+        </ScrollView>
+      </View>
+
+      {/* Expand Your Search */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Expand Your Search</Text>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.optionsContainer}
+        >
+          {EXPAND_CATEGORIES.map((cat, index) => (
+            <TouchableOpacity
+              key={`expand-${index}-${cat}`}
+              style={styles.optionButton}
+              onPress={() => handleCategoryPress(cat)}
+            >
+              <Text style={styles.optionText}>{cat}</Text>
             </TouchableOpacity>
           ))}
         </ScrollView>
       </View>
-
-      {/* Add "Narrow Down" and "Explore Other" buttons from `main` */}
-      <View style={styles.buttonRow}>
-        <TouchableOpacity style={styles.button} onPress={handleNarrowDown}>
-          <Text style={styles.buttonText}>Narrow Down</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.button} onPress={handleExploreOther}>
-          <Text style={styles.buttonText}>Explore Other</Text>
-        </TouchableOpacity>
-      </View>
     </View>
   );
-}
+};
+
+export default ExploreMoreCard;
 
 const styles = StyleSheet.create({
-  container: { backgroundColor: '#1B1F24', borderRadius: 10, marginHorizontal: 16, marginBottom: 16, alignItems: 'center', justifyContent: 'center' },
-  title: { color: '#fff', fontSize: 28, fontWeight: 'bold', marginBottom: 10 },
-  subtitle: { color: '#ccc', fontSize: 16, textAlign: 'center', marginBottom: 20 },
-  section: { marginVertical: 10, width: '100%' },
-  scrollContainer: { flexDirection: 'row', paddingLeft: 10, paddingRight: 10 },
-  bigImageTile: { width: 160, height: 200, borderRadius: 12, marginRight: 12, overflow: 'hidden', position: 'relative' },
-  tileImage: { width: '100%', height: '100%', resizeMode: 'cover' },
-  overlay: { position: 'absolute', bottom: 0, left: 0, right: 0, backgroundColor: 'rgba(0,0,0,0.45)', paddingHorizontal: 8, paddingVertical: 6 },
-  overlayLabel: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
-  overlayDescription: { color: '#ccc', fontSize: 12, marginTop: 2 },
-  buttonRow: { flexDirection: 'row', marginTop: 20 },
-  button: { backgroundColor: '#F5A623', paddingVertical: 12, paddingHorizontal: 20, borderRadius: 8, marginHorizontal: 10 },
-  buttonText: { color: '#fff', fontWeight: 'bold' },
+  container: {
+    backgroundColor: '#1B1F24',
+    borderRadius: 12,
+    paddingVertical: 16,
+    paddingHorizontal: 12,
+    marginHorizontal: 16,
+    marginVertical: 10,
+  },
+  title: {
+    color: '#fff',
+    fontSize: 24,
+    fontWeight: 'bold',
+    textAlign: 'center',
+    marginBottom: 4,
+  },
+  subtitle: {
+    color: '#ccc',
+    fontSize: 14,
+    textAlign: 'center',
+    marginBottom: 12,
+  },
+  section: {
+    marginVertical: 8,
+  },
+  sectionTitle: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '600',
+    marginBottom: 8,
+  },
+  optionsContainer: {
+    flexDirection: 'row',
+    paddingHorizontal: 8,
+  },
+  optionButton: {
+    backgroundColor: '#F5A623',
+    paddingVertical: 10,
+    paddingHorizontal: 18,
+    borderRadius: 8,
+    marginRight: 10,
+  },
+  optionText: {
+    color: '#0D1117',
+    fontWeight: 'bold',
+    fontSize: 16,
+  },
+  loadingText: {
+    color: '#ccc',
+    fontSize: 14,
+    marginLeft: 4,
+  },
+  noKeywordsText: {
+    color: '#aaa',
+    fontSize: 14,
+    marginLeft: 4,
+  },
 });
+
