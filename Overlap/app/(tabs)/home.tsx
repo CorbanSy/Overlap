@@ -94,7 +94,7 @@ function mapGoogleTypesToCategory(googleTypes: string[]): string[] {
 /* --------------------------------------------------
    Main Component
 -------------------------------------------------- */
-export default function HomeScreen() {
+function HomeScreen() {
   const navigation = useNavigation();
   const router = useRouter();
 
