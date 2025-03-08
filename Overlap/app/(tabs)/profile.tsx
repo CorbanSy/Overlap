@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   SafeAreaView,
   View,
@@ -10,7 +10,8 @@ import {
   ScrollView,
   Text,
 } from 'react-native';
-import { getAuth } from 'firebase/auth';
+import { useRouter } from 'expo-router';
+import { getAuth, signOut, onAuthStateChanged } from 'firebase/auth';
 import { getFirestore, collection, addDoc, onSnapshot, doc, updateDoc } from 'firebase/firestore';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -33,10 +34,23 @@ function ProfileScreen() {
   const [selectedCollection, setSelectedCollection] = useState(null);
   const [selectedActivity, setSelectedActivity] = useState(null);
   const [isSettingsMenuVisible, setIsSettingsMenuVisible] = useState(false);
+  const [user, setUser] = useState(null);
 
   const auth = getAuth();
   const firestore = getFirestore();
-  const user = auth.currentUser;
+  const router = useRouter();
+
+  // Refs to store unsubscribe functions for snapshot listeners
+  const unsubscribeLikesRef = useRef(null);
+  const unsubscribeCollectionsRef = useRef(null);
+
+  // Listen for authentication state changes
+  useEffect(() => {
+    const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+    });
+    return () => unsubscribeAuth();
+  }, [auth]);
 
   // Reset selectedCollection when switching away from Collections tab
   useEffect(() => {
@@ -49,24 +63,50 @@ function ProfileScreen() {
   useEffect(() => {
     if (!user) return;
     const likesRef = collection(firestore, `users/${user.uid}/likes`);
-    const unsubscribe = onSnapshot(likesRef, (snapshot) => {
-      setLikedActivities(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    });
-    return () => unsubscribe();
+    const unsubscribe = onSnapshot(
+      likesRef,
+      (snapshot) => {
+        setLikedActivities(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+      },
+      (error) => {
+        console.error("Likes listener error:", error);
+      }
+    );
+    unsubscribeLikesRef.current = unsubscribe;
+    return () => {
+      if (unsubscribeLikesRef.current) {
+        unsubscribeLikesRef.current();
+        unsubscribeLikesRef.current = null;
+      }
+    };
   }, [user]);
 
   // Fetch collections from Firestore
   useEffect(() => {
     if (!user) return;
     const collectionsRef = collection(firestore, `users/${user.uid}/collections`);
-    const unsubscribe = onSnapshot(collectionsRef, (snapshot) => {
-      setCollections(snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data(),
-        activities: doc.data().activities || []
-      })));
-    });
-    return () => unsubscribe();
+    const unsubscribe = onSnapshot(
+      collectionsRef,
+      (snapshot) => {
+        setCollections(
+          snapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data(),
+            activities: doc.data().activities || []
+          }))
+        );
+      },
+      (error) => {
+        console.error("Collections listener error:", error);
+      }
+    );
+    unsubscribeCollectionsRef.current = unsubscribe;
+    return () => {
+      if (unsubscribeCollectionsRef.current) {
+        unsubscribeCollectionsRef.current();
+        unsubscribeCollectionsRef.current = null;
+      }
+    };
   }, [user]);
 
   // Add a new collection
@@ -91,9 +131,9 @@ function ProfileScreen() {
     if (!selectedActivity || !collectionId || !user) return;
     try {
       const collectionRef = doc(firestore, `users/${user.uid}/collections`, collectionId);
-      const collection = collections.find((c) => c.id === collectionId);
-      if (!collection.activities.some((activity) => activity.id === selectedActivity.id)) {
-        const updatedActivities = [...collection.activities, selectedActivity];
+      const collectionItem = collections.find((c) => c.id === collectionId);
+      if (!collectionItem.activities.some((activity) => activity.id === selectedActivity.id)) {
+        const updatedActivities = [...collectionItem.activities, selectedActivity];
         await updateDoc(collectionRef, { activities: updatedActivities });
         setCollections((prevCollections) =>
           prevCollections.map((c) =>
@@ -110,7 +150,7 @@ function ProfileScreen() {
 
   // Remove activity from collection
   const removeFromCollection = async (collectionId, activityId) => {
-    if (!user) return;
+    if (!user || !selectedCollection) return;
     try {
       const collectionRef = doc(firestore, `users/${user.uid}/collections`, collectionId);
       const updatedActivities = selectedCollection.activities.filter(act => act.id !== activityId);
@@ -122,9 +162,27 @@ function ProfileScreen() {
   };
 
   // Settings option handler
-  const handleSettingsOptionPress = (option) => {
+  const handleSettingsOptionPress = async (option) => {
     console.log("Selected option:", option);
-    // Implement your settings option logic here.
+    if (option === 'Logout') {
+      // Unsubscribe from active listeners before signing out
+      if (unsubscribeLikesRef.current) {
+        unsubscribeLikesRef.current();
+        unsubscribeLikesRef.current = null;
+      }
+      if (unsubscribeCollectionsRef.current) {
+        unsubscribeCollectionsRef.current();
+        unsubscribeCollectionsRef.current = null;
+      }
+      try {
+        await signOut(auth);
+        console.log("User signed out successfully.");
+        // Navigate to the sign-up page after logout
+        router.replace('/(auth)/sign-up');
+      } catch (error) {
+        console.error("Error signing out:", error);
+      }
+    }
     setIsSettingsMenuVisible(false);
   };
 
