@@ -10,9 +10,8 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useNavigation } from "@react-navigation/native";
 import { getAuth } from "firebase/auth";
-import { markPreferencesComplete, savePreferences } from "../utils/storage"; // adjust the path as needed
-import { router } from "expo-router";
-
+import { markPreferencesComplete, saveProfileData } from '../utils/storage'; // adjust the path as needed
+import { router } from 'expo-router'
 const { width, height } = Dimensions.get("window");
 
 // Define Theme Colors
@@ -118,7 +117,7 @@ export default function PreferencesScreen() {
         .sort((a, b) => (a.rank as number) - (b.rank as number))
         .map((b) => b.label);
 
-      await savePreferences(finalRanks);
+      await saveProfileData(finalRanks);
       await markPreferencesComplete();
       router.push("/home");
     } catch (error) {

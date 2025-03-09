@@ -30,13 +30,20 @@ import {
 } from 'firebase/firestore';
 import { useRouter } from 'expo-router';
 import { useFilters } from '../../context/FiltersContext';
-import { getPreferences, likePlace, unlikePlace } from '../utils/storage';
+import { getProfileData, likePlace, unlikePlace, storeReviewsForPlace } from '../utils/storage';
 
 import ExploreMoreCard from './ExploreMoreCard';
 
 /* --------------------------------------------------
    Helpers
 -------------------------------------------------- */
+async function fetchPlaceDetailsFromGoogle(placeId: string) {
+  // Make sure to include 'reviews' in 'fields=' so you actually get the reviews
+  const detailsUrl = `https://maps.googleapis.com/maps/api/place/details/json?key=${GOOGLE_PLACES_API_KEY}&place_id=${placeId}&fields=name,rating,reviews,types,photos,user_ratings_total`;
+  const resp = await fetch(detailsUrl);
+  const data = await resp.json();
+  return data?.result; // Usually the place data is in 'result'
+}
 function getDistanceFromLatLonInKm(lat1: number, lon1: number, lat2: number, lon2: number) {
   const R = 6371;
   const dLat = deg2rad(lat2 - lat1);
@@ -156,7 +163,7 @@ function HomeScreen() {
   useEffect(() => {
     async function loadUserPrefs() {
       try {
-        const prefs = await getPreferences();
+        const prefs = await getProfileData();
         setUserTopPrefs(prefs);
       } catch (err) {
         console.error('Error loading user prefs:', err);
@@ -334,12 +341,12 @@ function HomeScreen() {
 
   /* -----------------------
      Infinite scrolling
-  ----------------------- */
+  ----------------------- 
   const loadMore = () => {
     if (nextPageToken) {
       fetchPlaces(nextPageToken);
     }
-  };
+  };*/
 
   const sanitizeActivity = (activity: any) => {
     return {
@@ -458,15 +465,37 @@ function HomeScreen() {
   ---------------------- */
   const handleLikePress = async (place) => {
     if (!user) return;
-    const isLiked = !!userLikes[place.id];
+
+    const isLiked = !!userLikes[placeId];
+
     try {
       if (isLiked) {
-        await unlikePlace(place.id);
+        // If already liked, user is "unliking"
+        await unlikePlace(placeId);
       } else {
-        await likePlace(place);
+        // 2) Not yet liked => fetch place details from Google
+        const placeDetails = await fetchPlaceDetailsFromGoogle(placeId);
+        if (!placeDetails) {
+          console.warn("No place details found for placeId=", placeId);
+          return;
+        }
+        // 3) Cache the place's reviews
+        if (placeDetails.reviews && placeDetails.reviews.length > 0) {
+          await storeReviewsForPlace(placeId, placeDetails.reviews);
+        }
+
+        // 4) Then call likePlace with the relevant fields
+        await likePlace({
+          id: placeId,
+          name: placeDetails.name,
+          rating: placeDetails.rating,
+          userRatingsTotal: placeDetails.user_ratings_total,
+          photoReference: placeDetails.photos?.[0]?.photo_reference || null,
+          types: placeDetails.types || [],
+        });
       }
     } catch (err) {
-      console.error('Failed to toggle like:', err);
+      console.error("Failed to toggle like:", err);
     }
   };
 
@@ -772,10 +801,10 @@ function HomeScreen() {
             item._type === 'exploreMoreCard' ? item.key : item.id
           }
           renderItem={renderItem}
-          onEndReachedThreshold={0.5}
-          onEndReached={() => {
-            if (!loading) loadMore();
-          }}
+          //onEndReachedThreshold={0.5}
+          //onEndReached={() => {
+          //  if (!loading) loadMore();
+          //}}
           ListFooterComponent={loading ? <ActivityIndicator size="small" color="#fff" /> : null}
           contentContainerStyle={styles.listContent}
         />
