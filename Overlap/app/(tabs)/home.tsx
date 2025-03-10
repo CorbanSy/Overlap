@@ -241,7 +241,6 @@ function HomeScreen() {
       } else if (filterState.sort === 'Dining') {
         keyword = 'restaurant';
       }
-      // etc.
 
       let url =
         `https://maps.googleapis.com/maps/api/place/nearbysearch/json?key=${GOOGLE_PLACES_API_KEY}` +
@@ -328,7 +327,6 @@ function HomeScreen() {
         setTimeout(() => {
           flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
         }, 100);
-
       } else {
         console.warn('Google Places API error:', data.status);
       }
@@ -338,56 +336,6 @@ function HomeScreen() {
       setLoading(false);
     }
   };
-
-  /* -----------------------
-     Infinite scrolling
-  ----------------------- 
-  const loadMore = () => {
-    if (nextPageToken) {
-      fetchPlaces(nextPageToken);
-    }
-  };*/
-
-  const sanitizeActivity = (activity: any) => {
-    return {
-      id: activity.id,
-      name: activity.name,
-      rating: activity.rating || 0,
-      userRatingsTotal: activity.userRatingsTotal || 0,
-      photoReference: activity.photoReference || null,
-      formatted_address: activity.formatted_address || '',
-      phoneNumber: activity.phoneNumber || '',
-      website: activity.website || '',
-      openingHours: activity.openingHours || [],
-      description: activity.description || '',
-    };
-  };
-  
-  const toggleActivityInCollection = async (collectionId: string) => {
-    if (!selectedActivity || !user) return;
-  
-    try {
-      const collectionRef = doc(firestore, `users/${user.uid}/collections`, collectionId);
-      const currentCollection = userCollections[collectionId] || { title: "New Collection", activities: [] };
-  
-      const sanitizedActivity = sanitizeActivity(selectedActivity);
-      const isAlreadyAdded = currentCollection.activities.some(a => a.id === sanitizedActivity.id);
-      const updatedActivities = isAlreadyAdded
-        ? currentCollection.activities.filter(a => a.id !== sanitizedActivity.id)
-        : [...currentCollection.activities, sanitizedActivity];
-  
-      await updateDoc(collectionRef, { activities: updatedActivities });
-  
-      setUserCollections(prev => ({
-        ...prev,
-        [collectionId]: { ...currentCollection, activities: updatedActivities }
-      }));
-  
-    } catch (error) {
-      console.error("Error updating collection:", error);
-    }
-  };
-  
 
   /* ---------------------
      Fuzzy search setup
@@ -466,27 +414,22 @@ function HomeScreen() {
   const handleLikePress = async (place) => {
     if (!user) return;
 
-    const isLiked = !!userLikes[placeId];
+    const isLiked = !!userLikes[place.id];
 
     try {
       if (isLiked) {
-        // If already liked, user is "unliking"
-        await unlikePlace(placeId);
+        await unlikePlace(place.id);
       } else {
-        // 2) Not yet liked => fetch place details from Google
-        const placeDetails = await fetchPlaceDetailsFromGoogle(placeId);
+        const placeDetails = await fetchPlaceDetailsFromGoogle(place.id);
         if (!placeDetails) {
-          console.warn("No place details found for placeId=", placeId);
+          console.warn("No place details found for place id=", place.id);
           return;
         }
-        // 3) Cache the place's reviews
         if (placeDetails.reviews && placeDetails.reviews.length > 0) {
-          await storeReviewsForPlace(placeId, placeDetails.reviews);
+          await storeReviewsForPlace(place.id, placeDetails.reviews);
         }
-
-        // 4) Then call likePlace with the relevant fields
         await likePlace({
-          id: placeId,
+          id: place.id,
           name: placeDetails.name,
           rating: placeDetails.rating,
           userRatingsTotal: placeDetails.user_ratings_total,
@@ -502,7 +445,7 @@ function HomeScreen() {
   /* ----------------------
      Save / Open Collections Modal
   ---------------------- */
-  const handleSavePress = (place: any) => {
+  const handleSavePress = (place) => {
     if (!user) return;
     setSelectedActivity(place);
     setCollectionModalVisible(true);
@@ -801,10 +744,6 @@ function HomeScreen() {
             item._type === 'exploreMoreCard' ? item.key : item.id
           }
           renderItem={renderItem}
-          //onEndReachedThreshold={0.5}
-          //onEndReached={() => {
-          //  if (!loading) loadMore();
-          //}}
           ListFooterComponent={loading ? <ActivityIndicator size="small" color="#fff" /> : null}
           contentContainerStyle={styles.listContent}
         />
