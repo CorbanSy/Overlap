@@ -1,4 +1,3 @@
-// ExploreMoreCard.tsx
 import React, { useEffect, useState } from 'react';
 import {
   View,
@@ -7,16 +6,26 @@ import {
   StyleSheet,
   ScrollView,
 } from 'react-native';
+import { getProfileData } from '../app/utils/storage';
 
-// New unified function from storage.js
-import { getProfileData } from '../utils/storage';
-
-// Broad categories for "Expand Your Search"
 const EXPAND_CATEGORIES = [
   'Dining', 'Outdoors', 'Nightlife', 'Movies', 'Fitness', 'Gaming',
   'Social', 'Music', 'Shopping', 'Travel', 'Art', 'Relaxing',
   'Learning', 'Cooking',
 ];
+
+// We remove punctuation from dynamic keywords (like "." or ",").
+function cleanKeyword(kw: string) {
+  // remove any punctuation except letters/numbers/spaces
+  return kw.replace(/[^\p{L}\p{N}\s]/gu, '').trim();
+}
+
+// Additional blocked words
+const BLOCKED_WORDS = new Set([
+  'covid', 'trash', 'awful', 'terrible', 
+  'bad', 'unfriendly', '2 ladies', 'mr', 'ms', '',
+  // ... add more as needed
+]);
 
 type Props = {
   style?: any;
@@ -24,45 +33,60 @@ type Props = {
 };
 
 const ExploreMoreCard: React.FC<Props> = ({ style, onCategoryPress }) => {
-  const [topKeywords, setTopKeywords] = useState<string[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
+  const [loading, setLoading] = useState(true);
+  const [combinedKeywords, setCombinedKeywords] = useState<string[]>([]);
 
   useEffect(() => {
     loadProfileData();
   }, []);
 
   async function loadProfileData() {
+    setLoading(true);
     try {
-      setLoading(true);
       const profile = await getProfileData();
       if (!profile) {
-        // doc doesn't exist => no categories => no dynamic keywords
-        setTopKeywords([]);
+        setCombinedKeywords([]);
       } else {
-        const keywordsMap = profile.keywords || {};     // from Cloud Function
-        const defaults = profile.topCategories || [];   // from your signup flow
+        const defaults = profile.topCategories || [];
+        const keywordsMap = profile.keywords || {};
 
-        // If user has no dynamic keywords, fallback to topCategories
-        if (Object.keys(keywordsMap).length === 0) {
-          setTopKeywords(defaults);
+        // Filter dynamic keywords:
+        // 1) remove punctuation
+        // 2) remove blocked words
+        // 3) ensure it was used >1 time to avoid single weird hits
+        const dynamic = Object.keys(keywordsMap).map(k => cleanKeyword(k));
+        const filteredDynamic = dynamic.filter((kw) => {
+          if (!kw || BLOCKED_WORDS.has(kw.toLowerCase())) return false;
+          // check frequency
+          if (keywordsMap[kw] < 2) return false;
+          return true;
+        });
+
+        // Merge approach – for example, keep the user’s default categories plus some dynamic ones
+        // If the user has <5 total likes, we rely more on defaults, else we show more dynamic ones
+        const userLikeCount = Object.values(keywordsMap).reduce((sum, val) => sum + (val as number), 0);
+
+        let finalKeywords: string[] = [];
+        if (userLikeCount < 5) {
+          finalKeywords = [...defaults, ...filteredDynamic.slice(0, 2)];
         } else {
-          // Convert keywords map => sorted array => take top 10
-          const sorted = Object.keys(keywordsMap).sort(
-            (a, b) => keywordsMap[b] - keywordsMap[a]
-          );
-          setTopKeywords(sorted.slice(0, 10));
+          finalKeywords = [...defaults.slice(0, 3), ...filteredDynamic.slice(0, 5)];
         }
+
+        // remove duplicates & remove any empty
+        const unique = Array.from(new Set(finalKeywords)).filter(Boolean);
+        setCombinedKeywords(unique);
       }
-    } catch (err) {
-      console.error('Failed to load profile data:', err);
-      setTopKeywords([]);
+    } catch (error) {
+      console.error('Failed to load profile data in ExploreMore:', error);
+      setCombinedKeywords([]);
     } finally {
       setLoading(false);
     }
   }
 
-  function handleCategoryPress(keyword: string) {
-    onCategoryPress?.(keyword);
+  function handlePress(kw: string) {
+    onCategoryPress?.(kw);
   }
 
   return (
@@ -82,16 +106,14 @@ const ExploreMoreCard: React.FC<Props> = ({ style, onCategoryPress }) => {
         >
           {loading ? (
             <Text style={styles.loadingText}>Loading...</Text>
-          ) : topKeywords.length === 0 ? (
-            <Text style={styles.noKeywordsText}>
-              No preferences found
-            </Text>
+          ) : combinedKeywords.length === 0 ? (
+            <Text style={styles.noKeywordsText}>No suggestions found</Text>
           ) : (
-            topKeywords.map((kw, index) => (
+            combinedKeywords.map((kw, i) => (
               <TouchableOpacity
-                key={`narrow-${index}-${kw}`}
+                key={`narrow-${i}-${kw}`}
                 style={styles.optionButton}
-                onPress={() => handleCategoryPress(kw)}
+                onPress={() => handlePress(kw)}
               >
                 <Text style={styles.optionText}>{kw}</Text>
               </TouchableOpacity>
@@ -108,11 +130,11 @@ const ExploreMoreCard: React.FC<Props> = ({ style, onCategoryPress }) => {
           showsHorizontalScrollIndicator={false}
           contentContainerStyle={styles.optionsContainer}
         >
-          {EXPAND_CATEGORIES.map((cat, index) => (
+          {EXPAND_CATEGORIES.map((cat, i) => (
             <TouchableOpacity
-              key={`expand-${index}-${cat}`}
+              key={`expand-${i}-${cat}`}
               style={styles.optionButton}
-              onPress={() => handleCategoryPress(cat)}
+              onPress={() => handlePress(cat)}
             >
               <Text style={styles.optionText}>{cat}</Text>
             </TouchableOpacity>
@@ -183,4 +205,3 @@ const styles = StyleSheet.create({
     marginLeft: 4,
   },
 });
-
