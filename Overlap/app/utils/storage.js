@@ -1,6 +1,6 @@
 // storage.js
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { doc, setDoc, deleteDoc, getDoc, collection, getDocs, addDoc } from 'firebase/firestore';
+import { doc, setDoc, deleteDoc, getDoc, collection, getDocs, addDoc, query, where } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
 import { db } from '../../FirebaseConfig'; // your "db" or "firestore" export
 
@@ -143,3 +143,52 @@ export async function storeReviewsForPlace(placeId, reviews) {
   }
 }
 
+/* ------------------------------------------------------------------
+   5) Firestore: Create a Meetup Document
+      /meetups/{autoId}
+   ------------------------------------------------------------------ */
+   export async function createMeetup(meetupData) {
+    const auth = getAuth();
+    const user = auth.currentUser;
+    if (!user) throw new Error('No user is signed in');
+  
+    const data = {
+      ...meetupData,
+      creatorId: user.uid,
+      participants: [user.uid],
+      createdAt: new Date(),
+    };
+  
+    const meetupRef = await addDoc(collection(db, "meetups"), data);
+    return meetupRef.id;
+  }
+  
+  
+  /* ------------------------------------------------------------------
+   6) Firestore: Get User's Meetups
+      Retrieves meetups the user created or joined.
+   ------------------------------------------------------------------ */
+export async function getUserMeetups() {
+  const auth = getAuth();
+  const user = auth.currentUser;
+  if (!user) throw new Error("No user is signed in");
+
+  const meetupsColRef = collection(db, "meetups");
+
+  // Query for meetups where the user is the creator
+  const createdQuery = query(meetupsColRef, where("creatorId", "==", user.uid));
+  const createdSnap = await getDocs(createdQuery);
+  const createdMeetups = createdSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+  // Query for meetups where the user is in the participants array
+  const joinedQuery = query(meetupsColRef, where("participants", "array-contains", user.uid));
+  const joinedSnap = await getDocs(joinedQuery);
+  const joinedMeetups = joinedSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+  // Combine and deduplicate meetups (in case creator is also a participant)
+  const allMeetupsMap = new Map();
+  createdMeetups.forEach(meetup => allMeetupsMap.set(meetup.id, meetup));
+  joinedMeetups.forEach(meetup => allMeetupsMap.set(meetup.id, meetup));
+
+  return Array.from(allMeetupsMap.values());
+}

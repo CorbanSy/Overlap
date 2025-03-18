@@ -11,7 +11,6 @@ import {
   ScrollView,
   Image,
   RefreshControl,
-  Dimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
@@ -24,6 +23,8 @@ import {
   doc,
   getDocs,
   onSnapshot,
+  updateDoc,  // <-- imported updateDoc for updating collections
+  setDoc,
 } from 'firebase/firestore';
 import { useRouter } from 'expo-router';
 import { useFilters } from '../../context/FiltersContext';
@@ -35,12 +36,11 @@ import {
   storeReviewsForPlace,
 } from '../utils/storage';
 
-// Make sure ExploreMoreCard.tsx is outside (tabs) so it doesn't become a tab
 import ExploreMoreCard from '../../components/ExploreMoreCard'; 
 
 const GOOGLE_PLACES_API_KEY = 'AIzaSyDcTuitQdQGXwuLp90NqQ_ZwhnMSGrr8mY';
 
-/* Some helpers */
+// Some helper functions ...
 function deg2rad(deg: number) {
   return deg * (Math.PI / 180);
 }
@@ -61,7 +61,6 @@ function getDistanceFromLatLonInKm(lat1: number, lon1: number, lat2: number, lon
 
 function mapGoogleTypesToCategory(googleTypes: string[]): string[] {
   if (!Array.isArray(googleTypes)) return ['other'];
-
   const categories: string[] = [];
   if (googleTypes.includes('restaurant') || googleTypes.includes('food')) {
     categories.push('Dining');
@@ -97,25 +96,25 @@ export default function HomeScreen() {
   const auth = getAuth();
   const user = auth.currentUser;
 
-  // State
+  // State variables
   const [places, setPlaces] = useState<any[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
   const [nextPageToken, setNextPageToken] = useState<string | null>(null);
-
   const [searchQuery, setSearchQuery] = useState('');
   const fuseRef = useRef<Fuse<any> | null>(null);
-
   const [userLikes, setUserLikes] = useState<Record<string, boolean>>({});
   const [userSaves, setUserSaves] = useState<Record<string, boolean>>({});
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
-
   const [refreshing, setRefreshing] = useState(false);
-
   const { filterState, setFilterState } = useFilters();
   const [userTopPrefs, setUserTopPrefs] = useState<string[]>([]);
   const [userCollections, setUserCollections] = useState<Record<string, any>>({});
 
-  // We’ll use this to scroll the list to top after new fetches
+  // NEW: Modal state for "Add to Collection"
+  const [collectionModalVisible, setCollectionModalVisible] = useState(false);
+  const [selectedPlaceForCollection, setSelectedPlaceForCollection] = useState<any>(null);
+
+  // Ref for FlatList scrolling
   const flatListRef = useRef<FlatList<any>>(null);
 
   /* Load user prefs (top categories) */
@@ -157,7 +156,7 @@ export default function HomeScreen() {
     return () => unsubscribe();
   }, [user]);
 
-  /* Listen for user collections (if needed) */
+  /* Listen for user collections */
   useEffect(() => {
     if (!user) return;
     const colRef = collection(firestore, `users/${user.uid}/collections`);
@@ -195,28 +194,24 @@ export default function HomeScreen() {
   const fetchPlaces = async (pageToken?: string) => {
     if (!userLocation) return;
     setLoading(true);
-
     try {
       const radius = filterState.distance ?? 5000;
       let keyword = 'activities';
       if (filterState.sort === 'Movies') keyword = 'movies';
       if (filterState.sort === 'Dining') keyword = 'restaurant';
       if (filterState.sort === 'Outdoors') keyword = 'park';
-
       let url =
         `https://maps.googleapis.com/maps/api/place/nearbysearch/json?key=${GOOGLE_PLACES_API_KEY}` +
         `&location=${userLocation.lat},${userLocation.lng}` +
         `&radius=${radius}` +
         `&type=establishment` +
         `&keyword=${encodeURIComponent(keyword)}`;
-
       if (filterState.openNow) {
         url += '&opennow=true';
       }
       if (pageToken) {
         url += `&pagetoken=${pageToken}`;
       }
-
       const resp = await fetch(url);
       const data = await resp.json();
       if (data.status === 'OK') {
@@ -226,7 +221,7 @@ export default function HomeScreen() {
           name: p.name,
           rating: p.rating || 0,
           userRatingsTotal: p.user_ratings_total || 0,
-          photos: p.photos || [], // entire array
+          photos: p.photos || [],
           geometry: p.geometry,
           types: p.types || [],
         }));
@@ -251,14 +246,10 @@ export default function HomeScreen() {
   /* Fuzzy search + custom sort => final array */
   const getDisplayedPlaces = useCallback(() => {
     let list = places;
-
-    // Fuzzy search
     if (searchQuery && fuseRef.current) {
       const results = fuseRef.current.search(searchQuery);
       list = results.map((r) => r.item);
     }
-
-    // Sort
     if (!filterState.sort || filterState.sort === 'recommended') {
       list = list.map((place) => {
         const cats = mapGoogleTypesToCategory(place.types);
@@ -291,8 +282,6 @@ export default function HomeScreen() {
     } else if (filterState.sort === 'rating') {
       list = list.slice().sort((a, b) => b.rating - a.rating);
     }
-
-    // attach liked/saved flags
     return list.map((item) => ({
       ...item,
       liked: !!userLikes[item.id],
@@ -308,7 +297,6 @@ export default function HomeScreen() {
       if (isLiked) {
         await unlikePlace(place.id);
       } else {
-        // fetch extended place details
         const details = await fetchPlaceDetailsFromGoogle(place.id);
         if (details) {
           if (details.reviews?.length) {
@@ -323,7 +311,6 @@ export default function HomeScreen() {
             types: details.types || place.types,
           });
         } else {
-          // fallback: just store the place
           await likePlace(place);
         }
       }
@@ -332,18 +319,18 @@ export default function HomeScreen() {
     }
   };
 
-  /* Save press => optional logic. Not fully implemented here. */
+  /* NEW: Handle Save press to open the collection modal */
   const handleSavePress = (place: any) => {
     if (!user) return;
-    // Show a modal for collections, or implement your logic
+    setSelectedPlaceForCollection(place);
+    setCollectionModalVisible(true);
   };
 
-  /* fetch by keyword => user taps exploreMore category */
+  /* fetch by keyword for Explore More category */
   const fetchPlacesByKeyword = async (keyword: string) => {
     if (!userLocation) return;
     setLoading(true);
     setNextPageToken(null);
-
     try {
       const radius = filterState.distance ?? 5000;
       let url =
@@ -352,11 +339,9 @@ export default function HomeScreen() {
         `&radius=${radius}` +
         `&type=establishment` +
         `&keyword=${encodeURIComponent(keyword)}`;
-
       if (filterState.openNow) {
         url += '&opennow=true';
       }
-
       const resp = await fetch(url);
       const data = await resp.json();
       if (data.status === 'OK') {
@@ -370,8 +355,6 @@ export default function HomeScreen() {
           types: p.types ?? [],
         }));
         setPlaces(newPlaces);
-
-        // scroll to top
         setTimeout(() => {
           flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
         }, 100);
@@ -385,18 +368,35 @@ export default function HomeScreen() {
     }
   };
 
+  /* NEW: Helper function to add an activity to a collection */
+  const addActivityToCollection = async (collectionId: string, activity: any) => {
+    if (!user) return;
+    try {
+      const collectionRef = doc(firestore, `users/${user.uid}/collections`, collectionId);
+      const currentCollection = userCollections[collectionId];
+      const currentActivities = currentCollection?.activities || [];
+      // Check if the activity already exists in the collection
+      if (!currentActivities.some((a: any) => a.id === activity.id)) {
+        const newActivities = [...currentActivities, activity];
+        await updateDoc(collectionRef, { activities: newActivities });
+      } else {
+        console.log("Activity already in this collection");
+      }
+    } catch (err) {
+      console.error("Error adding activity to collection:", err);
+    }
+  };
+
   /* Build final data => insert ExploreMoreCard every 20 items */
   const getFinalData = () => {
     const displayed = getDisplayedPlaces();
     const finalData: any[] = [];
-
     for (let i = 0; i < displayed.length; i++) {
       finalData.push(displayed[i]);
       if ((i + 1) % 20 === 0) {
         finalData.push({ _type: 'exploreMoreCard', key: `exploreMore_${i + 1}` });
       }
     }
-
     if (displayed.length === 0) {
       return finalData;
     } else if (displayed.length % 20 !== 0) {
@@ -405,7 +405,7 @@ export default function HomeScreen() {
     return finalData;
   };
 
-  // *** REVERT BACK TO A SINGLE IMAGE INSTEAD OF A CAROUSEL ***
+  // Render single image function remains unchanged
   function renderSingleImage(item: any) {
     if (!item.photos?.length) {
       return (
@@ -414,7 +414,6 @@ export default function HomeScreen() {
         </View>
       );
     }
-    // Just the first photo
     const firstPhoto = item.photos[0];
     const photoUrl = `https://maps.googleapis.com/maps/api/place/photo?maxwidth=800&photoreference=${firstPhoto.photo_reference}&key=${GOOGLE_PLACES_API_KEY}`;
     return (
@@ -428,7 +427,6 @@ export default function HomeScreen() {
   /* Render each list item */
   const renderItem = ({ item }: { item: any }) => {
     if (item._type === 'exploreMoreCard') {
-      // Our "Explore More" section
       return (
         <ExploreMoreCard
           style={styles.exploreCard}
@@ -438,7 +436,6 @@ export default function HomeScreen() {
         />
       );
     }
-
     const distanceText =
       userLocation && item.geometry?.location
         ? `${getDistanceFromLatLonInKm(
@@ -448,13 +445,11 @@ export default function HomeScreen() {
             item.geometry.location.lng
           ).toFixed(2)} km`
         : '';
-
     return (
       <TouchableOpacity
         style={styles.dashCard}
         onPress={() => router.push(`/moreInfo?placeId=${item.id}`)}
       >
-        {/* SINGLE IMAGE */}
         <View style={{ position: 'relative' }}>
           {renderSingleImage(item)}
           <View style={styles.iconRow}>
@@ -468,7 +463,6 @@ export default function HomeScreen() {
             </TouchableOpacity>
           </View>
         </View>
-
         <View style={styles.dashInfoContainer}>
           <Text style={styles.dashTitle} numberOfLines={1}>
             {item.name}
@@ -482,7 +476,6 @@ export default function HomeScreen() {
     );
   };
 
-  /* Final data, plus optional loading spinner at bottom */
   const finalData = getFinalData();
 
   return (
@@ -498,43 +491,33 @@ export default function HomeScreen() {
         />
       </View>
 
-      {/* Horizontal scrollable filter bar with spacing */}
+      {/* Filter bar */}
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={[styles.filterScrollContainer, { flexDirection: 'row' }]}
         style={{ backgroundColor: '#0D1117' }}
       >
-        <TouchableOpacity style={styles.filterButton} onPress={() => {
-          // open a sort modal or cycle sort
-        }}>
+        <TouchableOpacity style={styles.filterButton} onPress={() => {}}>
           <Text style={styles.filterButtonText}>
             {filterState.sort ? `Sort: ${filterState.sort}` : 'Sort'}
           </Text>
         </TouchableOpacity>
-
         <TouchableOpacity
           style={[styles.filterButton, filterState.openNow && { backgroundColor: '#F5A623' }]}
           onPress={() => setFilterState((prev) => ({ ...prev, openNow: !prev.openNow }))}
         >
           <Text style={styles.filterButtonText}>Open Now</Text>
         </TouchableOpacity>
-
-        <TouchableOpacity style={styles.filterButton}
-          onPress={() => {
-            // open a location modal
-          }}
-        >
+        <TouchableOpacity style={styles.filterButton} onPress={() => {}}>
           <Text style={styles.filterButtonText}>Location</Text>
         </TouchableOpacity>
-
-        <TouchableOpacity style={styles.filterButton}
-          onPress={() => router.push('/morefilters')}
-        >
+        <TouchableOpacity style={styles.filterButton} onPress={() => router.push('/morefilters')}>
           <Text style={styles.filterButtonText}>More Filters</Text>
         </TouchableOpacity>
       </ScrollView>
 
+      {/* Main list */}
       <FlatList
         ref={flatListRef}
         data={finalData}
@@ -545,17 +528,100 @@ export default function HomeScreen() {
           loading ? <ActivityIndicator color="#fff" style={{ marginVertical: 20 }} /> : null
         }
         refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor="#fff"
-            colors={['#F5A623']}
-          />
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#fff" colors={['#F5A623']} />
         }
       />
+
+      {/* NEW: Modal for adding to a collection */}
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={collectionModalVisible}
+        onRequestClose={() => setCollectionModalVisible(false)}
+      >
+        <View style={modalStyles.modalOverlay}>
+          <View style={modalStyles.modalContainer}>
+            <Text style={modalStyles.modalTitle}>Select a Collection</Text>
+            <ScrollView>
+              {Object.keys(userCollections).length > 0 ? (
+                Object.keys(userCollections).map((collectionId) => {
+                  const collection = userCollections[collectionId];
+                  return (
+                    <TouchableOpacity
+                      key={collectionId}
+                      style={modalStyles.collectionItem}
+                      onPress={async () => {
+                        await addActivityToCollection(collectionId, selectedPlaceForCollection);
+                        setCollectionModalVisible(false);
+                        setSelectedPlaceForCollection(null);
+                      }}
+                    >
+                      <Text style={modalStyles.collectionTitle}>{collection.title}</Text>
+                    </TouchableOpacity>
+                  );
+                })
+              ) : (
+                <Text style={modalStyles.noCollectionsText}>No collections available.</Text>
+              )}
+            </ScrollView>
+            <TouchableOpacity
+              style={modalStyles.closeButton}
+              onPress={() => {
+                setCollectionModalVisible(false);
+                setSelectedPlaceForCollection(null);
+              }}
+            >
+              <Text style={modalStyles.closeButtonText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
+
+const modalStyles = StyleSheet.create({
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContainer: {
+    width: '80%',
+    backgroundColor: '#fff',
+    borderRadius: 8,
+    padding: 20,
+    maxHeight: '80%',
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 10,
+  },
+  collectionItem: {
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#ccc',
+  },
+  collectionTitle: {
+    fontSize: 16,
+  },
+  noCollectionsText: {
+    textAlign: 'center',
+    marginVertical: 20,
+    fontSize: 16,
+    color: '#888',
+  },
+  closeButton: {
+    marginTop: 15,
+    alignSelf: 'flex-end',
+  },
+  closeButtonText: {
+    color: '#007BFF',
+    fontSize: 16,
+  },
+});
 
 const styles = StyleSheet.create({
   safeArea: {
@@ -584,7 +650,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderRadius: 10,
     marginRight: 8,
-    height: 35, // fixed height prevents clipping
+    height: 35,
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 12,
@@ -605,7 +671,6 @@ const styles = StyleSheet.create({
     marginTop: 12,
     overflow: 'hidden',
   },
-  // We'll reuse imageWrapper for the single image's size
   imageWrapper: {
     width: '100%',
     height: 180,
