@@ -3,7 +3,7 @@ import { View, Text, Image, TouchableOpacity, StyleSheet, Share } from 'react-na
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 
-const ActivityCard = ({ item, onRemoveFromCollection, onAddToCollection }) => {
+const ActivityCard = ({ item, onRemoveFromCollection, onRemoveFromLiked, onAddToCollection, isInCollection }) => {
   const router = useRouter(); // Initialize router for navigation
 
   // Share Activity
@@ -35,8 +35,13 @@ const ActivityCard = ({ item, onRemoveFromCollection, onAddToCollection }) => {
       <View style={styles.titleRow}>
         <Text style={styles.title} numberOfLines={1}>{item.name}</Text>
         <View style={styles.buttonRow}>
-          {onRemoveFromCollection && (
-            <TouchableOpacity style={styles.button} onPress={() => onRemoveFromCollection(item.id)}>
+          {(onRemoveFromLiked || onRemoveFromCollection) && (
+            <TouchableOpacity
+              style={styles.button}
+              onPress={() =>
+                isInCollection ? onRemoveFromCollection(item.id) : onRemoveFromLiked(item.id)
+              }              
+            >
               <Ionicons name="trash-outline" size={20} color="red" />
             </TouchableOpacity>
           )}
@@ -44,7 +49,13 @@ const ActivityCard = ({ item, onRemoveFromCollection, onAddToCollection }) => {
             <Ionicons name="share-social-outline" size={20} color="#F5A623" />
           </TouchableOpacity>
           {onAddToCollection && (
-            <TouchableOpacity style={styles.button} onPress={() => onAddToCollection(item)}>
+            <TouchableOpacity 
+              style={styles.button} 
+              onPress={() => {
+                console.log("Adding activity to local collection:", item);
+                onAddToCollection(item);
+              }}
+            >
               <Ionicons name="add-circle-outline" size={20} color="#4DA6FF" />
             </TouchableOpacity>
           )}

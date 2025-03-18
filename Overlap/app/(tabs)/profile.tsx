@@ -21,6 +21,7 @@ import SearchBar from '../../components/SearchBar';
 import ActivityCard from '../../components/ActivityCard';
 import CollectionCard from '../../components/CollectionCard';
 import FullProfileInfo from '../../components/FullProfileInfo';
+import { unlikePlace } from '../utils/storage';
 
 function ProfileScreen() {
   const [activeTab, setActiveTab] = useState('Liked Activities');
@@ -235,9 +236,13 @@ function ProfileScreen() {
               item={item}
               isInCollection={!!selectedCollection}
               onRemoveFromCollection={(id) => removeFromCollection(selectedCollection?.id, id)}
-              onRemoveFromLiked={(id) =>
-                setLikedActivities(likedActivities.filter(activity => activity.id !== id))
-              }
+              onRemoveFromLiked={async (id) => {
+                try {
+                  await unlikePlace(id);
+                } catch (error) {
+                  console.error("Error unliking activity:", error);
+                }
+              }}
               onAddToCollection={(activity) => {
                 setSelectedActivity(activity);
                 setIsCollectionModalVisible(true);
