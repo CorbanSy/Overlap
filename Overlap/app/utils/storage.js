@@ -1,6 +1,8 @@
 // storage.js
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { doc, setDoc, deleteDoc, getDoc, collection, getDocs, addDoc, query, where } from 'firebase/firestore';
+import { 
+  doc, setDoc, deleteDoc, getDoc, collection, getDocs, addDoc, query, where, updateDoc 
+} from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
 import { db } from '../../FirebaseConfig'; // your "db" or "firestore" export
 
@@ -34,7 +36,7 @@ export async function checkPreferencesComplete() {
  * Save or update the user's profile with topCategories (and anything else).
  * This merges so you don't overwrite existing fields like keywords.
  */
-export async function saveProfileData(topCategories) {
+export async function saveProfileData({ topCategories, name, bio, avatarUrl }) {
   const auth = getAuth();
   const user = auth.currentUser;
   if (!user) throw new Error('No user is signed in');
@@ -43,12 +45,17 @@ export async function saveProfileData(topCategories) {
   await setDoc(
     profileRef,
     {
-      topCategories,         // array of default categories
+      topCategories: topCategories !== undefined ? topCategories : [],
+      name,
+      bio,
+      avatarUrl,
       lastUpdated: new Date(),
     },
-    { merge: true }         // merge to avoid overwriting existing data
+    { merge: true }
   );
 }
+
+
 
 /**
  * Get the user's profile data from /users/{uid}/profile/main.
@@ -68,38 +75,35 @@ export async function getProfileData() {
   }
 }
 
-
 /* ------------------------------------------------------------------
    3) Firestore: Likes Subcollection
       /users/{uid}/likes/{placeId}
    ------------------------------------------------------------------ */
- // Instead of just placeId, we pass the full 'place' object, so we store details
+// Instead of just placeId, we pass the full 'place' object, so we store details
 export async function likePlace(place) {
   const auth = getAuth();
   const user = auth.currentUser;
   console.log('Current user:', user);
   if (!user) throw new Error("No user is signed in");
   
-    const likeDocRef = doc(db, 'users', user.uid, 'likes', place.id);
+  const likeDocRef = doc(db, 'users', user.uid, 'likes', place.id);
   
-    // Save full place details in Firestore
-    await setDoc(likeDocRef, {
-      name: place.name,
-      rating: place.rating || 0,
-      userRatingsTotal: place.userRatingsTotal || 0,
-      photoReference: place.photoReference || null,
-      types: place.types || [],
-      formatted_address: place.formatted_address || '',
-      phoneNumber: place.phoneNumber || '',
-      website: place.website || '',
-      openingHours: place.openingHours || [],
-      description: place.description || '',
-      createdAt: new Date(),
-    });
-  }
+  // Save full place details in Firestore
+  await setDoc(likeDocRef, {
+    name: place.name,
+    rating: place.rating || 0,
+    userRatingsTotal: place.userRatingsTotal || 0,
+    photoReference: place.photoReference || null,
+    types: place.types || [],
+    formatted_address: place.formatted_address || '',
+    phoneNumber: place.phoneNumber || '',
+    website: place.website || '',
+    openingHours: place.openingHours || [],
+    description: place.description || '',
+    createdAt: new Date(),
+  });
+}
   
-  
-
 export async function unlikePlace(placeId) {
   const auth = getAuth();
   console.log('Current user:', auth.currentUser);
@@ -147,24 +151,23 @@ export async function storeReviewsForPlace(placeId, reviews) {
    5) Firestore: Create a Meetup Document
       /meetups/{autoId}
    ------------------------------------------------------------------ */
-   export async function createMeetup(meetupData) {
-    const auth = getAuth();
-    const user = auth.currentUser;
-    if (!user) throw new Error('No user is signed in');
-  
-    const data = {
-      ...meetupData,
-      creatorId: user.uid,
-      participants: [user.uid],
-      createdAt: new Date(),
-    };
-  
-    const meetupRef = await addDoc(collection(db, "meetups"), data);
-    return meetupRef.id;
-  }
-  
-  
-  /* ------------------------------------------------------------------
+export async function createMeetup(meetupData) {
+  const auth = getAuth();
+  const user = auth.currentUser;
+  if (!user) throw new Error('No user is signed in');
+
+  const data = {
+    ...meetupData,
+    creatorId: user.uid,
+    participants: [user.uid],
+    createdAt: new Date(),
+  };
+
+  const meetupRef = await addDoc(collection(db, "meetups"), data);
+  return meetupRef.id;
+}
+
+/* ------------------------------------------------------------------
    6) Firestore: Get User's Meetups
       Retrieves meetups the user created or joined.
    ------------------------------------------------------------------ */
@@ -191,4 +194,104 @@ export async function getUserMeetups() {
   joinedMeetups.forEach(meetup => allMeetupsMap.set(meetup.id, meetup));
 
   return Array.from(allMeetupsMap.values());
+}
+
+/* ------------------------------------------------------------------
+   7) Firestore: Social - Friend Requests & Friendships
+         Using two separate collections: "friendRequests" and "friendships"
+   ------------------------------------------------------------------ */
+
+/**
+ * Send a friend request from the current user to another user.
+ * Creates a new document in the "friendRequests" collection.
+ */
+export async function sendFriendRequest(targetUserId) {
+  const auth = getAuth();
+  const user = auth.currentUser;
+  if (!user) throw new Error("No user is signed in");
+
+  await addDoc(collection(db, "friendRequests"), {
+    from: user.uid,
+    to: targetUserId,
+    status: "pending",  // other statuses could be 'accepted' or 'rejected'
+    timestamp: new Date(),
+  });
+}
+
+/**
+ * Accept a friend request.
+ * Updates the friend request document's status and creates a new friendship document.
+ * @param {string} requestId - The ID of the friend request document.
+ * @param {string} fromUserId - The UID of the user who sent the request.
+ */
+export async function acceptFriendRequest(requestId, fromUserId) {
+  const auth = getAuth();
+  const user = auth.currentUser;
+  if (!user) throw new Error("No user is signed in");
+
+  // Update the friend request status to 'accepted'
+  const requestRef = doc(db, "friendRequests", requestId);
+  await updateDoc(requestRef, { status: "accepted" });
+
+  // Create a new friendship document in "friendships" collection
+  // Store the UIDs of both users and the timestamp when the friendship was established.
+  await addDoc(collection(db, "friendships"), {
+    users: [user.uid, fromUserId],
+    establishedAt: new Date(),
+  });
+}
+
+/**
+ * Reject a friend request.
+ * Updates the friend request document's status to "rejected".
+ * @param {string} requestId - The ID of the friend request document.
+ */
+export async function rejectFriendRequest(requestId) {
+  const auth = getAuth();
+  const user = auth.currentUser;
+  if (!user) throw new Error("No user is signed in");
+
+  const requestRef = doc(db, "friendRequests", requestId);
+  await updateDoc(requestRef, { status: "rejected" });
+}
+
+/**
+ * Retrieve pending friend requests for the current user.
+ * Queries the "friendRequests" collection where "to" equals the current user's UID and status is "pending".
+ */
+export async function getPendingFriendRequests() {
+  const auth = getAuth();
+  const user = auth.currentUser;
+  if (!user) throw new Error("No user is signed in");
+
+  const requestsQuery = query(
+    collection(db, "friendRequests"),
+    where("to", "==", user.uid),
+    where("status", "==", "pending")
+  );
+  const querySnapshot = await getDocs(requestsQuery);
+  return querySnapshot.docs.map(doc => ({
+    id: doc.id,
+    ...doc.data()
+  }));
+}
+
+/**
+ * Retrieve the list of friendships for the current user.
+ * Looks for documents in "friendships" where the current user's UID is in the "users" array.
+ */
+export async function getFriendships() {
+  const auth = getAuth();
+  const user = auth.currentUser;
+  if (!user) throw new Error("No user is signed in");
+
+  const friendshipsQuery = query(
+    collection(db, "friendships"),
+    where("users", "array-contains", user.uid)
+  );
+  const querySnapshot = await getDocs(friendshipsQuery);
+  return querySnapshot.docs.map(doc => ({
+    id: doc.id,
+    ...doc.data()
+  }));
 }

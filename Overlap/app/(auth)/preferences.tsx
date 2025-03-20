@@ -117,7 +117,7 @@ export default function PreferencesScreen() {
         .sort((a, b) => (a.rank as number) - (b.rank as number))
         .map((b) => b.label);
 
-      await saveProfileData(finalRanks);
+      await saveProfileData({ topCategories: finalRanks, name: '', bio: '', avatarUrl: '' });
       await markPreferencesComplete();
       router.push("/home");
     } catch (error) {

@@ -109,7 +109,7 @@ function ProfileScreen() {
       }
     };
   }, [user]);
-
+  
   // Add a new collection
   const handleAddCollection = async () => {
     if (!newCollectionName.trim() || !user) return;
@@ -183,7 +183,11 @@ function ProfileScreen() {
       } catch (error) {
         console.error("Error signing out:", error);
       }
+    } else if (option === 'Friends') {
+      // Navigate to the Friends screen
+      router.push('/friends');
     }
+    // Handle other options like 'Account', 'Notifications', etc., as needed.
     setIsSettingsMenuVisible(false);
   };
 
@@ -267,6 +271,9 @@ function ProfileScreen() {
           </TouchableOpacity>
           <TouchableOpacity style={styles.settingsItem} onPress={() => handleSettingsOptionPress('Help')}>
             <Text style={styles.settingsText}>Help</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.settingsItem} onPress={() => handleSettingsOptionPress('Friends')}>
+            <Text style={styles.settingsText}>Friends</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.settingsItem} onPress={() => handleSettingsOptionPress('Logout')}>
             <Text style={[styles.settingsText, { color: '#F44336' }]}>Logout</Text>

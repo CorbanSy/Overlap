@@ -12,6 +12,7 @@ import {
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
 import { getAuth } from 'firebase/auth';
+import { saveProfileData } from '../app/utils/storage';
 
 ///////////////////////////
 // ProfilePicture Component
@@ -102,9 +103,20 @@ const FullProfileInfo: React.FC = () => {
   const [tagline, setTagline] = useState('Always up for an adventure!');
   const [isEditing, setIsEditing] = useState(false);
   
-  const handleSaveEdits = () => {
-    setIsEditing(false);
+  const handleSaveEdits = async () => {
+    try {
+      await saveProfileData({
+        name: name,
+        bio: tagline,
+        avatarUrl: profileUri || null, // use null if profileUri is undefined
+        topCategories: [] // if applicable
+      });
+      setIsEditing(false);
+    } catch (error) {
+      console.error("Error saving profile:", error);
+    }
   };
+  
 
   return (
     <View style={styles.fullProfileSection}>
