@@ -63,7 +63,7 @@ const FriendProfile = () => {
         {profileData.avatarUrl ? (
           <Image source={{ uri: profileData.avatarUrl }} style={styles.avatar} />
         ) : (
-          <Image source={require('../assets/images/profile.png')} style={styles.avatar} />
+          <Image source={require('../../assets/images/profile.png')} style={styles.avatar} />
         )}
         <Text style={styles.name}>{profileData.name || 'No Name'}</Text>
         {/* Optionally, you might include an email field if it's stored */}

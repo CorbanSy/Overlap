@@ -1,0 +1,205 @@
+// MyMeetupsScreen.tsx
+import React, { useState, useEffect } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, FlatList, ActivityIndicator } from 'react-native';
+import { getUserMeetups, removeMeetup, updateMeetup, getPendingMeetupInvites } from '../utils/storage';
+import MeetupCard from '../../components/MeetupCard';
+import { useRouter } from 'expo-router';
+
+const MyMeetupsScreen = ({ onBack }: { onBack: () => void }) => {
+  const [meetups, setMeetups] = useState<any[]>([]);
+  const [pendingInvites, setPendingInvites] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const router = useRouter();
+
+  useEffect(() => {
+    const fetchMeetups = async () => {
+      try {
+        const data = await getUserMeetups();
+        setMeetups(data);
+      } catch (error) {
+        console.error('Error fetching meetups:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    const fetchInvites = async () => {
+      try {
+        const invites = await getPendingMeetupInvites();
+        setPendingInvites(invites);
+      } catch (error) {
+        console.error('Error fetching meetup invites:', error);
+      }
+    };
+
+    fetchMeetups();
+    fetchInvites();
+  }, []);
+
+  const handleRemoveMeetup = async (meetupId: string) => {
+    try {
+      await removeMeetup(meetupId);
+      setMeetups(prev => prev.filter(meetup => meetup.id !== meetupId));
+    } catch (error) {
+      console.error('Error removing meetup:', error);
+    }
+  };
+
+  const handleStartMeetup = async (meetupId: string) => {
+    try {
+      await updateMeetup({ id: meetupId, ongoing: true });
+      setMeetups(prev =>
+        prev.map(m => (m.id === meetupId ? { ...m, ongoing: true } : m))
+      );
+      router.push('/startMeetUp');
+    } catch (error) {
+      console.error('Error starting meetup:', error);
+    }
+  };
+
+  const handleStopMeetup = async (meetupId: string) => {
+    try {
+      await updateMeetup({ id: meetupId, ongoing: false });
+      setMeetups(prev =>
+        prev.map(m => (m.id === meetupId ? { ...m, ongoing: false } : m))
+      );
+    } catch (error) {
+      console.error('Error stopping meetup:', error);
+    }
+  };
+
+  if (loading) {
+    return (
+      <View style={styles.center}>
+        <ActivityIndicator color="#FFFFFF" />
+      </View>
+    );
+  }
+
+  // Separate meetups into regular and ongoing groups.
+  const regularMeetups = meetups.filter(m => !m.ongoing);
+  const ongoingMeetups = meetups.filter(m => m.ongoing);
+
+  return (
+    <View style={styles.container}>
+      <View style={styles.headerRow}>
+        <Text style={styles.title}>My Meetups</Text>
+      </View>
+
+      {regularMeetups.length === 0 ? (
+        <Text style={styles.noMeetupsText}>You have no meetups.</Text>
+      ) : (
+        <FlatList
+          data={regularMeetups}
+          keyExtractor={(item) => item.id.toString()}
+          renderItem={({ item }) => (
+            <MeetupCard 
+              meetup={item}
+              onRemove={() => handleRemoveMeetup(item.id)}
+              onStart={handleStartMeetup}
+              onStop={handleStopMeetup}
+            />
+          )}
+        />
+      )}
+
+      <View style={styles.ongoingGroupContainer}>
+        <Text style={styles.ongoingGroupTitle}>Ongoing Meetup Group</Text>
+        {ongoingMeetups.length === 0 ? (
+          <Text style={styles.ongoingGroupPlaceholder}>No ongoing meetups.</Text>
+        ) : (
+          <FlatList
+            data={ongoingMeetups}
+            keyExtractor={(item) => item.id.toString()}
+            renderItem={({ item }) => (
+              <MeetupCard 
+                meetup={item}
+                onRemove={() => handleRemoveMeetup(item.id)}
+                onStart={handleStartMeetup}
+                onStop={handleStopMeetup}
+              />
+            )}
+          />
+        )}
+      </View>
+
+      <TouchableOpacity style={styles.backButton} onPress={onBack}>
+        <Text style={styles.buttonText}>Back</Text>
+      </TouchableOpacity>
+    </View>
+  );
+};
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#0D1117',
+    padding: 20,
+    paddingTop: 40,
+  },
+  headerRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  redCircle: {
+    backgroundColor: 'red',
+    borderRadius: 10,
+    width: 20,
+    height: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  redCircleText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: 'bold',
+  },
+  center: {
+    flex: 1,
+    backgroundColor: '#0D1117',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  title: {
+    fontSize: 32,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+  },
+  noMeetupsText: {
+    fontSize: 16,
+    color: '#AAAAAA',
+    textAlign: 'center',
+    marginTop: 20,
+  },
+  backButton: {
+    backgroundColor: '#1B1F24',
+    padding: 15,
+    borderRadius: 30,
+    alignItems: 'center',
+    marginTop: 20,
+  },
+  buttonText: {
+    fontSize: 18,
+    color: '#FFFFFF',
+  },
+  ongoingGroupContainer: {
+    backgroundColor: '#1B1F24',
+    padding: 15,
+    borderRadius: 8,
+    marginTop: 20,
+  },
+  ongoingGroupTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+    marginBottom: 5,
+  },
+  ongoingGroupPlaceholder: {
+    fontSize: 16,
+    color: '#CCCCCC',
+  },
+});
+
+export default MyMeetupsScreen;

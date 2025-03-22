@@ -151,22 +151,39 @@ export async function storeReviewsForPlace(placeId, reviews) {
    5) Firestore: Create a Meetup Document
       /meetups/{autoId}
    ------------------------------------------------------------------ */
-export async function createMeetup(meetupData) {
-  const auth = getAuth();
-  const user = auth.currentUser;
-  if (!user) throw new Error('No user is signed in');
-
-  const data = {
-    ...meetupData,
-    creatorId: user.uid,
-    participants: [user.uid],
-    createdAt: new Date(),
-  };
-
+   export async function createMeetup(meetupData) {
+    const auth = getAuth();
+    const user = auth.currentUser;
+    if (!user) throw new Error('No user is signed in');
+  
+    // Expect meetupData.friends to be an array of friend objects (with id, name, etc.)
+    const invitedFriends = meetupData.friends || [];
+  
+    const data = {
+      ...meetupData,
+      creatorId: user.uid,
+      // Include current user and all invited friend IDs as participants.
+      participants: [user.uid, ...invitedFriends.map(friend => friend.id)],
+      // Save the full friend objects for UI display.
+      friends: invitedFriends,
+      createdAt: new Date(),
+    };
+    // Create the meetup document.
   const meetupRef = await addDoc(collection(db, "meetups"), data);
+
+  // Send an invite to each friend.
+  if (invitedFriends.length > 0) {
+    invitedFriends.forEach(async (friend) => {
+      try {
+        await sendMeetupInvite(meetupRef.id, friend);
+      } catch (error) {
+        console.error(`Error sending invite to ${friend.id}:`, error);
+      }
+    });
+  }
+  
   return meetupRef.id;
 }
-
 /* ------------------------------------------------------------------
    6) Firestore: Get User's Meetups
       Retrieves meetups the user created or joined.
@@ -259,21 +276,19 @@ export async function rejectFriendRequest(requestId) {
  * Retrieve pending friend requests for the current user.
  * Queries the "friendRequests" collection where "to" equals the current user's UID and status is "pending".
  */
-export async function getPendingFriendRequests() {
+// Fetch pending meetup invites for the current user.
+export async function getPendingMeetupInvites() {
   const auth = getAuth();
   const user = auth.currentUser;
   if (!user) throw new Error("No user is signed in");
 
-  const requestsQuery = query(
-    collection(db, "friendRequests"),
-    where("to", "==", user.uid),
+  const invitesQuery = query(
+    collection(db, "meetupInvites"),
+    where("invitedFriendId", "==", user.uid),
     where("status", "==", "pending")
   );
-  const querySnapshot = await getDocs(requestsQuery);
-  return querySnapshot.docs.map(doc => ({
-    id: doc.id,
-    ...doc.data()
-  }));
+  const querySnapshot = await getDocs(invitesQuery);
+  return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 }
 
 /**
@@ -306,17 +321,20 @@ export async function updateMeetup(meetupData) {
     throw new Error('No meetup id provided');
   }
   const meetupRef = doc(db, 'meetups', meetupData.id);
-  // You can update only the fields that might change.
-  // Alternatively, if you want to update all fields, you can spread the meetupData.
-  await updateDoc(meetupRef, {
-    eventName: meetupData.eventName,
-    mood: meetupData.mood,
-    description: meetupData.description,
-    restrictions: meetupData.restrictions,
-    // Add additional fields if necessary.
-    // Note: Do not include fields like "id" if not stored in the document.
-  });
+  
+  // Build an object with only the fields that are defined.
+  const updateFields = {};
+  if (meetupData.eventName !== undefined) updateFields.eventName = meetupData.eventName;
+  if (meetupData.mood !== undefined) updateFields.mood = meetupData.mood;
+  if (meetupData.description !== undefined) updateFields.description = meetupData.description;
+  if (meetupData.restrictions !== undefined) updateFields.restrictions = meetupData.restrictions;
+  if (meetupData.ongoing !== undefined) updateFields.ongoing = meetupData.ongoing;
+  // Allow updating the friends list as well:
+  if (meetupData.friends !== undefined) updateFields.friends = meetupData.friends;
+  
+  await updateDoc(meetupRef, updateFields);
 }
+
 
 // storage.js
 
@@ -326,4 +344,45 @@ export async function removeMeetup(meetupId) {
   }
   const meetupRef = doc(db, 'meetups', meetupId);
   await deleteDoc(meetupRef);
+}
+
+// New function to send a meetup invite to a friend.
+export async function sendMeetupInvite(meetupId, friend) {
+  const auth = getAuth();
+  const user = auth.currentUser;
+  if (!user) throw new Error('No user is signed in');
+  
+  await addDoc(collection(db, "meetupInvites"), {
+    meetupId,
+    invitedBy: user.uid,
+    invitedFriendId: friend.id,
+    status: "pending", // Could later be updated to 'accepted' or 'rejected'
+    createdAt: new Date(),
+  });
+}
+// Accept an invite: update its status and add the user to the meetup's participants.
+export async function acceptMeetupInvite(inviteId, meetupId) {
+  // Update the invite document's status.
+  const inviteRef = doc(db, "meetupInvites", inviteId);
+  await updateDoc(inviteRef, { status: "accepted" });
+
+  // Optionally, update the corresponding meetup document to ensure the user is in the participants.
+  const meetupRef = doc(db, "meetups", meetupId);
+  const meetupSnap = await getDoc(meetupRef);
+  if (meetupSnap.exists()) {
+    const meetupData = meetupSnap.data();
+    const auth = getAuth();
+    const user = auth.currentUser;
+    if (!meetupData.participants.includes(user.uid)) {
+      await updateDoc(meetupRef, {
+        participants: [...meetupData.participants, user.uid]
+      });
+    }
+  }
+}
+
+// Decline an invite: update its status.
+export async function declineMeetupInvite(inviteId) {
+  const inviteRef = doc(db, "meetupInvites", inviteId);
+  await updateDoc(inviteRef, { status: "declined" });
 }

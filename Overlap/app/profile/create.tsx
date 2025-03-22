@@ -12,10 +12,10 @@ import {
 import DateTimePicker from '@react-native-community/datetimepicker';
 import Slider from '@react-native-community/slider';
 import { Picker } from '@react-native-picker/picker';
-import { createMeetup, getFriendships } from './utils/storage';
+import { createMeetup, getFriendships } from '../utils/storage';
 import { getAuth } from 'firebase/auth';
 import { getDoc, doc } from 'firebase/firestore';
-import { db } from '../FirebaseConfig';
+import { db } from '../../FirebaseConfig';
 
 const activityLabels = [
   "Dining", "Fitness", "Outdoors", "Movies", "Gaming",

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   View, 
   Text, 
@@ -6,24 +6,38 @@ import {
   StyleSheet, 
   Image
 } from 'react-native';
-import CreateMeetupScreen from '../create';
-import MyMeetupsScreen from '../MyMeetupsScreen'; // Import your MyMeetupsScreen
+import CreateMeetupScreen from '../profile/create';
+import MyMeetupsScreen from '../meetup/MyMeetupsScreen';
+import { getPendingMeetupInvites } from '../utils/storage';
+import { useRouter } from 'expo-router';
 
 const Meetup = () => {
   const [showCreate, setShowCreate] = useState(false);
   const [showMyMeetups, setShowMyMeetups] = useState(false);
+  const [pendingInvites, setPendingInvites] = useState([]);
+  const router = useRouter();
 
-  // If we're in "create" mode, render CreateMeetupScreen
+  useEffect(() => {
+    const fetchInvites = async () => {
+      try {
+        const invites = await getPendingMeetupInvites();
+        setPendingInvites(invites);
+      } catch (error) {
+        console.error('Error fetching meetup invites:', error);
+      }
+    };
+
+    fetchInvites();
+  }, []);
+
   if (showCreate) {
     return <CreateMeetupScreen onBack={() => setShowCreate(false)} />;
   }
 
-  // If we're in "my meetups" mode, render MyMeetupsScreen
   if (showMyMeetups) {
     return <MyMeetupsScreen onBack={() => setShowMyMeetups(false)} />;
   }
 
-  // Otherwise, render the main Meetup screen
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Meet Up</Text>
@@ -45,7 +59,7 @@ const Meetup = () => {
           </TouchableOpacity>
         </View>
 
-        {/* Join Button */}
+        {/* Join Button with pending invites badge */}
         <View style={styles.buttonWrapper}>
           <View style={styles.iconWrapper}>
             <Image 
@@ -55,9 +69,14 @@ const Meetup = () => {
           </View>
           <TouchableOpacity 
             style={styles.button}
-            onPress={() => alert("Join feature not implemented yet")}
+            onPress={() => router.push('/meetupInvites')}
           >
             <Text style={styles.buttonText}>Join</Text>
+            {pendingInvites.length > 0 && (
+              <View style={styles.redCircle}>
+                <Text style={styles.redCircleText}>{pendingInvites.length}</Text>
+              </View>
+            )}
           </TouchableOpacity>
         </View>
       </View>
@@ -84,7 +103,6 @@ const Meetup = () => {
 export default Meetup;
 
 const styles = StyleSheet.create({
-  // Same as before
   container: {
     flex: 1,
     justifyContent: 'center',
@@ -126,11 +144,26 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     borderRadius: 30,
+    flexDirection: 'row'
   },
   buttonText: {
     fontSize: 20,
     fontWeight: 'bold',
     color: '#FFFFFF',
+  },
+  redCircle: {
+    backgroundColor: 'red',
+    borderRadius: 10,
+    width: 20,
+    height: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginLeft: 5,
+  },
+  redCircleText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: 'bold',
   },
   largeButton: {
     flexDirection: 'row',

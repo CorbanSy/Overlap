@@ -1,17 +1,23 @@
-// MeetupCard.tsx
 import React, { useState } from 'react';
 import { TouchableOpacity, Text, StyleSheet, View } from 'react-native';
-import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 
 interface MeetupCardProps {
   meetup: any;
   onEdit?: () => void;
   onRemove?: () => void;
+  onStart?: (meetupId: string) => void;
+  onStop?: (meetupId: string) => void;
 }
 
-const MeetupCard: React.FC<MeetupCardProps> = ({ meetup, onEdit, onRemove }) => {
+const MeetupCard: React.FC<MeetupCardProps> = ({
+  meetup,
+  onEdit,
+  onRemove,
+  onStart,
+  onStop,
+}) => {
   const [expanded, setExpanded] = useState(false);
-  const router = useRouter();
 
   const handlePress = () => {
     setExpanded(prev => !prev);
@@ -21,6 +27,15 @@ const MeetupCard: React.FC<MeetupCardProps> = ({ meetup, onEdit, onRemove }) => 
     meetup.description.length > 100
       ? meetup.description.substring(0, 100) + '...'
       : meetup.description;
+
+  // Handler for the Start/Stop button.
+  const handleToggleMeetup = () => {
+    if (meetup.ongoing) {
+      onStop && onStop(meetup.id);
+    } else {
+      onStart && onStart(meetup.id);
+    }
+  };
 
   return (
     <TouchableOpacity style={styles.cardContainer} onPress={handlePress}>
@@ -38,37 +53,59 @@ const MeetupCard: React.FC<MeetupCardProps> = ({ meetup, onEdit, onRemove }) => 
             Date: {new Date(meetup.date).toLocaleDateString()}
           </Text>
           <Text style={styles.detailsText}>
-            Time: {new Date(meetup.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            Time:{' '}
+            {new Date(meetup.time).toLocaleTimeString([], {
+              hour: '2-digit',
+              minute: '2-digit',
+            })}
           </Text>
           <Text style={styles.detailsText}>
-            Price Range: {meetup.priceRange === 0 ? 'Free' : "$".repeat(Math.ceil(meetup.priceRange / 20))} ({meetup.priceRange})
+            Price Range:{' '}
+            {meetup.priceRange === 0
+              ? 'Free'
+              : "$".repeat(Math.ceil(meetup.priceRange / 20))} ({meetup.priceRange})
           </Text>
-          <Text style={styles.detailsText}>Description: {meetup.description}</Text>
-          <Text style={styles.detailsText}>Restrictions: {meetup.restrictions}</Text>
-          
+          <Text style={styles.detailsText}>
+            Description: {meetup.description}
+          </Text>
+          <Text style={styles.detailsText}>
+            Restrictions: {meetup.restrictions}
+          </Text>
+
           <Text style={styles.detailsSubTitle}>Friends in this Meetup:</Text>
           {meetup.friends && meetup.friends.length > 0 ? (
             meetup.friends.map((friend: any) => (
-              <Text key={friend.id} style={styles.friendText}>{friend.name}</Text>
+              <Text key={friend.id} style={styles.friendText}>
+                {friend.name}
+              </Text>
             ))
           ) : (
             <Text style={styles.detailsText}>No friends added yet.</Text>
           )}
 
-          <TouchableOpacity
-            style={styles.startButton}
-            onPress={() => router.push('/startMeetUp')}
-          >
-            <Text style={styles.buttonText}>Start Meetup</Text>
+          <TouchableOpacity style={styles.startButton} onPress={handleToggleMeetup}>
+            <Ionicons
+              name="play-circle-outline"
+              size={24}
+              color="#FFFFFF"
+              style={styles.startIcon}
+            />
+            <Text style={styles.startButtonText}>
+              {meetup.ongoing ? 'Stop Meetup' : 'Start Meetup'}
+            </Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.editButton} onPress={onEdit}>
-            <Text style={styles.buttonText}>Edit Meetup</Text>
-          </TouchableOpacity>
-          {onRemove && (
-            <TouchableOpacity style={styles.removeButton} onPress={onRemove}>
-              <Text style={styles.buttonText}>Remove Meetup</Text>
+
+          <View style={styles.actionRow}>
+            {/* Always show pencil icon */}
+            <TouchableOpacity style={styles.iconButton} onPress={onEdit || (() => {})}>
+              <Ionicons name="pencil-outline" size={20} color="#4DA6FF" />
             </TouchableOpacity>
-          )}
+            {onRemove && (
+              <TouchableOpacity style={styles.iconButton} onPress={onRemove}>
+                <Ionicons name="trash-outline" size={20} color="red" />
+              </TouchableOpacity>
+            )}
+          </View>
         </View>
       )}
     </TouchableOpacity>
@@ -117,30 +154,29 @@ const styles = StyleSheet.create({
     marginBottom: 5,
   },
   startButton: {
+    flexDirection: 'row',
     backgroundColor: '#FFC107',
-    padding: 15,
+    paddingVertical: 10,
+    paddingHorizontal: 15,
     borderRadius: 30,
     alignItems: 'center',
     marginTop: 10,
   },
-  editButton: {
-    backgroundColor: '#2D7DD2',
-    padding: 15,
-    borderRadius: 30,
-    alignItems: 'center',
-    marginTop: 10,
+  startIcon: {
+    marginRight: 8,
   },
-  removeButton: {
-    backgroundColor: '#DC3545',
-    padding: 15,
-    borderRadius: 30,
-    alignItems: 'center',
-    marginTop: 10,
-  },
-  buttonText: {
+  startButtonText: {
     fontSize: 18,
     color: '#FFFFFF',
-    textAlign: 'center',
+  },
+  actionRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    marginTop: 10,
+  },
+  iconButton: {
+    marginLeft: 10,
+    padding: 6,
   },
 });
 

@@ -21,7 +21,7 @@ import {
   addDoc 
 } from 'firebase/firestore';
 import { useRouter } from 'expo-router';
-import { sendFriendRequest } from './utils/storage';
+import { sendFriendRequest } from '../utils/storage';
 
 function FriendsScreen() {
   const [friendships, setFriendships] = useState([]);

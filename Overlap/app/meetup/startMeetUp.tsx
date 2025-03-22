@@ -1,6 +1,6 @@
 import React from 'react';
 import { SafeAreaView, StyleSheet } from 'react-native';
-import SwipingScreen from '../components/swiping'; // Adjust the import path as needed
+import SwipingScreen from '../../components/swiping'; // Adjust the import path as needed
 
 const StartMeetupScreen = () => {
   return (
