@@ -295,3 +295,35 @@ export async function getFriendships() {
     ...doc.data()
   }));
 }
+
+/**
+ * Update an existing meetup document.
+ * Expects meetupData to include the meetup's ID and the updated fields.
+ * For example: { id, eventName, mood, description, restrictions, ... }
+ */
+export async function updateMeetup(meetupData) {
+  if (!meetupData.id) {
+    throw new Error('No meetup id provided');
+  }
+  const meetupRef = doc(db, 'meetups', meetupData.id);
+  // You can update only the fields that might change.
+  // Alternatively, if you want to update all fields, you can spread the meetupData.
+  await updateDoc(meetupRef, {
+    eventName: meetupData.eventName,
+    mood: meetupData.mood,
+    description: meetupData.description,
+    restrictions: meetupData.restrictions,
+    // Add additional fields if necessary.
+    // Note: Do not include fields like "id" if not stored in the document.
+  });
+}
+
+// storage.js
+
+export async function removeMeetup(meetupId) {
+  if (!meetupId) {
+    throw new Error('No meetup id provided');
+  }
+  const meetupRef = doc(db, 'meetups', meetupId);
+  await deleteDoc(meetupRef);
+}
