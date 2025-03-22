@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,17 +7,37 @@ import {
   TouchableOpacity,
   Alert,
   StyleSheet,
+  Modal,
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import Slider from '@react-native-community/slider';
 import { Picker } from '@react-native-picker/picker';
-import { createMeetup } from './utils/storage';
+import { createMeetup, getFriendships } from './utils/storage';
+import { getAuth } from 'firebase/auth';
+import { getDoc, doc } from 'firebase/firestore';
+import { db } from '../FirebaseConfig';
 
 const activityLabels = [
   "Dining", "Fitness", "Outdoors", "Movies", "Gaming",
   "Social", "Music", "Shopping", "Travel", "Art",
   "Relaxing", "Learning", "Cooking", "Nightlife",
 ];
+
+// Helper to fetch a friend's profile data
+const getFriendProfile = async (friendId) => {
+  try {
+    const profileRef = doc(db, 'users', friendId, 'profile', 'main');
+    const snap = await getDoc(profileRef);
+    if (snap.exists()) {
+      return { id: friendId, name: snap.data().name || friendId };
+    } else {
+      return { id: friendId, name: friendId }; // fallback if no profile data exists
+    }
+  } catch (error) {
+    console.error('Error fetching friend profile:', error);
+    return { id: friendId, name: friendId };
+  }
+};
 
 const CreateMeetupScreen = ({ onBack }) => {
   // Required field states
@@ -40,6 +60,33 @@ const CreateMeetupScreen = ({ onBack }) => {
   const [selectedCategory, setSelectedCategory] = useState(activityLabels[0]);
   const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
 
+  // New state variables for friend invites and friend list
+  const [showInviteModal, setShowInviteModal] = useState(false);
+  const [selectedFriends, setSelectedFriends] = useState([]);
+  const [friendsList, setFriendsList] = useState([]);
+
+  // Fetch real friends from Firestore on mount
+  useEffect(() => {
+    const fetchFriends = async () => {
+      try {
+        const friendships = await getFriendships();
+        const auth = getAuth();
+        const currentUserId = auth.currentUser.uid;
+        // For each friendship, get the friend id (the one that's not the current user)
+        const friendIds = friendships.map(f => 
+          f.users.find(id => id !== currentUserId)
+        );
+        // Fetch profile details for each friend
+        const friendProfiles = await Promise.all(friendIds.map(getFriendProfile));
+        setFriendsList(friendProfiles);
+      } catch (error) {
+        console.error('Error fetching friends:', error);
+      }
+    };
+
+    fetchFriends();
+  }, []);
+
   const onChangeDate = (event, selectedDate) => {
     setShowDatePicker(false);
     if (selectedDate) setDate(selectedDate);
@@ -48,6 +95,20 @@ const CreateMeetupScreen = ({ onBack }) => {
   const onChangeTime = (event, selectedTime) => {
     setShowTimePicker(false);
     if (selectedTime) setTime(selectedTime);
+  };
+
+  // Toggle friend selection in the modal
+  const toggleFriend = (friend) => {
+    if (selectedFriends.some(f => f.id === friend.id)) {
+      setSelectedFriends(selectedFriends.filter(f => f.id !== friend.id));
+    } else {
+      setSelectedFriends([...selectedFriends, friend]);
+    }
+  };
+
+  // Confirm friend selections and close the modal
+  const confirmInvites = () => {
+    setShowInviteModal(false);
   };
 
   const handleCreate = async () => {
@@ -65,6 +126,7 @@ const CreateMeetupScreen = ({ onBack }) => {
       priceRange,
       description,
       restrictions,
+      invitedFriends: selectedFriends, // Include selected friends in the meetup data
     };
 
     try {
@@ -209,10 +271,21 @@ const CreateMeetupScreen = ({ onBack }) => {
         onChangeText={setRestrictions}
       />
       {/* INVITE FRIENDS BUTTON */}
-      <TouchableOpacity style={styles.inviteButton}>
+      <TouchableOpacity style={styles.inviteButton} onPress={() => setShowInviteModal(true)}>
         <Text style={styles.buttonText}>Invite Friends</Text>
       </TouchableOpacity>
       <Text style={styles.infoText}>Friends can also be invited after creation</Text>
+
+      {/* Display selected friends */}
+      {selectedFriends.length > 0 && (
+        <View style={styles.selectedFriendsContainer}>
+          <Text style={styles.selectedFriendsTitle}>Invited Friends:</Text>
+          {selectedFriends.map(friend => (
+            <Text key={friend.id} style={styles.selectedFriendName}>{friend.name}</Text>
+          ))}
+        </View>
+      )}
+
       {/* CREATE / BACK BUTTONS */}
       <View style={styles.bottomButtons}>
         <TouchableOpacity
@@ -225,207 +298,249 @@ const CreateMeetupScreen = ({ onBack }) => {
           <Text style={styles.buttonText}>Back</Text>
         </TouchableOpacity>
       </View>
-      {/* Note at the bottom */}
       <Text style={styles.note}>Note: All fields can be changed in the future.</Text>
+
+      {/* INVITE FRIENDS MODAL */}
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={showInviteModal}
+        onRequestClose={() => setShowInviteModal(false)}
+      >
+        <View style={modalStyles.centeredView}>
+          <View style={modalStyles.modalView}>
+            <ScrollView style={{ maxHeight: 300 }}>
+              {friendsList.map(friend => (
+                <TouchableOpacity key={friend.id} onPress={() => toggleFriend(friend)}>
+                  <View style={modalStyles.friendItem}>
+                    <View style={
+                      selectedFriends.some(f => f.id === friend.id)
+                        ? modalStyles.checkedCircle
+                        : modalStyles.uncheckedCircle
+                    } />
+                    <Text style={modalStyles.friendName}>{friend.name}</Text>
+                  </View>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+            <TouchableOpacity style={modalStyles.confirmButton} onPress={confirmInvites}>
+              <Text style={modalStyles.confirmButtonText}>Confirm</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </ScrollView>
   );
 };
 
 const styles = StyleSheet.create({
-    // Main screen styles
-    container: {
-      flex: 1,
-      justifyContent: 'center',
-      alignItems: 'center',
-      backgroundColor: '#0D1117',
-    },
-    title: {
-      fontSize: 32,
-      fontWeight: 'bold',
-      color: '#FFFFFF',
-      marginBottom: 50,
-    },
-    buttonContainer: {
-      flexDirection: 'row',
-      marginBottom: 40,
-    },
-    buttonWrapper: {
-      alignItems: 'center',
-      marginHorizontal: 20,
-    },
-    iconWrapper: {
-      width: 100,
-      height: 100,
-      borderRadius: 50,
-      backgroundColor: '#1B1F24',
-      justifyContent: 'center',
-      alignItems: 'center',
-      marginBottom: 10,
-    },
-    icon: {
-      width: 60,
-      height: 60,
-      resizeMode: 'contain',
-    },
-    button: {
-      width: 140,
-      height: 60,
-      backgroundColor: '#1B1F24',
-      justifyContent: 'center',
-      alignItems: 'center',
-      borderRadius: 30,
-    },
-    largeButton: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
-      width: 250,
-      height: 80,
-      backgroundColor: '#1B1F24',
-      borderRadius: 40,
-      marginBottom: 30,
-    },
-    buttonText: {
-      fontSize: 20,
-      fontWeight: 'bold',
-      color: '#FFFFFF',
-    },
-    meetupsIcon: {
-      width: 30,
-      height: 30,
-      marginRight: 10,
-      resizeMode: 'contain',
-    },
-    infoText: {
-      fontSize: 16,
-      color: '#AAAAAA',
-      textAlign: 'center',
-      marginTop: 10,
-    },
-    // Create screen styles
-    createContainer: {
-      flex: 1,
-      backgroundColor: '#0D1117',
-    },
-    scrollContent: {
-      padding: 20,
-      paddingBottom: 40,
-      paddingTop: 50, // extra top padding
-    },
-    createTitle: {
-      fontSize: 32,
-      fontWeight: 'bold',
-      color: '#FFFFFF',
-      marginBottom: 20,
-      textAlign: 'center',
-    },
-    row: {
-      flexDirection: 'row',
-      marginBottom: 15,
-    },
-    inputHalf: {
-      flex: 1,
-      marginHorizontal: 5,
-    },
-    input: {
-      backgroundColor: '#1B1F24',
-      color: '#FFFFFF',
-      padding: 15,
-      borderRadius: 8,
-      marginBottom: 15,
-      fontSize: 16,
-    },
-    pickerContainer: {
-      backgroundColor: '#1B1F24',
-      borderRadius: 8,
-      justifyContent: 'center',
-      padding: 10,
-    },
-    pickerText: {
-      color: '#FFFFFF',
-      fontSize: 16,
-    },
-    picker: {
-      height: 40,
-      width: '100%',
-      color: '#FFFFFF',
-    },
-    counterWrapper: {
-      backgroundColor: '#1B1F24',
-      borderRadius: 8,
-      padding: 10,
-      justifyContent: 'center',
-    },
-    label: {
-      color: '#FFFFFF',
-      fontSize: 16,
-      marginBottom: 5,
-    },
-    counterRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-    },
-    counterButton: {
-      backgroundColor: '#24292F',
-      borderRadius: 25,
-      width: 36,
-      height: 36,
-      justifyContent: 'center',
-      alignItems: 'center',
-    },
-    counterText: {
-      color: '#FFFFFF',
-      fontSize: 20,
-      fontWeight: 'bold',
-    },
-    counterValue: {
-      color: '#FFFFFF',
-      fontSize: 18,
-      marginHorizontal: 10,
-    },
-    priceRangeContainer: {
-      marginBottom: 15,
-    },
-    sliderLabel: {
-      color: '#FFFFFF',
-      fontSize: 16,
-      marginBottom: 5,
-    },
-    slider: {
-      width: '100%',
-      height: 40,
-    },
-    dateTimeBox: {
-      backgroundColor: '#1B1F24',
-      borderRadius: 8,
-      padding: 10,
-      justifyContent: 'center',
-    },
-    dateText: {
-      color: '#FFFFFF',
-      fontSize: 16,
-    },
-    inviteButton: {
-      width: '100%',
-      height: 60,
-      backgroundColor: '#1B1F24',
-      justifyContent: 'center',
-      alignItems: 'center',
-      borderRadius: 30,
-      marginVertical: 10,
-    },
-    bottomButtons: {
-      flexDirection: 'row',
-      marginTop: 30,
-      justifyContent: 'center',
-    },
-    note: {
-      fontSize: 14,
-      color: '#AAAAAA',
-      textAlign: 'center',
-      marginTop: 20,
-    },
-  });
+  createContainer: {
+    flex: 1,
+    backgroundColor: '#0D1117',
+  },
+  scrollContent: {
+    padding: 20,
+    paddingBottom: 40,
+    paddingTop: 50,
+  },
+  createTitle: {
+    fontSize: 32,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+    marginBottom: 20,
+    textAlign: 'center',
+  },
+  row: {
+    flexDirection: 'row',
+    marginBottom: 15,
+  },
+  inputHalf: {
+    flex: 1,
+    marginHorizontal: 5,
+  },
+  input: {
+    backgroundColor: '#1B1F24',
+    color: '#FFFFFF',
+    padding: 15,
+    borderRadius: 8,
+    marginBottom: 15,
+    fontSize: 16,
+  },
+  pickerContainer: {
+    backgroundColor: '#1B1F24',
+    borderRadius: 8,
+    justifyContent: 'center',
+    padding: 10,
+  },
+  pickerText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+  },
+  picker: {
+    height: 40,
+    width: '100%',
+    color: '#FFFFFF',
+  },
+  counterWrapper: {
+    backgroundColor: '#1B1F24',
+    borderRadius: 8,
+    padding: 10,
+    justifyContent: 'center',
+  },
+  label: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    marginBottom: 5,
+  },
+  counterRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  counterButton: {
+    backgroundColor: '#24292F',
+    borderRadius: 25,
+    width: 36,
+    height: 36,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  counterText: {
+    color: '#FFFFFF',
+    fontSize: 20,
+    fontWeight: 'bold',
+  },
+  counterValue: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    marginHorizontal: 10,
+  },
+  priceRangeContainer: {
+    marginBottom: 15,
+  },
+  sliderLabel: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    marginBottom: 5,
+  },
+  slider: {
+    width: '100%',
+    height: 40,
+  },
+  dateTimeBox: {
+    backgroundColor: '#1B1F24',
+    borderRadius: 8,
+    padding: 10,
+    justifyContent: 'center',
+  },
+  dateText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+  },
+  inviteButton: {
+    width: '100%',
+    height: 60,
+    backgroundColor: '#1B1F24',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 30,
+    marginVertical: 10,
+  },
+  bottomButtons: {
+    flexDirection: 'row',
+    marginTop: 30,
+    justifyContent: 'center',
+  },
+  button: {
+    width: 140,
+    height: 60,
+    backgroundColor: '#1B1F24',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 30,
+  },
+  buttonText: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+  },
+  infoText: {
+    fontSize: 16,
+    color: '#AAAAAA',
+    textAlign: 'center',
+    marginTop: 10,
+  },
+  note: {
+    fontSize: 14,
+    color: '#AAAAAA',
+    textAlign: 'center',
+    marginTop: 20,
+  },
+  selectedFriendsContainer: {
+    marginVertical: 10,
+    padding: 10,
+    backgroundColor: '#1B1F24',
+    borderRadius: 8,
+  },
+  selectedFriendsTitle: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    marginBottom: 5,
+  },
+  selectedFriendName: {
+    color: '#FFFFFF',
+    fontSize: 14,
+  },
+});
+
+const modalStyles = StyleSheet.create({
+  centeredView: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.5)',
+  },
+  modalView: {
+    width: '80%',
+    backgroundColor: '#0D1117',
+    borderRadius: 8,
+    padding: 20,
+    alignItems: 'center',
+  },
+  friendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+  },
+  uncheckedCircle: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: '#FFFFFF',
+    marginRight: 10,
+  },
+  checkedCircle: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#1B1F24',
+    marginRight: 10,
+  },
+  friendName: {
+    color: '#FFFFFF',
+    fontSize: 16,
+  },
+  confirmButton: {
+    marginTop: 20,
+    backgroundColor: '#1B1F24',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 8,
+  },
+  confirmButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+  },
+});
 
 export default CreateMeetupScreen;
-
