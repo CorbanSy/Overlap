@@ -94,6 +94,7 @@ export async function likePlace(place) {
     rating: place.rating || 0,
     userRatingsTotal: place.userRatingsTotal || 0,
     photoReference: place.photoReference || null,
+    photos: place.photos ?? [],
     types: place.types || [],
     formatted_address: place.formatted_address || '',
     phoneNumber: place.phoneNumber || '',

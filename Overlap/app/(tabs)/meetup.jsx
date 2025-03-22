@@ -69,7 +69,7 @@ const Meetup = () => {
           </View>
           <TouchableOpacity 
             style={styles.button}
-            onPress={() => router.push('/meetupInvites')}
+            onPress={() => router.push('/meetup/join')}
           >
             <Text style={styles.buttonText}>Join</Text>
             {pendingInvites.length > 0 && (

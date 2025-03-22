@@ -185,7 +185,7 @@ function ProfileScreen() {
       }
     } else if (option === 'Friends') {
       // Navigate to the Friends screen
-      router.push('/friends');
+      router.push('/profile/friends');
     }
     // Handle other options like 'Account', 'Notifications', etc., as needed.
     setIsSettingsMenuVisible(false);

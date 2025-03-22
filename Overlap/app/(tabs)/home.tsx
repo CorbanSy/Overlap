@@ -407,22 +407,26 @@ export default function HomeScreen() {
 
   // Render single image function remains unchanged
   function renderSingleImage(item: any) {
-    if (!item.photos?.length) {
-      return (
-        <View style={[styles.imageWrapper, { justifyContent: 'center', alignItems: 'center' }]}>
-          <Text style={{ color: '#ccc' }}>No Photo</Text>
-        </View>
-      );
+    // If we do have an array of photos
+    if (item.photos?.length) {
+      const firstPhoto = item.photos[0];
+      const photoUrl = `https://maps.googleapis.com/maps/api/place/photo?maxwidth=800&photoreference=${firstPhoto.photo_reference}&key=${GOOGLE_PLACES_API_KEY}`;
+      return <Image source={{ uri: photoUrl }} style={[styles.imageWrapper, { resizeMode: 'cover' }]} />;
+    } 
+    // Otherwise, if you only have a single photoReference
+    else if (item.photoReference) {
+      const photoUrl = `https://maps.googleapis.com/maps/api/place/photo?maxwidth=800&photoreference=${item.photoReference}&key=${GOOGLE_PLACES_API_KEY}`;
+      return <Image source={{ uri: photoUrl }} style={[styles.imageWrapper, { resizeMode: 'cover' }]} />;
     }
-    const firstPhoto = item.photos[0];
-    const photoUrl = `https://maps.googleapis.com/maps/api/place/photo?maxwidth=800&photoreference=${firstPhoto.photo_reference}&key=${GOOGLE_PLACES_API_KEY}`;
+  
+    // Fallback: No photo
     return (
-      <Image
-        source={{ uri: photoUrl }}
-        style={[styles.imageWrapper, { resizeMode: 'cover' }]}
-      />
+      <View style={[styles.imageWrapper, { justifyContent: 'center', alignItems: 'center' }]}>
+        <Text style={{ color: '#ccc' }}>No Photo</Text>
+      </View>
     );
   }
+  
 
   /* Render each list item */
   const renderItem = ({ item }: { item: any }) => {
