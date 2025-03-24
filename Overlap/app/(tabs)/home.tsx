@@ -319,12 +319,25 @@ export default function HomeScreen() {
     }
   };
 
-  /* NEW: Handle Save press to open the collection modal */
-  const handleSavePress = (place: any) => {
+  const handleSavePress = async (place) => {
     if (!user) return;
-    setSelectedPlaceForCollection(place);
+    // Fetch detailed info to include photoReference
+    const details = await fetchPlaceDetailsFromGoogle(place.id);
+    const enrichedPlace = details
+      ? {
+          ...place,
+          name: details.name || place.name,
+          rating: details.rating || place.rating,
+          userRatingsTotal: details.user_ratings_total || place.userRatingsTotal,
+          photoReference: details.photos?.[0]?.photo_reference || null,
+          photos: details.photos ?? [],
+          types: details.types || place.types,
+        }
+      : place;
+    setSelectedPlaceForCollection(enrichedPlace);
     setCollectionModalVisible(true);
   };
+  
 
   /* fetch by keyword for Explore More category */
   const fetchPlacesByKeyword = async (keyword: string) => {

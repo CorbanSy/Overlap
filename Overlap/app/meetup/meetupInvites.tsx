@@ -1,7 +1,7 @@
 // MeetupInvitesScreen.tsx
 import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, FlatList, ActivityIndicator } from 'react-native';
-import { getPendingMeetupInvites, acceptMeetupInvite, declineMeetupInvite } from '../utils/storage';
+import { getPendingMeetupInvites, acceptMeetupInvite, declineMeetupInvite, getMeetupData } from '../utils/storage';
 import MeetupCard from '../../components/MeetupCard';
 import { useRouter } from 'expo-router';
 
@@ -14,7 +14,14 @@ const MeetupInvitesScreen = () => {
     const fetchInvites = async () => {
       try {
         const invitesData = await getPendingMeetupInvites();
-        setInvites(invitesData);
+        // For each invite, fetch the corresponding meetup details
+        const invitesWithMeetupData = await Promise.all(
+          invitesData.map(async (invite) => {
+            const meetupData = await getMeetupData(invite.meetupId);
+            return { ...invite, meetupData };
+          })
+        );
+        setInvites(invitesWithMeetupData);
       } catch (error) {
         console.error('Error fetching meetup invites:', error);
       } finally {
@@ -62,9 +69,7 @@ const MeetupInvitesScreen = () => {
           keyExtractor={(item) => item.id.toString()}
           renderItem={({ item }) => (
             <View style={styles.inviteCard}>
-              {/* Use MeetupCard to show meetup details.
-                  We assume the invite document contains a 'meetupData' object.
-                  Otherwise, you could fetch the meetup details using item.meetupId. */}
+              {/* Use MeetupCard to show the fetched meetup details */}
               <MeetupCard meetup={item.meetupData} />
               <View style={styles.buttonRow}>
                 <TouchableOpacity style={styles.acceptButton} onPress={() => handleAccept(item.id, item.meetupId)}>

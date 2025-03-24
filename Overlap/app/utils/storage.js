@@ -164,26 +164,26 @@ export async function storeReviewsForPlace(placeId, reviews) {
       ...meetupData,
       creatorId: user.uid,
       // Include current user and all invited friend IDs as participants.
-      participants: [user.uid, ...invitedFriends.map(friend => friend.id)],
+      participants: [user.uid, ...invitedFriends.map(friend => friend.uid)],
       // Save the full friend objects for UI display.
       friends: invitedFriends,
       createdAt: new Date(),
     };
     // Create the meetup document.
-  const meetupRef = await addDoc(collection(db, "meetups"), data);
+    const meetupRef = await addDoc(collection(db, "meetups"), data);
 
-  // Send an invite to each friend.
-  if (invitedFriends.length > 0) {
-    invitedFriends.forEach(async (friend) => {
-      try {
-        await sendMeetupInvite(meetupRef.id, friend);
-      } catch (error) {
-        console.error(`Error sending invite to ${friend.id}:`, error);
-      }
-    });
-  }
+    // Send an invite to each friend.
+    if (invitedFriends.length > 0) {
+      invitedFriends.forEach(async (friend) => {
+        try {
+          await sendMeetupInvite(meetupRef.id, friend);
+        } catch (error) {
+          console.error(`Error sending invite to ${friend.uid}:`, error);
+        }
+      });
+    }
   
-  return meetupRef.id;
+    return meetupRef.id;
 }
 /* ------------------------------------------------------------------
    6) Firestore: Get User's Meetups
@@ -356,7 +356,7 @@ export async function sendMeetupInvite(meetupId, friend) {
   await addDoc(collection(db, "meetupInvites"), {
     meetupId,
     invitedBy: user.uid,
-    invitedFriendId: friend.id,
+    invitedFriendId: friend.uid,
     status: "pending", // Could later be updated to 'accepted' or 'rejected'
     createdAt: new Date(),
   });
@@ -386,4 +386,40 @@ export async function acceptMeetupInvite(inviteId, meetupId) {
 export async function declineMeetupInvite(inviteId) {
   const inviteRef = doc(db, "meetupInvites", inviteId);
   await updateDoc(inviteRef, { status: "declined" });
+}
+
+// New function to fetch meetup details by ID.
+export async function getMeetupData(meetupId) {
+  const meetupRef = doc(db, "meetups", meetupId);
+  const meetupSnap = await getDoc(meetupRef);
+  if (meetupSnap.exists()) {
+    return { id: meetupSnap.id, ...meetupSnap.data() };
+  } else {
+    throw new Error("Meetup not found");
+  }
+}
+
+/**
+ * Removes a friendship between the current user and friendUid.
+ * This finds the doc in "friendships" where both user UIDs appear in the "users" array
+ * and deletes it. 
+ */
+export async function removeFriend(friendUid) {
+  const auth = getAuth();
+  const user = auth.currentUser;
+  if (!user) throw new Error("No user is signed in");
+
+  // Find all friendship docs that contain the current user
+  const friendshipsRef = collection(db, "friendships");
+  const q = query(friendshipsRef, where("users", "array-contains", user.uid));
+  const snapshot = await getDocs(q);
+
+  // For each matching doc, check if the doc's "users" also includes friendUid
+  snapshot.forEach(async (docSnap) => {
+    const data = docSnap.data();
+    if (data.users.includes(friendUid)) {
+      // Delete the friendship doc
+      await deleteDoc(doc(db, "friendships", docSnap.id));
+    }
+  });
 }

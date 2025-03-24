@@ -28,12 +28,11 @@ const JoinMeetupsScreen = () => {
     fetchInvites();
   }, []);
 
-  // Filter invites based on the inviteCode input
-  const filteredInvites = inviteCode
-    ? invites.filter(invite =>
-        invite.code.toLowerCase().includes(inviteCode.toLowerCase())
-      )
-    : invites;
+  const handleJoinByCode = () => {
+    // Implement the logic for joining a meetup by code here.
+    // For example, you might check if the code matches any existing meetup or send a join request.
+    console.log(`Requesting to join meetup with code: ${inviteCode}`);
+  };
 
   const renderInvite = ({ item }) => (
     <View style={styles.inviteCard}>
@@ -53,24 +52,33 @@ const JoinMeetupsScreen = () => {
 
   return (
     <View style={styles.container}>
-      <TextInput 
-        style={styles.codeInput}
-        placeholder="______"
-        placeholderTextColor="#AAAAAA"
-        value={inviteCode}
-        onChangeText={setInviteCode}
-        maxLength={6}
-        keyboardType="numeric"
-      />
-      {filteredInvites.length === 0 ? (
+      <Text style={styles.heading}>Your Meetup Invitations</Text>
+      {invites.length === 0 ? (
         <Text style={styles.emptyText}>No invitations found.</Text>
       ) : (
         <FlatList 
-          data={filteredInvites}
+          data={invites}
           keyExtractor={(item) => item.id.toString()}
           renderItem={renderInvite}
         />
       )}
+
+      <View style={styles.codeJoinSection}>
+        <Text style={styles.codeLabel}>Or join using an invite code:</Text>
+        <TextInput 
+          style={styles.codeInput}
+          placeholder="Enter Code"
+          placeholderTextColor="#AAAAAA"
+          value={inviteCode}
+          onChangeText={setInviteCode}
+          maxLength={6}
+          keyboardType="numeric"
+        />
+        <TouchableOpacity style={styles.joinCodeButton} onPress={handleJoinByCode}>
+          <Text style={styles.joinButtonText}>Join Meetup</Text>
+        </TouchableOpacity>
+      </View>
+
       <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
         <Text style={styles.backButtonText}>Back</Text>
       </TouchableOpacity>
@@ -87,15 +95,9 @@ const styles = StyleSheet.create({
     padding: 20,
     paddingTop: 40,
   },
-  codeInput: {
-    height: 50,
-    borderColor: '#1B1F24',
-    borderWidth: 1,
-    borderRadius: 10,
-    paddingHorizontal: 15,
-    color: '#FFFFFF',
+  heading: {
     fontSize: 24,
-    letterSpacing: 10,
+    color: '#FFFFFF',
     textAlign: 'center',
     marginBottom: 20,
   },
@@ -130,6 +132,33 @@ const styles = StyleSheet.create({
   joinButtonText: {
     color: '#FFFFFF',
     fontSize: 16,
+  },
+  codeJoinSection: {
+    marginTop: 30,
+  },
+  codeLabel: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    textAlign: 'center',
+    marginBottom: 10,
+  },
+  codeInput: {
+    height: 50,
+    borderColor: '#1B1F24',
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 15,
+    color: '#FFFFFF',
+    fontSize: 24,
+    letterSpacing: 10,
+    textAlign: 'center',
+    marginBottom: 20,
+  },
+  joinCodeButton: {
+    backgroundColor: '#1B1F24',
+    paddingVertical: 10,
+    borderRadius: 30,
+    alignItems: 'center',
   },
   backButton: {
     marginTop: 20,

@@ -6,7 +6,7 @@ import {
   StyleSheet, 
   Image
 } from 'react-native';
-import CreateMeetupScreen from '../profile/create';
+import CreateMeetupScreen from '../meetup/create';
 import MyMeetupsScreen from '../meetup/MyMeetupsScreen';
 import { getPendingMeetupInvites } from '../utils/storage';
 import { useRouter } from 'expo-router';

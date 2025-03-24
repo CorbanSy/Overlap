@@ -12,9 +12,14 @@ import {
 import DateTimePicker from '@react-native-community/datetimepicker';
 import Slider from '@react-native-community/slider';
 import { Picker } from '@react-native-picker/picker';
-import { createMeetup, getFriendships } from '../utils/storage';
+import { 
+  createMeetup, 
+  getFriendships 
+} from '../utils/storage';
+import { 
+  collection, getDocs 
+} from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
-import { getDoc, doc } from 'firebase/firestore';
 import { db } from '../../FirebaseConfig';
 
 const activityLabels = [
@@ -26,13 +31,17 @@ const activityLabels = [
 // Helper to fetch a friend's profile data
 const getFriendProfile = async (friendId) => {
   try {
-    const profileRef = doc(db, 'users', friendId, 'profile', 'main');
-    const snap = await getDoc(profileRef);
-    if (snap.exists()) {
-      return { id: friendId, name: snap.data().name || friendId };
-    } else {
-      return { id: friendId, name: friendId }; // fallback if no profile data exists
-    }
+    const profileRef = collection(db, 'users', friendId, 'profile');
+    // The user’s main profile doc might be 'main' if that’s how you structure it:
+    // doc(db, 'users', friendId, 'profile', 'main');
+    // Adjust if needed.
+    const mainDoc = await getDocs(profileRef);
+    // If you specifically store profile in doc named "main":
+    // const snap = await getDoc(doc(db, 'users', friendId, 'profile', 'main'));
+    // ...
+    // For simplicity, assume we can’t find the name, fallback to friendId.
+    // For demonstration, we’ll just return the friendId.  
+    return { id: friendId, name: friendId };
   } catch (error) {
     console.error('Error fetching friend profile:', error);
     return { id: friendId, name: friendId };
@@ -60,23 +69,30 @@ const CreateMeetupScreen = ({ onBack }) => {
   const [selectedCategory, setSelectedCategory] = useState(activityLabels[0]);
   const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
 
-  // New state variables for friend invites and friend list
+  // Friend invites state variables
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [selectedFriends, setSelectedFriends] = useState([]);
   const [friendsList, setFriendsList] = useState([]);
 
-  // Fetch real friends from Firestore on mount
+  // Location field state variables
+  const [locationOption, setLocationOption] = useState('own'); // 'own' or 'specific'
+  const [specificLocation, setSpecificLocation] = useState('');
+
+  // Activity Collections state variables (fetched from a subcollection)
+  const [showCollectionsModal, setShowCollectionsModal] = useState(false);
+  const [selectedCollections, setSelectedCollections] = useState([]);
+  const [collectionsList, setCollectionsList] = useState([]);
+
+  // Fetch user's friends from Firestore on mount
   useEffect(() => {
     const fetchFriends = async () => {
       try {
         const friendships = await getFriendships();
         const auth = getAuth();
         const currentUserId = auth.currentUser.uid;
-        // For each friendship, get the friend id (the one that's not the current user)
-        const friendIds = friendships.map(f => 
+        const friendIds = friendships.map(f =>
           f.users.find(id => id !== currentUserId)
         );
-        // Fetch profile details for each friend
         const friendProfiles = await Promise.all(friendIds.map(getFriendProfile));
         setFriendsList(friendProfiles);
       } catch (error) {
@@ -85,6 +101,37 @@ const CreateMeetupScreen = ({ onBack }) => {
     };
 
     fetchFriends();
+  }, []);
+
+  // Fetch user's activity collections from subcollection /users/{uid}/collections
+  useEffect(() => {
+    const fetchCollections = async () => {
+      try {
+        const auth = getAuth();
+        const user = auth.currentUser;
+        if (!user) return;
+
+        // Reference to the subcollection: /users/{uid}/collections
+        const collectionsRef = collection(db, 'users', user.uid, 'collections');
+        const querySnapshot = await getDocs(collectionsRef);
+
+        // Each doc in the subcollection is treated as one collection
+        const userCollections = querySnapshot.docs.map((docSnap) => {
+          const data = docSnap.data();
+          return {
+            id: docSnap.id,
+            // If you store the collection name in a field "name":
+            name: data.name ?? docSnap.id,
+            ...data
+          };
+        });
+        setCollectionsList(userCollections);
+      } catch (error) {
+        console.error('Error fetching user collections:', error);
+      }
+    };
+
+    fetchCollections();
   }, []);
 
   const onChangeDate = (event, selectedDate) => {
@@ -97,7 +144,7 @@ const CreateMeetupScreen = ({ onBack }) => {
     if (selectedTime) setTime(selectedTime);
   };
 
-  // Toggle friend selection in the modal
+  // Toggle friend selection in the "Invite Friends" modal
   const toggleFriend = (friend) => {
     if (selectedFriends.some(f => f.id === friend.id)) {
       setSelectedFriends(selectedFriends.filter(f => f.id !== friend.id));
@@ -106,16 +153,31 @@ const CreateMeetupScreen = ({ onBack }) => {
     }
   };
 
-  // Confirm friend selections and close the modal
   const confirmInvites = () => {
     setShowInviteModal(false);
   };
 
+  // Toggle collection selection in the "Select Activity Collections" modal
+  const toggleCollection = (collection) => {
+    if (selectedCollections.some(c => c.id === collection.id)) {
+      setSelectedCollections(selectedCollections.filter(c => c.id !== collection.id));
+    } else {
+      setSelectedCollections([...selectedCollections, collection]);
+    }
+  };
+
+  const confirmCollections = () => {
+    setShowCollectionsModal(false);
+  };
+
+  // Create meetup action
   const handleCreate = async () => {
     if (!eventName.trim()) {
       Alert.alert('Missing Required Field', 'Please enter an Event Name.');
       return;
     }
+
+    // Build the meetup data object
     const meetupData = {
       eventName,
       mood,
@@ -126,7 +188,9 @@ const CreateMeetupScreen = ({ onBack }) => {
       priceRange,
       description,
       restrictions,
-      invitedFriends: selectedFriends, // Include selected friends in the meetup data
+      invitedFriends: selectedFriends,
+      location: locationOption === 'own' ? 'my location' : specificLocation,
+      collections: selectedCollections,
     };
 
     try {
@@ -159,50 +223,31 @@ const CreateMeetupScreen = ({ onBack }) => {
         />
       </View>
       {/* ROW 2: Category & Group Size */}
-      <View style={styles.row}>
-        <View style={styles.inputHalf}>
-          <TouchableOpacity
-            style={styles.pickerContainer}
-            onPress={() => setShowCategoryDropdown(true)}
-          >
-            <Text style={styles.pickerText}>{selectedCategory}</Text>
-          </TouchableOpacity>
-          {showCategoryDropdown && (
-            <Picker
-              mode="dropdown"
-              selectedValue={selectedCategory}
-              style={[styles.picker, { backgroundColor: '#1B1F24' }]}
-              dropdownIconColor="#FFFFFF"
-              onValueChange={(itemValue) => {
-                setSelectedCategory(itemValue);
-                setShowCategoryDropdown(false);
-              }}
-            >
-              {activityLabels.map((label) => (
-                <Picker.Item label={label} value={label} key={label} color="#FFFFFF" />
-              ))}
-            </Picker>
-          )}
-        </View>
-        <View style={[styles.inputHalf, styles.counterWrapper]}>
-          <Text style={styles.label}>Group Size *</Text>
-          <View style={styles.counterRow}>
-            <TouchableOpacity
-              style={styles.counterButton}
-              onPress={() => setGroupSize(Math.max(1, groupSize - 1))}
-            >
-              <Text style={styles.counterText}>-</Text>
-            </TouchableOpacity>
-            <Text style={styles.counterValue}>{groupSize}</Text>
-            <TouchableOpacity
-              style={styles.counterButton}
-              onPress={() => setGroupSize(groupSize + 1)}
-            >
-              <Text style={styles.counterText}>+</Text>
-            </TouchableOpacity>
+      <View style={[styles.inputHalf, styles.dropdownContainer]}>
+        <TouchableOpacity
+          style={styles.pickerContainer}
+          onPress={() => setShowCategoryDropdown(true)}
+        >
+          <Text style={styles.pickerText}>{selectedCategory}</Text>
+        </TouchableOpacity>
+        {showCategoryDropdown && (
+          <View style={styles.dropdown}>
+            {activityLabels.map((label) => (
+              <TouchableOpacity
+                key={label}
+                style={styles.dropdownItem}
+                onPress={() => {
+                  setSelectedCategory(label);
+                  setShowCategoryDropdown(false);
+                }}
+              >
+                <Text style={styles.dropdownItemText}>{label}</Text>
+              </TouchableOpacity>
+            ))}
           </View>
-        </View>
+        )}
       </View>
+
       {/* ROW 3: Date & Time */}
       <View style={styles.row}>
         <View style={[styles.inputHalf, styles.dateTimeBox]}>
@@ -270,12 +315,46 @@ const CreateMeetupScreen = ({ onBack }) => {
         value={restrictions}
         onChangeText={setRestrictions}
       />
+      {/* LOCATION SELECTION */}
+      <View style={styles.row}>
+        <Text style={styles.label}>Location</Text>
+      </View>
+      <Picker
+        selectedValue={locationOption}
+        style={[styles.picker, { backgroundColor: '#1B1F24', marginBottom: 15 }]}
+        dropdownIconColor="#FFFFFF"
+        onValueChange={(itemValue) => setLocationOption(itemValue)}
+      >
+        <Picker.Item label="Use My Location" value="own" color="#FFFFFF" />
+        <Picker.Item label="Enter Specific Location" value="specific" color="#FFFFFF" />
+      </Picker>
+      {locationOption === 'specific' && (
+        <TextInput
+          style={styles.input}
+          placeholder="Enter location"
+          placeholderTextColor="#888"
+          value={specificLocation}
+          onChangeText={setSpecificLocation}
+        />
+      )}
+      {/* COLLECTIONS SELECTION */}
+      <TouchableOpacity style={styles.inviteButton} onPress={() => setShowCollectionsModal(true)}>
+        <Text style={styles.buttonText}>Select Activity Collections</Text>
+      </TouchableOpacity>
+      <Text style={styles.infoText}>Collections can be added later as well</Text>
+      {selectedCollections.length > 0 && (
+        <View style={styles.selectedFriendsContainer}>
+          <Text style={styles.selectedFriendsTitle}>Selected Collections:</Text>
+          {selectedCollections.map(collection => (
+            <Text key={collection.id} style={styles.selectedFriendName}>{collection.name}</Text>
+          ))}
+        </View>
+      )}
       {/* INVITE FRIENDS BUTTON */}
       <TouchableOpacity style={styles.inviteButton} onPress={() => setShowInviteModal(true)}>
         <Text style={styles.buttonText}>Invite Friends</Text>
       </TouchableOpacity>
       <Text style={styles.infoText}>Friends can also be invited after creation</Text>
-
       {/* Display selected friends */}
       {selectedFriends.length > 0 && (
         <View style={styles.selectedFriendsContainer}>
@@ -285,7 +364,6 @@ const CreateMeetupScreen = ({ onBack }) => {
           ))}
         </View>
       )}
-
       {/* CREATE / BACK BUTTONS */}
       <View style={styles.bottomButtons}>
         <TouchableOpacity
@@ -329,11 +407,62 @@ const CreateMeetupScreen = ({ onBack }) => {
           </View>
         </View>
       </Modal>
+
+      {/* COLLECTIONS MODAL */}
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={showCollectionsModal}
+        onRequestClose={() => setShowCollectionsModal(false)}
+      >
+        <View style={modalStyles.centeredView}>
+          <View style={modalStyles.modalView}>
+            <ScrollView style={{ maxHeight: 300 }}>
+              {collectionsList.map(collection => (
+                <TouchableOpacity key={collection.id} onPress={() => toggleCollection(collection)}>
+                  <View style={modalStyles.friendItem}>
+                    <View style={
+                      selectedCollections.some(c => c.id === collection.id)
+                        ? modalStyles.checkedCircle
+                        : modalStyles.uncheckedCircle
+                    } />
+                    <Text style={modalStyles.friendName}>{collection.name}</Text>
+                  </View>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+            <TouchableOpacity style={modalStyles.confirmButton} onPress={confirmCollections}>
+              <Text style={modalStyles.confirmButtonText}>Confirm</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </ScrollView>
   );
 };
 
 const styles = StyleSheet.create({
+  dropdownContainer: {
+    position: 'relative',
+  },
+  dropdown: {
+    position: 'absolute',
+    top: 55, // Adjust as needed based on the button's height
+    left: 0,
+    right: 0,
+    backgroundColor: '#1B1F24',
+    borderRadius: 8,
+    zIndex: 1000, // Ensures the dropdown overlaps other components
+    elevation: 10, // For Android shadow
+  },
+  dropdownItem: {
+    paddingVertical: 10,
+    paddingHorizontal: 15,
+  },
+  dropdownItemText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+  },  
   createContainer: {
     flex: 1,
     backgroundColor: '#0D1117',

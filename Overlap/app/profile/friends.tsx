@@ -21,7 +21,7 @@ import {
   addDoc 
 } from 'firebase/firestore';
 import { useRouter } from 'expo-router';
-import { sendFriendRequest } from '../utils/storage';
+import { sendFriendRequest, removeFriend } from '../utils/storage';
 
 function FriendsScreen() {
   const [friendships, setFriendships] = useState([]);
@@ -161,12 +161,21 @@ function FriendsScreen() {
         const currentUser = auth.currentUser;
         const friendUid = item.users.find(uid => uid !== currentUser.uid);
         return (
-        <TouchableOpacity 
-            style={styles.friendItem} 
-            onPress={() => router.push(`/friend-profile/${friendUid}`)}
-        >
-            <Text style={styles.friendText}>Friend UID: {friendUid}</Text>
-        </TouchableOpacity>
+          <View style={styles.friendItem}>
+            <TouchableOpacity 
+              onPress={() => router.push(`/friend-profile/${friendUid}`)}
+            >
+              <Text style={styles.friendText}>Friend UID: {friendUid}</Text>
+            </TouchableOpacity>
+            
+            {/* Remove Friend button */}
+            <TouchableOpacity 
+              style={styles.removeButton}
+              onPress={() => handleRemoveFriend(friendUid)}
+            >
+              <Text style={styles.removeButtonText}>Remove</Text>
+            </TouchableOpacity>
+          </View>
         );
     };
   
@@ -199,6 +208,32 @@ function FriendsScreen() {
     </View>
   );
 
+  // Add a new handler for removing a friend:
+  const handleRemoveFriend = async (friendUid) => {
+    try {
+      // Optionally confirm first
+      Alert.alert(
+        'Remove Friend',
+        'Are you sure you want to remove this friend?',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Remove',
+            style: 'destructive',
+            onPress: async () => {
+              await removeFriend(friendUid);
+              Alert.alert('Friend removed successfully.');
+              // Refresh your friendships list
+              fetchFriendships();
+            }
+          }
+        ]
+      );
+    } catch (error) {
+      console.error('Error removing friend:', error);
+      Alert.alert('Error removing friend.');
+    }
+  };
   return (
     <SafeAreaView style={styles.container}>
       {/* Search and Send Friend Request */}
@@ -303,7 +338,21 @@ const styles = StyleSheet.create({
     backgroundColor: '#272B30', 
     padding: 12, 
     borderRadius: 8, 
-    marginBottom: 10 
+    marginBottom: 10,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center'
+  },
+  removeButton: {
+    backgroundColor: '#F44336',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 6,
+    marginLeft: 10
+  },
+  removeButtonText: {
+    color: '#FFF',
+    fontWeight: 'bold'
   },
   friendText: { color: '#FFF', fontSize: 16 },
   emptyText: { color: '#AAA', fontSize: 16, textAlign: 'center', marginTop: 20 },
