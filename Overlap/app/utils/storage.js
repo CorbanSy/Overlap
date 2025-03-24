@@ -36,7 +36,7 @@ export async function checkPreferencesComplete() {
  * Save or update the user's profile with topCategories (and anything else).
  * This merges so you don't overwrite existing fields like keywords.
  */
-export async function saveProfileData({ topCategories, name, bio, avatarUrl }) {
+export async function saveProfileData({ topCategories, name, bio, avatarUrl, email, username }) {
   const auth = getAuth();
   const user = auth.currentUser;
   if (!user) throw new Error('No user is signed in');
@@ -45,15 +45,18 @@ export async function saveProfileData({ topCategories, name, bio, avatarUrl }) {
   await setDoc(
     profileRef,
     {
-      topCategories: topCategories !== undefined ? topCategories : [],
+      topCategories: topCategories || [],
       name,
       bio,
       avatarUrl,
+      email,     // <-- New field
+      username,  // <-- New field
       lastUpdated: new Date(),
     },
     { merge: true }
   );
 }
+
 
 
 
@@ -219,22 +222,34 @@ export async function getUserMeetups() {
          Using two separate collections: "friendRequests" and "friendships"
    ------------------------------------------------------------------ */
 
-/**
- * Send a friend request from the current user to another user.
- * Creates a new document in the "friendRequests" collection.
- */
-export async function sendFriendRequest(targetUserId) {
-  const auth = getAuth();
-  const user = auth.currentUser;
-  if (!user) throw new Error("No user is signed in");
-
-  await addDoc(collection(db, "friendRequests"), {
-    from: user.uid,
-    to: targetUserId,
-    status: "pending",  // other statuses could be 'accepted' or 'rejected'
-    timestamp: new Date(),
-  });
-}
+   export async function sendFriendRequest(targetUserId) {
+    const auth = getAuth();
+    const user = auth.currentUser;
+    if (!user) throw new Error("No user is signed in");
+  
+    // Fetch target user's email from their profile
+    const targetProfileRef = doc(db, 'users', targetUserId, 'profile', 'main');
+    const targetSnap = await getDoc(targetProfileRef);
+    let targetEmail = '';
+    if (targetSnap.exists()) {
+      const targetData = targetSnap.data();
+      targetEmail = targetData.email || '';
+    }
+  
+    // Use the current user's email for fromEmail
+    const fromEmail = user.email;
+  
+    // Create the friend request doc with both emails
+    await addDoc(collection(db, 'friendRequests'), {
+      from: user.uid,
+      fromEmail,           // <-- Sender's email
+      to: targetUserId,
+      toEmail: targetEmail,  // <-- Recipient's email
+      status: 'pending',
+      timestamp: new Date(),
+    });
+  }
+  
 
 /**
  * Accept a friend request.
@@ -251,10 +266,28 @@ export async function acceptFriendRequest(requestId, fromUserId) {
   const requestRef = doc(db, "friendRequests", requestId);
   await updateDoc(requestRef, { status: "accepted" });
 
-  // Create a new friendship document in "friendships" collection
-  // Store the UIDs of both users and the timestamp when the friendship was established.
+  // Get current user's details
+  const currentUserDetails = {
+    uid: user.uid,
+    email: user.email,
+    username: user.displayName || '',
+  };
+
+  // Fetch friend's details from Firestore "users" collection
+  const friendDocRef = doc(db, "users", fromUserId);
+  const friendSnap = await getDoc(friendDocRef);
+  let friendDetails = { uid: fromUserId };
+  if (friendSnap.exists()) {
+    friendDetails = friendSnap.data();
+  }
+
+  // Create a new friendship document with both users' details
   await addDoc(collection(db, "friendships"), {
     users: [user.uid, fromUserId],
+    userDetails: {
+      [user.uid]: currentUserDetails,
+      [fromUserId]: friendDetails,
+    },
     establishedAt: new Date(),
   });
 }

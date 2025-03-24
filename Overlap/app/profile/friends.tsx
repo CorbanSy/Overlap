@@ -18,10 +18,12 @@ import {
   getDocs, 
   updateDoc, 
   doc, 
-  addDoc 
+  addDoc,
+  getDoc
 } from 'firebase/firestore';
 import { useRouter } from 'expo-router';
-import { sendFriendRequest, removeFriend } from '../utils/storage';
+import { sendFriendRequest, removeFriend, acceptFriendRequest } from '../utils/storage';
+import FriendItem from '../../components/friendItem';
 
 function FriendsScreen() {
   const [friendships, setFriendships] = useState([]);
@@ -126,19 +128,13 @@ function FriendsScreen() {
     fetchReceivedRequests();
   }, []);
 
-  // Accept a received friend request
+  // Accept a friend request using the storage function (which now also stores userDetails)
   const handleAccept = async (requestId, fromUserId) => {
     try {
-      const requestRef = doc(firestore, 'friendRequests', requestId);
-      await updateDoc(requestRef, { status: 'accepted' });
-      // Create a friendship document upon acceptance
-      await addDoc(collection(firestore, 'friendships'), {
-        users: [auth.currentUser.uid, fromUserId],
-        establishedAt: new Date()
-      });
+      await acceptFriendRequest(requestId, fromUserId);
       Alert.alert('Friend request accepted!');
-      fetchReceivedRequests(); // refresh the list
-      fetchFriendships();      // refresh accepted friendships
+      fetchReceivedRequests();
+      fetchFriendships();
     } catch (error) {
       console.error("Error accepting friend request:", error);
     }
@@ -150,47 +146,68 @@ function FriendsScreen() {
       const requestRef = doc(firestore, 'friendRequests', requestId);
       await updateDoc(requestRef, { status: 'rejected' });
       Alert.alert('Friend request rejected.');
-      fetchReceivedRequests(); // refresh the list
+      fetchReceivedRequests();
     } catch (error) {
       console.error("Error rejecting friend request:", error);
     }
   };
 
-  // Render accepted friend item with navigation
-    const renderFriend = ({ item }) => {
-        const currentUser = auth.currentUser;
-        const friendUid = item.users.find(uid => uid !== currentUser.uid);
-        return (
-          <View style={styles.friendItem}>
-            <TouchableOpacity 
-              onPress={() => router.push(`/friend-profile/${friendUid}`)}
-            >
-              <Text style={styles.friendText}>Friend UID: {friendUid}</Text>
-            </TouchableOpacity>
-            
-            {/* Remove Friend button */}
-            <TouchableOpacity 
-              style={styles.removeButton}
-              onPress={() => handleRemoveFriend(friendUid)}
-            >
-              <Text style={styles.removeButtonText}>Remove</Text>
-            </TouchableOpacity>
-          </View>
-        );
-    };
-  
+  // Remove a friend
+  const handleRemoveFriend = async (friendUid) => {
+    try {
+      Alert.alert(
+        'Remove Friend',
+        'Are you sure you want to remove this friend?',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Remove',
+            style: 'destructive',
+            onPress: async () => {
+              await removeFriend(friendUid);
+              Alert.alert('Friend removed successfully.');
+              fetchFriendships();
+            }
+          }
+        ]
+      );
+    } catch (error) {
+      console.error('Error removing friend:', error);
+      Alert.alert('Error removing friend.');
+    }
+  };
+
+  // Render accepted friend item using the dynamic FriendItem component.
+  const renderFriend = ({ item }) => {
+    const currentUser = auth.currentUser;
+    const friendUid = item.users.find(uid => uid !== currentUser.uid);
+    // Extract friend data from the friendship doc's userDetails (if available)
+    const friendData = item.userDetails && item.userDetails[friendUid] ? item.userDetails[friendUid] : null;
+    return (
+      <FriendItem
+        friendUid={friendUid}
+        friendData={friendData}
+        onPress={() => router.push(`/friend-profile/${friendUid}`)}
+        onRemove={() => handleRemoveFriend(friendUid)}
+      />
+    );
+  };
 
   // Render a pending sent friend request
   const renderSentRequest = ({ item }) => (
     <View style={styles.requestItem}>
-      <Text style={styles.requestText}>Pending request to UID: {item.to}</Text>
+      <Text style={styles.requestText}>
+        Pending request to {item.toEmail || item.to}
+      </Text>
     </View>
   );
 
   // Render a received friend request with accept/reject buttons
   const renderReceivedRequest = ({ item }) => (
     <View style={styles.requestItem}>
-      <Text style={styles.requestText}>Friend request from UID: {item.from}</Text>
+      <Text style={styles.requestText}>
+        Friend request from {item.fromEmail || item.from}
+      </Text>
       <View style={styles.buttonRow}>
         <TouchableOpacity
           style={styles.acceptButton}
@@ -208,32 +225,6 @@ function FriendsScreen() {
     </View>
   );
 
-  // Add a new handler for removing a friend:
-  const handleRemoveFriend = async (friendUid) => {
-    try {
-      // Optionally confirm first
-      Alert.alert(
-        'Remove Friend',
-        'Are you sure you want to remove this friend?',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Remove',
-            style: 'destructive',
-            onPress: async () => {
-              await removeFriend(friendUid);
-              Alert.alert('Friend removed successfully.');
-              // Refresh your friendships list
-              fetchFriendships();
-            }
-          }
-        ]
-      );
-    } catch (error) {
-      console.error('Error removing friend:', error);
-      Alert.alert('Error removing friend.');
-    }
-  };
   return (
     <SafeAreaView style={styles.container}>
       {/* Search and Send Friend Request */}
@@ -254,7 +245,7 @@ function FriendsScreen() {
           <Text style={styles.searchButtonText}>Send Friend Request</Text>
         </TouchableOpacity>
       </View>
-
+  
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
@@ -262,7 +253,7 @@ function FriendsScreen() {
         </TouchableOpacity>
         <Text style={styles.headerTitle}>My Friends</Text>
       </View>
-
+  
       {/* Accepted Friendships */}
       <FlatList
         data={friendships}
@@ -271,8 +262,8 @@ function FriendsScreen() {
         contentContainerStyle={styles.listContainer}
         ListEmptyComponent={<Text style={styles.emptyText}>No friends yet.</Text>}
       />
-
-      {/* Sent Friend Requests */}
+  
+      {/* Pending Sent Friend Requests */}
       <View style={styles.sectionHeader}>
         <Text style={styles.sectionHeaderText}>Pending Sent Requests</Text>
       </View>
@@ -283,7 +274,7 @@ function FriendsScreen() {
         contentContainerStyle={styles.listContainer}
         ListEmptyComponent={<Text style={styles.emptyText}>No pending sent requests.</Text>}
       />
-
+  
       {/* Received Friend Requests */}
       <View style={styles.sectionHeader}>
         <Text style={styles.sectionHeaderText}>Received Friend Requests</Text>
@@ -343,6 +334,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center'
   },
+  friendText: { color: '#FFF', fontSize: 16 },
   removeButton: {
     backgroundColor: '#F44336',
     paddingHorizontal: 10,
@@ -350,11 +342,7 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     marginLeft: 10
   },
-  removeButtonText: {
-    color: '#FFF',
-    fontWeight: 'bold'
-  },
-  friendText: { color: '#FFF', fontSize: 16 },
+  removeButtonText: { color: '#FFF', fontWeight: 'bold' },
   emptyText: { color: '#AAA', fontSize: 16, textAlign: 'center', marginTop: 20 },
   sectionHeader: { 
     paddingHorizontal: 16, 

@@ -82,28 +82,31 @@ const MyMeetupsScreen = ({ onBack }: { onBack: () => void }) => {
 
   return (
     <View style={styles.container}>
-      <View style={styles.headerRow}>
-        <Text style={styles.title}>My Meetups</Text>
+      {/* Top Half: My Meetups */}
+      <View style={styles.topHalf}>
+        <View style={styles.headerRow}>
+          <Text style={styles.title}>My Meetups</Text>
+        </View>
+        {regularMeetups.length === 0 ? (
+          <Text style={styles.noMeetupsText}>You have no meetups.</Text>
+        ) : (
+          <FlatList
+            data={regularMeetups}
+            keyExtractor={(item) => item.id.toString()}
+            renderItem={({ item }) => (
+              <MeetupCard 
+                meetup={item}
+                onRemove={() => handleRemoveMeetup(item.id)}
+                onStart={handleStartMeetup}
+                onStop={handleStopMeetup}
+              />
+            )}
+          />
+        )}
       </View>
 
-      {regularMeetups.length === 0 ? (
-        <Text style={styles.noMeetupsText}>You have no meetups.</Text>
-      ) : (
-        <FlatList
-          data={regularMeetups}
-          keyExtractor={(item) => item.id.toString()}
-          renderItem={({ item }) => (
-            <MeetupCard 
-              meetup={item}
-              onRemove={() => handleRemoveMeetup(item.id)}
-              onStart={handleStartMeetup}
-              onStop={handleStopMeetup}
-            />
-          )}
-        />
-      )}
-
-      <View style={styles.ongoingGroupContainer}>
+      {/* Bottom Half: Ongoing Meetup Group */}
+      <View style={styles.bottomHalf}>
         <Text style={styles.ongoingGroupTitle}>Ongoing Meetup Group</Text>
         {ongoingMeetups.length === 0 ? (
           <Text style={styles.ongoingGroupPlaceholder}>No ongoing meetups.</Text>
@@ -121,11 +124,10 @@ const MyMeetupsScreen = ({ onBack }: { onBack: () => void }) => {
             )}
           />
         )}
+        <TouchableOpacity style={styles.backButton} onPress={onBack}>
+          <Text style={styles.buttonText}>Back</Text>
+        </TouchableOpacity>
       </View>
-
-      <TouchableOpacity style={styles.backButton} onPress={onBack}>
-        <Text style={styles.buttonText}>Back</Text>
-      </TouchableOpacity>
     </View>
   );
 };
@@ -137,24 +139,18 @@ const styles = StyleSheet.create({
     padding: 20,
     paddingTop: 40,
   },
+  topHalf: {
+    flex: 1,
+    paddingTop: 20, // extra padding for My Meetups
+  },
+  bottomHalf: {
+    flex: 1,
+  },
   headerRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 20,
-  },
-  redCircle: {
-    backgroundColor: 'red',
-    borderRadius: 10,
-    width: 20,
-    height: 20,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  redCircleText: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: 'bold',
   },
   center: {
     flex: 1,
@@ -183,12 +179,6 @@ const styles = StyleSheet.create({
   buttonText: {
     fontSize: 18,
     color: '#FFFFFF',
-  },
-  ongoingGroupContainer: {
-    backgroundColor: '#1B1F24',
-    padding: 15,
-    borderRadius: 8,
-    marginTop: 20,
   },
   ongoingGroupTitle: {
     fontSize: 20,
