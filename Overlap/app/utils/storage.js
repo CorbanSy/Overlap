@@ -59,7 +59,6 @@ export async function saveProfileData({ topCategories, name, bio, avatarUrl, ema
 
 
 
-
 /**
  * Get the user's profile data from /users/{uid}/profile/main.
  * Returns an object with fields like { topCategories, keywords, ... }
