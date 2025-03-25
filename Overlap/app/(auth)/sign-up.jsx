@@ -21,9 +21,9 @@ const SignUp = () => {
     try {
       setIsSubmitting(true);
       const userCredential = await signUp(form.email, form.password);
-
       console.log("User successfully signed up:", userCredential);
-      
+
+      // Navigate to preferences or wherever you'd like
       router.replace('/(auth)/preferences');
     } catch (error) {
       console.error("Sign-Up Error:", error);
@@ -33,30 +33,39 @@ const SignUp = () => {
   };
 
   return (
-    <SafeAreaView className="bg-primary h-full">
-      <ScrollView>
-        <View className="w-full justify-center min-h-[83vh] px-4 my-6">
-          
-          {/* Logo Image */}
-          <View className="w-full items-center mt-10">
-            <Image 
-              source={images.overlap} 
-              style={{ width: 100, height: 100, resizeMode: 'contain' }} 
-            />
-          </View>
+    <SafeAreaView className="bg-primary h-full relative">
+      
+      {/* 2) Absolutely positioned background image */}
+      <View className="absolute inset-0 z-0 items-center justify-center">
+        <Image
+          source={images.overlap}
+          style={{
+            width: 700,
+            height: 700,
+            resizeMode: 'contain',
+            // Adjust to move the image up or down
+            marginTop: -350
+          }}
+        />
+      </View>
+
+      {/* 3) Main form content with higher z-index so it appears above the image */}
+      <ScrollView className="z-10">
+        <View className="w-full justify-center min-h-[83vh] px-4 mt-32 my-6">
+          {/* Removed the small "Logo Image" block here */}
 
           <Text className="text-4xl text-white text-semibold mt-10 font-psemibold">
             Sign up to Overlap
           </Text>
 
-          <FormField 
+          <FormField
             title="Username"
             value={form.username}
             handleChangeText={(e) => setForm({...form, username: e})}
             otherStyles="mt-10"
           />
 
-          <FormField 
+          <FormField
             title="Email"
             value={form.email}
             handleChangeText={(e) => setForm({...form, email: e})}
@@ -64,7 +73,7 @@ const SignUp = () => {
             keyboardType="email-address"
           />
 
-          <FormField 
+          <FormField
             title="Password"
             value={form.password}
             handleChangeText={(e) => setForm({...form, password: e})}
@@ -72,7 +81,7 @@ const SignUp = () => {
             secureTextEntry
           />
 
-          <CustomButton 
+          <CustomButton
             title="Sign Up"
             handlePress={handleSignUp}
             containerStyles="mt-7"
@@ -87,7 +96,6 @@ const SignUp = () => {
               Sign In
             </Link>
           </View>
-
         </View>
       </ScrollView>
     </SafeAreaView>

@@ -474,3 +474,56 @@ export async function removeFriend(friendUid) {
     }
   });
 }
+
+// Function to join a meetup using an invite (direct invitation)
+export async function joinMeetup(inviteId) {
+  // Retrieve the invite document to get the associated meetupId.
+  const inviteRef = doc(db, "meetupInvites", inviteId);
+  const inviteSnap = await getDoc(inviteRef);
+  if (!inviteSnap.exists()) {
+    throw new Error("Invite not found");
+  }
+  const inviteData = inviteSnap.data();
+  if (!inviteData.meetupId) {
+    throw new Error("Meetup ID missing in invite");
+  }
+  await acceptMeetupInvite(inviteId, inviteData.meetupId);
+  return inviteData.meetupId;
+}
+
+// Function to join a meetup by using an invite code.
+export async function joinMeetupByCode(inviteCode) {
+  // Query the meetups collection to find a meetup with the matching code.
+  // Assuming your meetup documents contain a field called "code"
+  const meetupsColRef = collection(db, "meetups");
+  const q = query(meetupsColRef, where("code", "==", inviteCode));
+  const snap = await getDocs(q);
+  
+  if (snap.empty) {
+    throw new Error("No meetup found with the provided code.");
+  }
+  
+  // For simplicity, take the first matching meetup.
+  const meetupDoc = snap.docs[0];
+  const meetupData = meetupDoc.data();
+  
+  // Get the current user.
+  const auth = getAuth();
+  const user = auth.currentUser;
+  if (!user) throw new Error("No user is signed in");
+  
+  // Check if the user is already a participant; if not, add them.
+  if (!meetupData.participants.includes(user.uid)) {
+    await updateDoc(doc(db, "meetups", meetupDoc.id), {
+      participants: [...meetupData.participants, user.uid],
+    });
+  }
+  
+  return { success: true, meetupId: meetupDoc.id };
+}
+
+// Alias for declining a meetup invite.
+export async function declineMeetup(inviteId) {
+  // You already have declineMeetupInvite defined, so simply call that.
+  await declineMeetupInvite(inviteId);
+}

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Ionicons } from '@expo/vector-icons';
 import {
   View,
   Text,
@@ -8,6 +9,7 @@ import {
   Alert,
   StyleSheet,
   Modal,
+  Image,
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import Slider from '@react-native-community/slider';
@@ -51,7 +53,7 @@ const getFriendProfile = async (friendId) => {
     if (userDoc.exists()) {
       const userData = userDoc.data();
       // Return the email as the name (or separately if needed)
-      return { id: friendId, email: userData.email, name: userData.email };
+      return { id: friendId, email: userData.email, name: userData.email, avatarUrl: userData.avatarUrl };
     }
     return { id: friendId, email: friendId, name: friendId };
   } catch (error) {
@@ -61,20 +63,30 @@ const getFriendProfile = async (friendId) => {
 };
 
 // Modal Component for inviting friends
-const InviteFriendsModal = ({ visible, friendsList, selectedFriends, toggleFriend, onConfirm, onClose }) => (
+const InviteFriendsModal = ({
+  visible,
+  friendsList,
+  selectedFriends,
+  toggleFriend,
+  onConfirm,
+  onClose,
+}) => (
   <Modal animationType="slide" transparent visible={visible} onRequestClose={onClose}>
     <View style={modalStyles.centeredView}>
       <View style={modalStyles.modalView}>
-        <ScrollView style={{ maxHeight: 300 }}>
+        <ScrollView contentContainerStyle={modalStyles.cardsContainer}>
           {friendsList.map(friend => (
             <TouchableOpacity key={friend.id} onPress={() => toggleFriend(friend)}>
-              <View style={modalStyles.friendItem}>
-                <View style={
-                  selectedFriends.some(f => f.id === friend.id)
-                    ? modalStyles.checkedCircle
-                    : modalStyles.uncheckedCircle
-                } />
-                <Text style={modalStyles.friendName}>{friend.name}</Text>
+              <View style={modalStyles.friendCard}>
+                <Image
+                  source={
+                    friend.avatarUrl
+                      ? { uri: friend.avatarUrl }
+                      : require('../../assets/images/profile.png')
+                  }
+                  style={modalStyles.friendAvatar}
+                />
+                <Text style={modalStyles.friendEmail}>{friend.email}</Text>
               </View>
             </TouchableOpacity>
           ))}
@@ -449,14 +461,34 @@ const CreateMeetupScreen = ({ onBack }) => {
         <Text style={styles.buttonText}>Invite Friends</Text>
       </TouchableOpacity>
       <Text style={styles.infoText}>Friends can also be invited after creation</Text>
+
+      {/* Selected (Invited) Friends as Cards */}
       {selectedFriends.length > 0 && (
-        <View style={styles.selectedFriendsContainer}>
-          <Text style={styles.selectedFriendsTitle}>Invited Friends:</Text>
+      <View style={styles.selectedFriendsContainer}>
+        <Text style={styles.selectedFriendsTitle}>Invited Friends:</Text>
+        <View style={styles.selectedFriendsCardsContainer}>
           {selectedFriends.map(friend => (
-            <Text key={friend.id} style={styles.selectedFriendName}>{friend.name}</Text>
+            <View key={friend.id} style={styles.invitedFriendCard}>
+              <TouchableOpacity 
+                style={styles.removeIconContainer}
+                onPress={() => setSelectedFriends(selectedFriends.filter(f => f.id !== friend.id))}
+              >
+                <Ionicons name="close" size={16} color="#FF0000" />
+              </TouchableOpacity>
+              <Image
+                source={
+                  friend.avatarUrl
+                    ? { uri: friend.avatarUrl }
+                    : require('../../assets/images/profile.png')
+                }
+                style={styles.invitedFriendAvatar}
+              />
+              <Text style={styles.invitedFriendEmail}>{friend.email}</Text>
+            </View>
           ))}
         </View>
-      )}
+      </View>
+    )}
 
       {/* Create & Back Buttons */}
       <View style={styles.bottomButtons}>
@@ -696,6 +728,44 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 14,
   },
+  /* A small wrapper to display friend cards in a row/column layout */
+  selectedFriendsCardsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+  },
+  invitedFriendCard: {
+    width: 80,
+    height: 100,
+    borderWidth: 1,
+    borderColor: '#FFFFFF',
+    borderStyle: 'dashed',
+    borderRadius: 8,
+    padding: 5,
+    margin: 5,
+    alignItems: 'center',
+    justifyContent: 'center',
+    position: 'relative', // so the remove icon can be absolutely positioned
+  },
+  removeIconContainer: {
+    position: 'absolute',
+    top: -5,
+    left: -5,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 10,
+    padding: 2,
+    zIndex: 1,
+  },
+  invitedFriendAvatar: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    marginBottom: 5,
+  },
+  invitedFriendEmail: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    textAlign: 'center',
+  },
 });
 
 const modalStyles = StyleSheet.create({
@@ -711,6 +781,34 @@ const modalStyles = StyleSheet.create({
     borderRadius: 8,
     padding: 20,
     alignItems: 'center',
+  },
+  cardsContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+  },
+  friendCard: {
+    width: 80,
+    height: 100,
+    borderWidth: 1,
+    borderColor: '#FFFFFF',
+    borderStyle: 'dashed',
+    borderRadius: 8,
+    padding: 5,
+    margin: 5,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  friendAvatar: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    marginBottom: 5,
+  },
+  friendEmail: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    textAlign: 'center',
   },
   friendItem: {
     flexDirection: 'row',

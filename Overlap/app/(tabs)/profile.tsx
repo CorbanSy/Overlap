@@ -16,11 +16,11 @@ import { getFirestore, collection, addDoc, onSnapshot, doc, updateDoc } from 'fi
 import { Ionicons } from '@expo/vector-icons';
 
 // Imported components
-import TabBar from '../../components/TabBar';
+import TabBar from '../profile/TabBar';
 import SearchBar from '../../components/SearchBar';
 import ActivityCard from '../../components/ActivityCard';
 import CollectionCard from '../../components/CollectionCard';
-import FullProfileInfo from '../../components/FullProfileInfo';
+import FullProfileInfo from '../profile/FullProfileInfo';
 import { unlikePlace } from '../utils/storage';
 
 /* =========================
@@ -108,6 +108,9 @@ const SettingsDropdown = ({ visible, onSelectOption }) => {
     <View style={styles.settingsDropdown}>
       <TouchableOpacity style={styles.settingsItem} onPress={() => onSelectOption('Account')}>
         <Text style={styles.settingsText}>Account</Text>
+      </TouchableOpacity>
+      <TouchableOpacity style={styles.settingsItem} onPress={() => onSelectOption('Edit Profile')}>
+        <Text style={styles.settingsText}>Edit Profile</Text>
       </TouchableOpacity>
       <TouchableOpacity style={styles.settingsItem} onPress={() => onSelectOption('Notifications')}>
         <Text style={styles.settingsText}>Notifications</Text>
@@ -312,12 +315,15 @@ function ProfileScreen() {
       unsubscribeCollectionsRef.current && unsubscribeCollectionsRef.current();
       try {
         await signOut(auth);
-        router.replace('/(auth)/sign-up');
+        router.replace('/');
       } catch (error) {
         console.error("Error signing out:", error);
       }
     } else if (option === 'Friends') {
       router.push('/profile/friends');
+    } else if (option === 'Edit Profile') {
+      // Navigate to the edit profile screen
+      router.push('/profile/editProfile');
     }
     setIsSettingsMenuVisible(false);
   };

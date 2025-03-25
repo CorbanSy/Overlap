@@ -7,7 +7,12 @@ import {
   TouchableOpacity, 
   StyleSheet 
 } from 'react-native';
-import { getPendingMeetupInvites } from '../utils/storage';
+import { 
+  getPendingMeetupInvites, 
+  joinMeetup, 
+  joinMeetupByCode, 
+  declineMeetup 
+} from '../utils/storage';
 import { useRouter } from 'expo-router';
 
 const JoinMeetupsScreen = () => {
@@ -28,10 +33,41 @@ const JoinMeetupsScreen = () => {
     fetchInvites();
   }, []);
 
-  const handleJoinByCode = () => {
-    // Implement the logic for joining a meetup by code here.
-    // For example, you might check if the code matches any existing meetup or send a join request.
-    console.log(`Requesting to join meetup with code: ${inviteCode}`);
+  // Function to handle accepting an invitation from the list.
+  const handleAcceptInvite = async (invite) => {
+    try {
+      console.log(`Joining meetup with ${invite.code ? "code " + invite.code : "direct invitation"}`);
+      const meetupId = await joinMeetup(invite.id); // Get the actual meetup ID.
+      // On success, remove the invite from the pending list.
+      setInvites(prevInvites => prevInvites.filter(item => item.id !== invite.id));
+      // Navigate to the meetup detail page after joining.
+      router.push(`/meetup/${meetupId}`);
+    } catch (error) {
+      console.error("Error joining meetup", error);
+    }
+  };
+  
+  // Function to handle declining an invitation.
+  const handleDeclineInvite = async (invite) => {
+    try {
+      console.log(`Declining meetup invitation for ${invite.code ? "code " + invite.code : "direct invitation"}`);
+      await declineMeetup(invite.id);
+      // On success, remove the invite from the pending list.
+      setInvites(prevInvites => prevInvites.filter(item => item.id !== invite.id));
+    } catch (error) {
+      console.error("Error declining meetup invitation", error);
+    }
+  };
+
+  // Function to handle joining by invite code.
+  const handleJoinByCode = async () => {
+    try {
+      console.log(`Requesting to join meetup with code: ${inviteCode}`);
+      const response = await joinMeetupByCode(inviteCode);
+      if (response.success) { router.push(`/meetup/${response.meetupId}`); }
+    } catch (error) {
+      console.error("Error joining meetup by code", error);
+    }
   };
 
   const renderInvite = ({ item }) => (
@@ -42,18 +78,22 @@ const JoinMeetupsScreen = () => {
       ) : (
         <Text style={styles.inviteCode}>Direct Invitation</Text>
       )}
-      <TouchableOpacity 
-        style={styles.joinButton} 
-        onPress={() => {
-          // Add join/accept logic here.
-          console.log(`Joining meetup with invite ${item.code ? "code " + item.code : "direct invitation"}`);
-        }}
-      >
-        <Text style={styles.joinButtonText}>Join</Text>
-      </TouchableOpacity>
+      <View style={styles.buttonRow}>
+        <TouchableOpacity 
+          style={styles.joinButton} 
+          onPress={() => handleAcceptInvite(item)}
+        >
+          <Text style={styles.joinButtonText}>Join</Text>
+        </TouchableOpacity>
+        <TouchableOpacity 
+          style={styles.declineButton} 
+          onPress={() => handleDeclineInvite(item)}
+        >
+          <Text style={styles.declineButtonText}>Decline</Text>
+        </TouchableOpacity>
+      </View>
     </View>
   );
-  
 
   return (
     <View style={styles.container}>
@@ -127,14 +167,27 @@ const styles = StyleSheet.create({
     color: '#CCCCCC',
     marginBottom: 10,
   },
+  buttonRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
   joinButton: {
-    backgroundColor: '#1B1F24',
+    backgroundColor: '#2EA043',
     paddingVertical: 8,
     paddingHorizontal: 15,
     borderRadius: 20,
-    alignSelf: 'flex-start',
   },
   joinButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+  },
+  declineButton: {
+    backgroundColor: '#D32F2F',
+    paddingVertical: 8,
+    paddingHorizontal: 15,
+    borderRadius: 20,
+  },
+  declineButtonText: {
     color: '#FFFFFF',
     fontSize: 16,
   },
