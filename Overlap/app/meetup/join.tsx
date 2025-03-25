@@ -37,18 +37,23 @@ const JoinMeetupsScreen = () => {
   const renderInvite = ({ item }) => (
     <View style={styles.inviteCard}>
       <Text style={styles.inviteTitle}>{item.title || 'Meetup Invitation'}</Text>
-      <Text style={styles.inviteCode}>Code: {item.code}</Text>
+      {item.code ? (
+        <Text style={styles.inviteCode}>Code: {item.code}</Text>
+      ) : (
+        <Text style={styles.inviteCode}>Direct Invitation</Text>
+      )}
       <TouchableOpacity 
         style={styles.joinButton} 
         onPress={() => {
           // Add join/accept logic here.
-          console.log(`Joining meetup with invite code ${item.code}`);
+          console.log(`Joining meetup with invite ${item.code ? "code " + item.code : "direct invitation"}`);
         }}
       >
         <Text style={styles.joinButtonText}>Join</Text>
       </TouchableOpacity>
     </View>
   );
+  
 
   return (
     <View style={styles.container}>

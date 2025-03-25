@@ -160,34 +160,23 @@ export async function storeReviewsForPlace(placeId, reviews) {
     const user = auth.currentUser;
     if (!user) throw new Error('No user is signed in');
   
-    // Expect meetupData.friends to be an array of friend objects (with id, name, etc.)
     const invitedFriends = meetupData.friends || [];
-  
     const data = {
       ...meetupData,
       creatorId: user.uid,
-      // Include current user and all invited friend IDs as participants.
       participants: [user.uid, ...invitedFriends.map(friend => friend.uid)],
-      // Save the full friend objects for UI display.
       friends: invitedFriends,
       createdAt: new Date(),
     };
-    // Create the meetup document.
-    const meetupRef = await addDoc(collection(db, "meetups"), data);
-
-    // Send an invite to each friend.
-    if (invitedFriends.length > 0) {
-      invitedFriends.forEach(async (friend) => {
-        try {
-          await sendMeetupInvite(meetupRef.id, friend);
-        } catch (error) {
-          console.error(`Error sending invite to ${friend.uid}:`, error);
-        }
-      });
-    }
   
+    // Create the meetup document
+    const meetupRef = await addDoc(collection(db, "meetups"), data);
+    
+    // Add a meetupId field to the document (using the document ID)
+    await updateDoc(meetupRef, { meetupId: meetupRef.id });
+    
     return meetupRef.id;
-}
+  }
 /* ------------------------------------------------------------------
    6) Firestore: Get User's Meetups
       Retrieves meetups the user created or joined.
@@ -432,6 +421,35 @@ export async function getMeetupData(meetupId) {
   }
 }
 
+export async function getMeetupLikes(meetupId) {
+  // Retrieve meetup details including the list of participants
+  const meetupData = await getMeetupData(meetupId);
+  if (!meetupData || !meetupData.participants) {
+    throw new Error('Meetup data or participants not found');
+  }
+  
+  const participantIds = meetupData.participants;
+  let allLikes = [];
+  
+  // For each participant, fetch their likes
+  for (const uid of participantIds) {
+    const likesColRef = collection(db, 'users', uid, 'likes');
+    const snap = await getDocs(likesColRef);
+    const likes = snap.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    }));
+    allLikes = allLikes.concat(likes);
+  }
+  
+  // Optional: Remove duplicates if needed
+  // For example, using a Map keyed by activity id
+  const uniqueLikes = Array.from(
+    new Map(allLikes.map(like => [like.id, like])).values()
+  );
+  
+  return uniqueLikes;
+}
 /**
  * Removes a friendship between the current user and friendUid.
  * This finds the doc in "friendships" where both user UIDs appear in the "users" array

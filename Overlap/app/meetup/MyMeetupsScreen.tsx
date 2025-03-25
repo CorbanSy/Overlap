@@ -51,7 +51,7 @@ const MyMeetupsScreen = ({ onBack }: { onBack: () => void }) => {
       setMeetups(prev =>
         prev.map(m => (m.id === meetupId ? { ...m, ongoing: true } : m))
       );
-      router.push('/startMeetUp');
+      router.push(`/meetup/startMeetUp?meetupId=${meetupId}`);
     } catch (error) {
       console.error('Error starting meetup:', error);
     }

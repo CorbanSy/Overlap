@@ -1,6 +1,6 @@
-import { View, Text, ScrollView, Image } from 'react-native';
-import { Redirect, router } from 'expo-router';
+import { View, Image } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
+import { router } from 'expo-router';
 import React from 'react';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import images from '../constants/images';
@@ -10,9 +10,10 @@ export default function App() {
   return (
     <SafeAreaView className="bg-primary h-full">
       <View style={{ flex: 1 }}>
+        {/* Display the PNG as a background image */}
         <Image
-          source={images.welcome_screen}  // Using the directly imported image
-          style={{ 
+          source={images.overlap}
+          style={{
             position: 'absolute',
             top: 0,
             left: 0,
@@ -23,6 +24,8 @@ export default function App() {
           }}
           resizeMode="cover"
         />
+
+        {/* Footer with button */}
         <View style={{ flex: 1, justifyContent: 'flex-end', alignItems: 'center', paddingBottom: 20 }}>
           <CustomButton
             title="Start"

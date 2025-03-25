@@ -1,20 +1,20 @@
 import React from 'react';
 import { SafeAreaView, StyleSheet } from 'react-native';
-import SwipingScreen from '../../components/swiping'; // Adjust the import path as needed
+import { useLocalSearchParams } from 'expo-router';
+import SwipingScreen from '../../components/swiping';
 
-const StartMeetupScreen = () => {
+export default function StartMeetupScreen() {
+  // Grab ?meetupId=... from the URL
+  const { meetupId } = useLocalSearchParams();
+
   return (
     <SafeAreaView style={styles.container}>
-      <SwipingScreen />
+      {/* Pass the meetupId down to the SwipingScreen component */}
+      <SwipingScreen meetupId={meetupId} />
     </SafeAreaView>
   );
-};
+}
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#0D1117',
-  },
+  container: { flex: 1, backgroundColor: '#0D1117' },
 });
-
-export default StartMeetupScreen;

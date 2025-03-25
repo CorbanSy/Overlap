@@ -12,7 +12,7 @@ import {
 import DateTimePicker from '@react-native-community/datetimepicker';
 import Slider from '@react-native-community/slider';
 import { createMeetup, getFriendships } from '../utils/storage';
-import { collection, getDocs } from 'firebase/firestore';
+import { doc, getDoc, getDocs, addDoc, collection } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
 import { db } from '../../FirebaseConfig';
 
@@ -23,15 +23,40 @@ const activityLabels = [
   "Relaxing", "Learning", "Cooking", "Nightlife",
 ];
 
+const createMeetupInvite = async (friendId: string, meetupId: string) => {
+  try {
+    const meetupRef = doc(db, "meetups", meetupId);
+    const meetupSnap = await getDoc(meetupRef);
+    const meetupData = meetupSnap.exists() ? meetupSnap.data() : {};
+    
+    const inviteData = {
+      invitedFriendId: friendId, // <-- Use this field name
+      meetupId,
+      status: 'pending',
+      title: meetupData.eventName || 'Meetup Invitation',
+      createdAt: new Date().toISOString(),
+    };
+    await addDoc(collection(db, 'meetupInvites'), inviteData);
+  } catch (error) {
+    console.error('Error creating meetup invite:', error);
+  }
+};
+
+
 // Helper function to fetch a friend's profile
 const getFriendProfile = async (friendId) => {
   try {
-    const profileRef = collection(db, 'users', friendId, 'profile');
-    await getDocs(profileRef);
-    return { id: friendId, name: friendId };
+    const userDocRef = doc(db, 'users', friendId);
+    const userDoc = await getDoc(userDocRef);
+    if (userDoc.exists()) {
+      const userData = userDoc.data();
+      // Return the email as the name (or separately if needed)
+      return { id: friendId, email: userData.email, name: userData.email };
+    }
+    return { id: friendId, email: friendId, name: friendId };
   } catch (error) {
     console.error('Error fetching friend profile:', error);
-    return { id: friendId, name: friendId };
+    return { id: friendId, email: friendId, name: friendId };
   }
 };
 
@@ -218,18 +243,23 @@ const CreateMeetupScreen = ({ onBack }) => {
       priceRange,
       description,
       restrictions,
-      invitedFriends: selectedFriends,
+      invitedFriends: selectedFriends, // This still stores the list in your meetup
       location: locationOption === 'own' ? 'my location' : specificLocation,
       collections: selectedCollections,
     };
     try {
       const meetupId = await createMeetup(meetupData);
+      // Loop over each selected friend to create an invite
+      await Promise.all(
+        selectedFriends.map(friend => createMeetupInvite(friend.id, meetupId))
+      );
       Alert.alert('Success', `Meetup created successfully! (ID: ${meetupId})`);
       onBack();
     } catch (error) {
       Alert.alert('Error', 'There was an error creating the meetup.');
     }
   };
+  
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>

@@ -12,25 +12,32 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { getAllLikes, getProfileData } from '../app/utils/storage'; // Adjust the path as needed
+import { getMeetupLikes, getProfileData } from '../app/utils/storage';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 
-const SwipingScreen = () => {
+const SwipingScreen = ({ meetupId }) => {
   const router = useRouter();
-  const [cards, setCards] = useState<any[]>([]);
+  const [cards, setCards] = useState([]);
   const [loading, setLoading] = useState(true);
   const [currentCardIndex, setCurrentCardIndex] = useState(0);
   const position = useRef(new Animated.ValueXY()).current;
 
   useEffect(() => {
     async function loadCards() {
+      if (!meetupId) {
+        console.error("No meetupId provided in route parameters.");
+        setLoading(false);
+        return;
+      }
       try {
-        // Fetch liked activities and the user's profile data
-        const likedActivities = await getAllLikes();
+        // Use getMeetupLikes to aggregate likes for all users in this meetup.
+        const likedActivities = await getMeetupLikes(meetupId);
         const profileData = await getProfileData();
-
-        // If profile has topCategories, filter liked activities accordingly
+  
+        // (Optional) Additional client-side filtering:
+        // const filteredByMeetup = likedActivities.filter(activity => activity.meetupId === meetupId);
+  
         if (
           profileData &&
           profileData.topCategories &&
@@ -38,7 +45,7 @@ const SwipingScreen = () => {
         ) {
           const filteredActivities = likedActivities.filter((activity) => {
             if (!activity.types || !Array.isArray(activity.types)) return false;
-            return activity.types.some((type: string) =>
+            return activity.types.some((type) =>
               profileData.topCategories.includes(type)
             );
           });
@@ -47,13 +54,13 @@ const SwipingScreen = () => {
           setCards(likedActivities);
         }
       } catch (error) {
-        console.error('Error fetching liked activities or profile data:', error);
+        console.error("Error fetching liked activities or profile data:", error);
       } finally {
         setLoading(false);
       }
     }
     loadCards();
-  }, []);
+  }, [meetupId]);
 
   // Interpolated opacities for swipe indicators
   const yesOpacity = position.x.interpolate({
@@ -67,13 +74,12 @@ const SwipingScreen = () => {
     extrapolate: 'clamp',
   });
 
-  // When a card is tapped (minimal gesture movement), navigate to ExploreMoreCard screen.
+  // When a card is tapped, navigate to ExploreMoreCard screen.
   const handleCardPress = () => {
     const card = cards[currentCardIndex];
-    if (!card) return; // Prevent further action if no card is available
+    if (!card) return;
     router.push(`/exploreMoreCard?activityId=${card.id}`);
   };
-  
 
   const panResponder = useRef(
     PanResponder.create({
@@ -82,27 +88,24 @@ const SwipingScreen = () => {
         position.setValue({ x: gesture.dx, y: gesture.dy });
       },
       onPanResponderRelease: (_, gesture) => {
-        // Treat minimal movement as a tap
+        // If movement is minimal, treat as a tap.
         if (Math.abs(gesture.dx) < 10 && Math.abs(gesture.dy) < 10) {
           handleCardPress();
           return;
         }
         if (gesture.dx > 120) {
-          // Swipe Right (Yes)
           Animated.timing(position, {
             toValue: { x: SCREEN_WIDTH + 100, y: gesture.dy },
             duration: 250,
             useNativeDriver: false,
           }).start(() => handleSwipe('right'));
         } else if (gesture.dx < -120) {
-          // Swipe Left (No)
           Animated.timing(position, {
             toValue: { x: -SCREEN_WIDTH - 100, y: gesture.dy },
             duration: 250,
             useNativeDriver: false,
           }).start(() => handleSwipe('left'));
         } else {
-          // Not enough movement: reset position
           Animated.spring(position, {
             toValue: { x: 0, y: 0 },
             useNativeDriver: false,
@@ -112,9 +115,8 @@ const SwipingScreen = () => {
     })
   ).current;
 
-  const handleSwipe = (direction: 'left' | 'right') => {
+  const handleSwipe = (direction) => {
     console.log('Swiped:', direction);
-    // Reset position and move to next card
     position.setValue({ x: 0, y: 0 });
     setCurrentCardIndex((prevIndex) => prevIndex + 1);
   };
@@ -135,7 +137,6 @@ const SwipingScreen = () => {
       );
     }
     const card = cards[currentCardIndex];
-    // Interpolate rotation for a smooth effect
     const rotate = position.x.interpolate({
       inputRange: [-SCREEN_WIDTH, 0, SCREEN_WIDTH],
       outputRange: ['-30deg', '0deg', '30deg'],
@@ -146,33 +147,25 @@ const SwipingScreen = () => {
     };
 
     return (
-      <Animated.View
-        style={[styles.card, animatedStyle]}
-        {...panResponder.panHandlers}
-      >
-        {/* Swipe indicators */}
+      <Animated.View style={[styles.card, animatedStyle]} {...panResponder.panHandlers}>
         <Animated.Text style={[styles.noIndicator, { opacity: noOpacity }]}>
           NO
         </Animated.Text>
         <Animated.Text style={[styles.yesIndicator, { opacity: yesOpacity }]}>
           YES
         </Animated.Text>
-        {/* Activity Image */}
         {card.photoReference && (
           <Image
             source={{
-              uri: `https://maps.googleapis.com/maps/api/place/photo?maxwidth=800&photoreference=${card.photoReference}&key=AIzaSyDcTuitQdQGXwuLp90NqQ_ZwhnMSGrr8mY`,
+              uri: `https://maps.googleapis.com/maps/api/place/photo?maxwidth=800&photoreference=${card.photoReference}&key=YOUR_API_KEY`,
             }}
             style={styles.image}
           />
         )}
-        {/* Activity Title */}
         <Text style={styles.cardTitle}>{card.name}</Text>
-        {/* Activity Rating */}
         {card.rating !== undefined && (
           <Text style={styles.cardSubtitle}>{card.rating} ⭐</Text>
         )}
-        {/* Activity Description */}
         <Text style={styles.cardDescription}>
           {card.description || card.formatted_address || 'No description available.'}
         </Text>
@@ -182,12 +175,8 @@ const SwipingScreen = () => {
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* Header with a working back button */}
       <View style={styles.header}>
-        <TouchableOpacity
-          style={styles.backButton}
-          onPress={() => router.back()}
-        >
+        <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
           <Text style={styles.backButtonText}>‹ Back</Text>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Liked Activities</Text>
@@ -276,14 +265,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     height: 300,
   },
-  // Swipe indicator styles
   yesIndicator: {
     position: 'absolute',
     top: 20,
     right: 20,
     fontSize: 32,
     fontWeight: 'bold',
-    color: '#28A745', // Green for yes
+    color: '#28A745',
     zIndex: 1000,
   },
   noIndicator: {
@@ -292,7 +280,7 @@ const styles = StyleSheet.create({
     left: 20,
     fontSize: 32,
     fontWeight: 'bold',
-    color: '#DC3545', // Red for no
+    color: '#DC3545',
     zIndex: 1000,
   },
 });
