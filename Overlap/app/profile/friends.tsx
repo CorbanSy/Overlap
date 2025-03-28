@@ -17,13 +17,11 @@ import {
   where, 
   getDocs, 
   updateDoc, 
-  doc, 
-  addDoc,
-  getDoc
+  doc
 } from 'firebase/firestore';
 import { useRouter } from 'expo-router';
 import { sendFriendRequest, removeFriend, acceptFriendRequest } from '../utils/storage';
-import FriendItem from '../../components/friendItem';
+import FriendCard from '../../components/FriendCard';
 
 function FriendsScreen() {
   const [friendships, setFriendships] = useState([]);
@@ -41,6 +39,7 @@ function FriendsScreen() {
       return;
     }
     try {
+      const currentUser = auth.currentUser;
       const usersRef = collection(firestore, 'users');
       const q = query(usersRef, where('email', '==', searchEmail.trim().toLowerCase()));
       const querySnapshot = await getDocs(q);
@@ -49,16 +48,24 @@ function FriendsScreen() {
         return;
       }
       const userDoc = querySnapshot.docs[0];
-      const targetUserId = userDoc.id; // assuming the doc ID is the user's UID
+      const targetUserId = userDoc.id;
+  
+      // Prevent user from adding themselves
+      if (targetUserId === currentUser.uid) {
+        Alert.alert('You cannot add yourself as a friend.');
+        return;
+      }
+  
       await sendFriendRequest(targetUserId);
       Alert.alert('Friend request sent successfully!');
       setSearchEmail('');
-      fetchSentRequests(); // refresh the sent requests list
+      fetchSentRequests();
     } catch (error) {
       console.error('Error searching for user and sending friend request:', error);
       Alert.alert('Error sending friend request.');
     }
   };
+  
 
   // Fetch accepted friendships
   const fetchFriendships = async () => {
@@ -128,7 +135,7 @@ function FriendsScreen() {
     fetchReceivedRequests();
   }, []);
 
-  // Accept a friend request using the storage function (which now also stores userDetails)
+  // Accept a friend request using the storage function
   const handleAccept = async (requestId, fromUserId) => {
     try {
       await acceptFriendRequest(requestId, fromUserId);
@@ -177,37 +184,63 @@ function FriendsScreen() {
     }
   };
 
-  // Render accepted friend item using the dynamic FriendItem component.
+  // Render accepted friend item using FriendCard.
   const renderFriend = ({ item }) => {
     const currentUser = auth.currentUser;
     const friendUid = item.users.find(uid => uid !== currentUser.uid);
-    // Extract friend data from the friendship doc's userDetails (if available)
-    const friendData = item.userDetails && item.userDetails[friendUid] ? item.userDetails[friendUid] : null;
+    // Get friend details from the friendship document's userDetails object.
+    const friendData = (item.userDetails && item.userDetails[friendUid]) || {};
     return (
-      <FriendItem
-        friendUid={friendUid}
-        friendData={friendData}
-        onPress={() => router.push(`/friend-profile/${friendUid}`)}
-        onRemove={() => handleRemoveFriend(friendUid)}
-      />
+      <View style={styles.friendItem}>
+        <TouchableOpacity
+          onPress={() => 
+            router.push({ 
+              pathname: '/profile/friendProfile', 
+              params: { uid: friendUid } 
+            })
+          }
+          style={{ flex: 1 }}
+        >
+          <FriendCard
+            item={{
+              name: friendData.name || friendUid,
+              profilePicUrl: friendData.avatarUrl || friendData.profilePicUrl
+            }}
+          />
+        </TouchableOpacity>
+        <TouchableOpacity 
+          style={styles.removeButton} 
+          onPress={() => handleRemoveFriend(friendUid)}
+        >
+          <Text style={styles.removeButtonText}>Remove</Text>
+        </TouchableOpacity>
+      </View>
     );
   };
 
-  // Render a pending sent friend request
+  // Render a pending sent friend request using FriendCard.
   const renderSentRequest = ({ item }) => (
     <View style={styles.requestItem}>
-      <Text style={styles.requestText}>
-        Pending request to {item.toEmail || item.to}
-      </Text>
+      <FriendCard
+        item={{
+          name: item.toEmail || item.to,
+          profilePicUrl: item.profilePicUrl
+        }}
+      />
+      <Text style={styles.requestStatusText}>Pending request</Text>
     </View>
   );
 
-  // Render a received friend request with accept/reject buttons
+  // Render a received friend request with FriendCard and accept/reject buttons.
+  // For received requests, show the sender's info.
   const renderReceivedRequest = ({ item }) => (
     <View style={styles.requestItem}>
-      <Text style={styles.requestText}>
-        Friend request from {item.fromEmail || item.from}
-      </Text>
+      <FriendCard
+        item={{
+          name: item.fromEmail || item.from,
+          profilePicUrl: item.profilePicUrl
+        }}
+      />
       <View style={styles.buttonRow}>
         <TouchableOpacity
           style={styles.acceptButton}
@@ -331,10 +364,8 @@ const styles = StyleSheet.create({
     borderRadius: 8, 
     marginBottom: 10,
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center'
   },
-  friendText: { color: '#FFF', fontSize: 16 },
   removeButton: {
     backgroundColor: '#F44336',
     paddingHorizontal: 10,
@@ -360,13 +391,15 @@ const styles = StyleSheet.create({
     borderRadius: 6, 
     marginHorizontal: 16, 
     marginBottom: 8,
+    alignItems: 'center'
   },
-  requestText: { 
-    color: '#FFF', 
-    fontSize: 16, 
-    marginBottom: 8 
+  requestStatusText: {
+    color: '#FFF',
+    fontSize: 14,
+    marginTop: 5,
+    textAlign: 'center'
   },
-  buttonRow: { flexDirection: 'row', justifyContent: 'space-around' },
+  buttonRow: { flexDirection: 'row', justifyContent: 'space-around', marginTop: 10 },
   acceptButton: { backgroundColor: '#4CAF50', padding: 10, borderRadius: 6 },
   rejectButton: { backgroundColor: '#F44336', padding: 10, borderRadius: 6 },
   buttonText: { color: '#FFF', fontWeight: 'bold' },

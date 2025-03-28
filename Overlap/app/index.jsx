@@ -1,70 +1,76 @@
-import React, { useRef } from 'react';
+import React, { useRef, useState } from 'react';
 import { View, Image, Animated, Easing } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import images from '../constants/images';
 import CustomButton from '../components/CustomButton';
+import VennDiagram from '../components/VennDiagram';
 
 export default function App() {
-  // Animated values for scale and vertical translation
+  // Controls if the VennDiagram animation should start
+  const [startVennAnimation, setStartVennAnimation] = useState(false);
+
+  // Animated values for additional animations (optional)
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const slideAnim = useRef(new Animated.Value(0)).current;
 
-  // Handle animation sequence then navigate to sign-in screen
+  // Handle start button press: trigger Venn diagram animation and additional animations
   const handleStart = () => {
+    setStartVennAnimation(true);
+
     Animated.sequence([
-      // Scale animation for merging effect
       Animated.timing(scaleAnim, {
-        toValue: 0.5, // adjust as needed to simulate a merged circle
+        toValue: 0.5,
         duration: 500,
         easing: Easing.out(Easing.ease),
         useNativeDriver: true,
       }),
-      // Slide up animation for the whole view
       Animated.timing(slideAnim, {
-        toValue: -100, // change this value to control the slide distance
+        toValue: -100,
         duration: 500,
         easing: Easing.inOut(Easing.ease),
         useNativeDriver: true,
       }),
-    ]).start(() => {
-      // Navigate after the animation completes
-      router.push('/sign-in');
-    });
+    ]).start();
+  };
+
+  // Callback when the Venn diagram animation finishes
+  const handleVennAnimationComplete = () => {
+    router.push('/sign-in');
   };
 
   return (
     <SafeAreaView className="bg-primary h-full">
-      <View style={{ flex: 1 }}>
-        {/* Animated container for the logo */}
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+        {/* VennDiagram component with triggered animation */}
+        <VennDiagram
+          startAnimation={startVennAnimation}
+          onAnimationComplete={handleVennAnimationComplete}
+        />
+
+        {/* Additional animated element example (optional) */}
         <Animated.View
           style={{
             transform: [{ scale: scaleAnim }, { translateY: slideAnim }],
-            alignItems: 'center', // center the image horizontally
+            marginTop: 40,
           }}
         >
           <Image
-            source={images.overlap}
-            style={{
-              width: 200,  // adjust width/height as needed
-              height: 200,
-              // Optionally add borderRadius to smooth the transformation into a circle
-              borderRadius: 100,
-            }}
-            resizeMode="cover"
+            source={{ uri: 'https://via.placeholder.com/150' }}
+            style={{ width: 100, height: 100, borderRadius: 50 }}
           />
         </Animated.View>
-
-        {/* Footer with Start button */}
-        <View style={{ flex: 1, justifyContent: 'flex-end', alignItems: 'center', paddingBottom: 20 }}>
-          <CustomButton
-            title="Start"
-            handlePress={handleStart}
-            containerStyles="w-[279px] mt-7"
-          />
-        </View>
       </View>
+
+      {/* Footer with Start button */}
+      <View style={{ alignItems: 'center', paddingBottom: 20 }}>
+        <CustomButton
+          title="Start"
+          handlePress={handleStart}
+          containerStyles="w-[279px] mt-7"
+        />
+      </View>
+
       <StatusBar backgroundColor="#161622" style="light" />
     </SafeAreaView>
   );

@@ -1,7 +1,8 @@
 // storage.js
+
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { 
-  doc, setDoc, deleteDoc, getDoc, collection, getDocs, addDoc, query, where, updateDoc 
+import {
+  doc, setDoc, deleteDoc, getDoc, collection, getDocs, addDoc, query, where, updateDoc
 } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
 import { db } from '../../FirebaseConfig'; // your "db" or "firestore" export
@@ -29,13 +30,8 @@ export async function checkPreferencesComplete() {
 
 /* ------------------------------------------------------------------
    2) Firestore: Save & Read Preferences Subcollection
-      /users/{uid}/preferences/main
+      /users/{uid}/profile/main
    ------------------------------------------------------------------ */
-
-/**
- * Save or update the user's profile with topCategories (and anything else).
- * This merges so you don't overwrite existing fields like keywords.
- */
 export async function saveProfileData({ topCategories, name, bio, avatarUrl, email, username }) {
   const auth = getAuth();
   const user = auth.currentUser;
@@ -57,12 +53,6 @@ export async function saveProfileData({ topCategories, name, bio, avatarUrl, ema
   );
 }
 
-
-
-/**
- * Get the user's profile data from /users/{uid}/profile/main.
- * Returns an object with fields like { topCategories, keywords, ... }
- */
 export async function getProfileData() {
   const auth = getAuth();
   const user = auth.currentUser;
@@ -81,11 +71,9 @@ export async function getProfileData() {
    3) Firestore: Likes Subcollection
       /users/{uid}/likes/{placeId}
    ------------------------------------------------------------------ */
-// Instead of just placeId, we pass the full 'place' object, so we store details
 export async function likePlace(place) {
   const auth = getAuth();
   const user = auth.currentUser;
-  console.log('Current user:', user);
   if (!user) throw new Error("No user is signed in");
   
   const likeDocRef = doc(db, 'users', user.uid, 'likes', place.id);
@@ -106,10 +94,9 @@ export async function likePlace(place) {
     createdAt: new Date(),
   });
 }
-  
+
 export async function unlikePlace(placeId) {
   const auth = getAuth();
-  console.log('Current user:', auth.currentUser);
   const user = auth.currentUser;
   if (!user) throw new Error("No user is signed in");
 
@@ -117,7 +104,6 @@ export async function unlikePlace(placeId) {
   await deleteDoc(likeDocRef);
 }
 
-// Return an array of place docs the user has liked
 export async function getAllLikes() {
   const auth = getAuth();
   const user = auth.currentUser;
@@ -128,7 +114,7 @@ export async function getAllLikes() {
   
   return snap.docs.map((d) => ({
     id: d.id,
-    ...d.data() // name, rating, photo, etc.
+    ...d.data()
   }));
 }
 
@@ -159,14 +145,40 @@ export async function storeReviewsForPlace(placeId, reviews) {
     const user = auth.currentUser;
     if (!user) throw new Error('No user is signed in');
   
-    const invitedFriends = meetupData.friends || [];
+    // Ensure each field is defined (use defaults if necessary)
+    const cleanedData = {
+      eventName: meetupData.eventName || "",
+      mood: meetupData.mood || "",
+      category: meetupData.category || "",
+      groupSize: meetupData.groupSize || 1,
+      date: meetupData.date, // already an ISO string from new Date()
+      time: meetupData.time, // same as above
+      priceRange: meetupData.priceRange || 0,
+      description: meetupData.description || "",
+      restrictions: meetupData.restrictions || "",
+      // In case selectedFriends is missing or a friend object is missing uid, fallback to an empty array
+      friends: (meetupData.friends || []).map(friend => ({
+        uid: friend.uid || "",
+        email: friend.email || "",
+        name: friend.name || "",
+        avatarUrl: friend.avatarUrl || ""
+      })),
+      location: meetupData.location || "",
+      // Ensure collections is at least an empty array
+      collections: meetupData.collections || [],
+    };
+  
+    // Build additional fields
+    const invitedFriends = cleanedData.friends;
     const data = {
-      ...meetupData,
+      ...cleanedData,
       creatorId: user.uid,
       participants: [user.uid, ...invitedFriends.map(friend => friend.uid)],
-      friends: invitedFriends,
       createdAt: new Date(),
     };
+  
+    // Log the final data for debugging
+    console.log("Final meetup data sent to Firestore:", data);
   
     // Create the meetup document
     const meetupRef = await addDoc(collection(db, "meetups"), data);
@@ -176,10 +188,8 @@ export async function storeReviewsForPlace(placeId, reviews) {
     
     return meetupRef.id;
   }
-/* ------------------------------------------------------------------
-   6) Firestore: Get User's Meetups
-      Retrieves meetups the user created or joined.
-   ------------------------------------------------------------------ */
+  
+
 export async function getUserMeetups() {
   const auth = getAuth();
   const user = auth.currentUser;
@@ -207,43 +217,53 @@ export async function getUserMeetups() {
 
 /* ------------------------------------------------------------------
    7) Firestore: Social - Friend Requests & Friendships
-         Using two separate collections: "friendRequests" and "friendships"
+      Using two separate collections: "friendRequests" and "friendships"
    ------------------------------------------------------------------ */
 
-   export async function sendFriendRequest(targetUserId) {
-    const auth = getAuth();
-    const user = auth.currentUser;
-    if (!user) throw new Error("No user is signed in");
-  
-    // Fetch target user's email from their profile
-    const targetProfileRef = doc(db, 'users', targetUserId, 'profile', 'main');
-    const targetSnap = await getDoc(targetProfileRef);
-    let targetEmail = '';
-    if (targetSnap.exists()) {
-      const targetData = targetSnap.data();
-      targetEmail = targetData.email || '';
-    }
-  
-    // Use the current user's email for fromEmail
-    const fromEmail = user.email;
-  
-    // Create the friend request doc with both emails
-    await addDoc(collection(db, 'friendRequests'), {
-      from: user.uid,
-      fromEmail,           // <-- Sender's email
-      to: targetUserId,
-      toEmail: targetEmail,  // <-- Recipient's email
-      status: 'pending',
-      timestamp: new Date(),
-    });
+/**
+ * sendFriendRequest:
+ * - We now store the **sender's** avatar in "profilePicUrl" so the receiving user
+ *   sees who is requesting them.
+ */
+export async function sendFriendRequest(targetUserId) {
+  const auth = getAuth();
+  const user = auth.currentUser;
+  if (!user) throw new Error("No user is signed in");
+
+  // Fetch the sender's (current user's) profile to get avatar
+  const fromProfileRef = doc(db, 'users', user.uid, 'profile', 'main');
+  const fromSnap = await getDoc(fromProfileRef);
+
+  let fromEmail = user.email || '';
+  let fromAvatarUrl = '';
+  if (fromSnap.exists()) {
+    const fromData = fromSnap.data();
+    fromAvatarUrl = fromData.avatarUrl || '';
   }
-  
+
+  // Fetch target user's email (optional, if you want to store it)
+  const targetProfileRef = doc(db, 'users', targetUserId, 'profile', 'main');
+  const targetSnap = await getDoc(targetProfileRef);
+  let targetEmail = '';
+  if (targetSnap.exists()) {
+    const targetData = targetSnap.data();
+    targetEmail = targetData.email || '';
+  }
+
+  // Add friend request doc with the **sender's** avatar
+  await addDoc(collection(db, 'friendRequests'), {
+    from: user.uid,
+    fromEmail,
+    to: targetUserId,
+    toEmail: targetEmail,
+    profilePicUrl: targetAvatarUrl, // store the SENDER's avatar here
+    status: 'pending',
+    timestamp: new Date(),
+  });
+}
 
 /**
  * Accept a friend request.
- * Updates the friend request document's status and creates a new friendship document.
- * @param {string} requestId - The ID of the friend request document.
- * @param {string} fromUserId - The UID of the user who sent the request.
  */
 export async function acceptFriendRequest(requestId, fromUserId) {
   const auth = getAuth();
@@ -261,7 +281,7 @@ export async function acceptFriendRequest(requestId, fromUserId) {
     username: user.displayName || '',
   };
 
-  // Fetch friend's details from Firestore "users" collection
+  // Fetch friend's top-level user doc (if needed)
   const friendDocRef = doc(db, "users", fromUserId);
   const friendSnap = await getDoc(friendDocRef);
   let friendDetails = { uid: fromUserId };
@@ -269,7 +289,16 @@ export async function acceptFriendRequest(requestId, fromUserId) {
     friendDetails = friendSnap.data();
   }
 
-  // Create a new friendship document with both users' details
+  // Also fetch the friend's profile data (including avatarUrl)
+  const friendProfileRef = doc(db, "users", fromUserId, "profile", "main");
+  const friendProfileSnap = await getDoc(friendProfileRef);
+  if (friendProfileSnap.exists()) {
+    const profileData = friendProfileSnap.data();
+    // Merge the profile data (like avatarUrl) into friendDetails
+    friendDetails = { ...friendDetails, ...profileData };
+  }
+
+  // Create a new friendship document
   await addDoc(collection(db, "friendships"), {
     users: [user.uid, fromUserId],
     userDetails: {
@@ -280,11 +309,6 @@ export async function acceptFriendRequest(requestId, fromUserId) {
   });
 }
 
-/**
- * Reject a friend request.
- * Updates the friend request document's status to "rejected".
- * @param {string} requestId - The ID of the friend request document.
- */
 export async function rejectFriendRequest(requestId) {
   const auth = getAuth();
   const user = auth.currentUser;
@@ -294,11 +318,7 @@ export async function rejectFriendRequest(requestId) {
   await updateDoc(requestRef, { status: "rejected" });
 }
 
-/**
- * Retrieve pending friend requests for the current user.
- * Queries the "friendRequests" collection where "to" equals the current user's UID and status is "pending".
- */
-// Fetch pending meetup invites for the current user.
+// Meetup invites example (unrelated to friendRequests, but included in your code)
 export async function getPendingMeetupInvites() {
   const auth = getAuth();
   const user = auth.currentUser;
@@ -315,7 +335,6 @@ export async function getPendingMeetupInvites() {
 
 /**
  * Retrieve the list of friendships for the current user.
- * Looks for documents in "friendships" where the current user's UID is in the "users" array.
  */
 export async function getFriendships() {
   const auth = getAuth();
@@ -333,11 +352,9 @@ export async function getFriendships() {
   }));
 }
 
-/**
- * Update an existing meetup document.
- * Expects meetupData to include the meetup's ID and the updated fields.
- * For example: { id, eventName, mood, description, restrictions, ... }
- */
+/* ------------------------------------------------------------------
+   8) Firestore: Update / Delete Meetup
+   ------------------------------------------------------------------ */
 export async function updateMeetup(meetupData) {
   if (!meetupData.id) {
     throw new Error('No meetup id provided');
@@ -351,14 +368,10 @@ export async function updateMeetup(meetupData) {
   if (meetupData.description !== undefined) updateFields.description = meetupData.description;
   if (meetupData.restrictions !== undefined) updateFields.restrictions = meetupData.restrictions;
   if (meetupData.ongoing !== undefined) updateFields.ongoing = meetupData.ongoing;
-  // Allow updating the friends list as well:
   if (meetupData.friends !== undefined) updateFields.friends = meetupData.friends;
   
   await updateDoc(meetupRef, updateFields);
 }
-
-
-// storage.js
 
 export async function removeMeetup(meetupId) {
   if (!meetupId) {
@@ -368,7 +381,9 @@ export async function removeMeetup(meetupId) {
   await deleteDoc(meetupRef);
 }
 
-// New function to send a meetup invite to a friend.
+/* ------------------------------------------------------------------
+   9) Firestore: Send & Manage Meetup Invites
+   ------------------------------------------------------------------ */
 export async function sendMeetupInvite(meetupId, friend) {
   const auth = getAuth();
   const user = auth.currentUser;
@@ -378,11 +393,11 @@ export async function sendMeetupInvite(meetupId, friend) {
     meetupId,
     invitedBy: user.uid,
     invitedFriendId: friend.uid,
-    status: "pending", // Could later be updated to 'accepted' or 'rejected'
+    status: "pending",
     createdAt: new Date(),
   });
 }
-// Accept an invite: update its status and add the user to the meetup's participants.
+
 export async function acceptMeetupInvite(inviteId, meetupId) {
   // Update the invite document's status.
   const inviteRef = doc(db, "meetupInvites", inviteId);
@@ -403,13 +418,11 @@ export async function acceptMeetupInvite(inviteId, meetupId) {
   }
 }
 
-// Decline an invite: update its status.
 export async function declineMeetupInvite(inviteId) {
   const inviteRef = doc(db, "meetupInvites", inviteId);
   await updateDoc(inviteRef, { status: "declined" });
 }
 
-// New function to fetch meetup details by ID.
 export async function getMeetupData(meetupId) {
   const meetupRef = doc(db, "meetups", meetupId);
   const meetupSnap = await getDoc(meetupRef);
@@ -421,7 +434,6 @@ export async function getMeetupData(meetupId) {
 }
 
 export async function getMeetupLikes(meetupId) {
-  // Retrieve meetup details including the list of participants
   const meetupData = await getMeetupData(meetupId);
   if (!meetupData || !meetupData.participants) {
     throw new Error('Meetup data or participants not found');
@@ -441,18 +453,16 @@ export async function getMeetupLikes(meetupId) {
     allLikes = allLikes.concat(likes);
   }
   
-  // Optional: Remove duplicates if needed
-  // For example, using a Map keyed by activity id
+  // Optional: Remove duplicates
   const uniqueLikes = Array.from(
     new Map(allLikes.map(like => [like.id, like])).values()
   );
   
   return uniqueLikes;
 }
+
 /**
  * Removes a friendship between the current user and friendUid.
- * This finds the doc in "friendships" where both user UIDs appear in the "users" array
- * and deletes it. 
  */
 export async function removeFriend(friendUid) {
   const auth = getAuth();
@@ -492,8 +502,6 @@ export async function joinMeetup(inviteId) {
 
 // Function to join a meetup by using an invite code.
 export async function joinMeetupByCode(inviteCode) {
-  // Query the meetups collection to find a meetup with the matching code.
-  // Assuming your meetup documents contain a field called "code"
   const meetupsColRef = collection(db, "meetups");
   const q = query(meetupsColRef, where("code", "==", inviteCode));
   const snap = await getDocs(q);
@@ -506,7 +514,6 @@ export async function joinMeetupByCode(inviteCode) {
   const meetupDoc = snap.docs[0];
   const meetupData = meetupDoc.data();
   
-  // Get the current user.
   const auth = getAuth();
   const user = auth.currentUser;
   if (!user) throw new Error("No user is signed in");
@@ -523,6 +530,5 @@ export async function joinMeetupByCode(inviteCode) {
 
 // Alias for declining a meetup invite.
 export async function declineMeetup(inviteId) {
-  // You already have declineMeetupInvite defined, so simply call that.
   await declineMeetupInvite(inviteId);
 }

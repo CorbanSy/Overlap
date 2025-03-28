@@ -10,29 +10,31 @@ import {
   StyleSheet,
   Modal,
   Image,
+  SafeAreaView,
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import Slider from '@react-native-community/slider';
 import { createMeetup, getFriendships } from '../utils/storage';
 import { doc, getDoc, getDocs, addDoc, collection } from 'firebase/firestore';
-import { getAuth } from 'firebase/auth';
+import { getAuth, onAuthStateChanged } from 'firebase/auth';
 import { db } from '../../FirebaseConfig';
+import CollectionCard from '../../components/CollectionCard'; // Import the CollectionCard
 
 // Static list of activity labels
 const activityLabels = [
-  "Dining", "Fitness", "Outdoors", "Movies", "Gaming",
-  "Social", "Music", "Shopping", "Travel", "Art",
-  "Relaxing", "Learning", "Cooking", "Nightlife",
+  'Dining', 'Fitness', 'Outdoors', 'Movies', 'Gaming',
+  'Social', 'Music', 'Shopping', 'Travel', 'Art',
+  'Relaxing', 'Learning', 'Cooking', 'Nightlife',
 ];
 
-const createMeetupInvite = async (friendId: string, meetupId: string) => {
+const createMeetupInvite = async (friendId, meetupId) => {
   try {
-    const meetupRef = doc(db, "meetups", meetupId);
+    const meetupRef = doc(db, 'meetups', meetupId);
     const meetupSnap = await getDoc(meetupRef);
     const meetupData = meetupSnap.exists() ? meetupSnap.data() : {};
-    
+
     const inviteData = {
-      invitedFriendId: friendId, // <-- Use this field name
+      invitedFriendId: friendId,
       meetupId,
       status: 'pending',
       title: meetupData.eventName || 'Meetup Invitation',
@@ -44,21 +46,23 @@ const createMeetupInvite = async (friendId: string, meetupId: string) => {
   }
 };
 
-
-// Helper function to fetch a friend's profile
 const getFriendProfile = async (friendId) => {
   try {
     const userDocRef = doc(db, 'users', friendId);
     const userDoc = await getDoc(userDocRef);
     if (userDoc.exists()) {
       const userData = userDoc.data();
-      // Return the email as the name (or separately if needed)
-      return { id: friendId, email: userData.email, name: userData.email, avatarUrl: userData.avatarUrl };
+      return {
+        uid: friendId,
+        email: userData.email,
+        name: userData.email,
+        avatarUrl: userData.avatarUrl,
+      };
     }
-    return { id: friendId, email: friendId, name: friendId };
+    return { uid: friendId, email: friendId, name: friendId };
   } catch (error) {
     console.error('Error fetching friend profile:', error);
-    return { id: friendId, email: friendId, name: friendId };
+    return { uid: friendId, email: friendId, name: friendId };
   }
 };
 
@@ -76,7 +80,7 @@ const InviteFriendsModal = ({
       <View style={modalStyles.modalView}>
         <ScrollView contentContainerStyle={modalStyles.cardsContainer}>
           {friendsList.map(friend => (
-            <TouchableOpacity key={friend.id} onPress={() => toggleFriend(friend)}>
+            <TouchableOpacity key={friend.uid} onPress={() => toggleFriend(friend)}>
               <View style={modalStyles.friendCard}>
                 <Image
                   source={
@@ -94,38 +98,6 @@ const InviteFriendsModal = ({
         <TouchableOpacity style={modalStyles.confirmButton} onPress={onConfirm}>
           <Text style={modalStyles.confirmButtonText}>Confirm</Text>
         </TouchableOpacity>
-      </View>
-    </View>
-  </Modal>
-);
-
-// Modal Component for selecting collections
-const CollectionsModal = ({ visible, collectionsList, selectedCollections, toggleCollection, onConfirm, onClose }) => (
-  <Modal animationType="slide" transparent visible={visible} onRequestClose={onClose}>
-    <View style={modalStyles.centeredView}>
-      <View style={modalStyles.modalView}>
-        <ScrollView style={{ maxHeight: 300 }}>
-          {collectionsList.map((collection) => (
-            <TouchableOpacity key={collection.id} onPress={() => toggleCollection(collection)}>
-              <View style={modalStyles.friendItem}>
-                <View style={
-                  selectedCollections.some(c => c.id === collection.id)
-                    ? modalStyles.checkedCircle
-                    : modalStyles.uncheckedCircle
-                } />
-                <Text style={modalStyles.friendName}>{collection.title}</Text>
-              </View>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
-        <View style={modalStyles.modalButtons}>
-          <TouchableOpacity style={modalStyles.confirmButton} onPress={onConfirm}>
-            <Text style={modalStyles.confirmButtonText}>Confirm</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={modalStyles.cancelButton} onPress={onClose}>
-            <Text style={modalStyles.cancelButtonText}>Back</Text>
-          </TouchableOpacity>
-        </View>
       </View>
     </View>
   </Modal>
@@ -161,18 +133,30 @@ const CreateMeetupScreen = ({ onBack }) => {
   const [locationOption, setLocationOption] = useState('own'); // 'own' or 'specific'
   const [specificLocation, setSpecificLocation] = useState('');
 
-  // Activity Collections state variables
-  const [showCollectionsModal, setShowCollectionsModal] = useState(false);
+  // (IMPORTANT) Activity Collections state variables
+  // Ensure this is an array. This is what we'll pass to createMeetup
   const [selectedCollections, setSelectedCollections] = useState([]);
   const [collectionsList, setCollectionsList] = useState([]);
+  const [showCollectionsRow, setShowCollectionsRow] = useState(false);
 
-  // Fetch friends on mount
+  const auth = getAuth();
+  const [user, setUser] = useState(null);
+
+  // Listen for auth state changes so we can get the current user
   useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      setUser(currentUser);
+    });
+    return unsubscribe;
+  }, [auth]);
+
+  // Fetch friends on mount (or when user changes)
+  useEffect(() => {
+    if (!user) return;
     const fetchFriends = async () => {
       try {
         const friendships = await getFriendships();
-        const auth = getAuth();
-        const currentUserId = auth.currentUser.uid;
+        const currentUserId = user.uid;
         const friendIds = friendships.map(f =>
           f.users.find(id => id !== currentUserId)
         );
@@ -183,32 +167,27 @@ const CreateMeetupScreen = ({ onBack }) => {
       }
     };
     fetchFriends();
-  }, []);
+  }, [user]);
 
-  // Fetch collections on mount
+  // Fetch collections on mount (or when user changes)
   useEffect(() => {
+    if (!user) return;
     const fetchCollections = async () => {
       try {
-        const auth = getAuth();
-        const user = auth.currentUser;
-        if (!user) return;
         const collectionsRef = collection(db, 'users', user.uid, 'collections');
         const querySnapshot = await getDocs(collectionsRef);
-        const userCollections = querySnapshot.docs.map((docSnap) => {
-          const data = docSnap.data();
-          return {
-            id: docSnap.id,
-            title: data.title ?? docSnap.id,
-            ...data
-          };
-        });
+        const userCollections = querySnapshot.docs.map(docSnap => ({
+          id: docSnap.id,
+          ...docSnap.data(),
+          activities: docSnap.data().activities || [],
+        }));
         setCollectionsList(userCollections);
       } catch (error) {
         console.error('Error fetching user collections:', error);
       }
     };
     fetchCollections();
-  }, []);
+  }, [user]);
 
   // Handlers for date and time pickers
   const onChangeDate = (event, selectedDate) => {
@@ -223,14 +202,15 @@ const CreateMeetupScreen = ({ onBack }) => {
 
   // Toggle friend selection
   const toggleFriend = (friend) => {
-    if (selectedFriends.some(f => f.id === friend.id)) {
-      setSelectedFriends(selectedFriends.filter(f => f.id !== friend.id));
+    if (selectedFriends.some(f => f.uid === friend.uid)) {
+      setSelectedFriends(selectedFriends.filter(f => f.uid !== friend.uid));
     } else {
       setSelectedFriends([...selectedFriends, friend]);
     }
   };
 
-  // Toggle collection selection
+  // (IMPORTANT) Toggle collection selection
+  // This ensures `selectedCollections` is an array of objects
   const toggleCollection = (collection) => {
     if (selectedCollections.some(c => c.id === collection.id)) {
       setSelectedCollections(selectedCollections.filter(c => c.id !== collection.id));
@@ -245,6 +225,16 @@ const CreateMeetupScreen = ({ onBack }) => {
       Alert.alert('Missing Required Field', 'Please enter an Event Name.');
       return;
     }
+
+    // Verify that every friend in selectedFriends has a uid
+    const missingUid = selectedFriends.filter(friend => !friend.uid);
+    if (missingUid.length > 0) {
+      console.error('One or more selected friends are missing uid:', missingUid);
+      Alert.alert('Error', 'One or more invited friends is missing required data.');
+      return;
+    }
+
+    // (IMPORTANT) The final meetupData includes collections as an array
     const meetupData = {
       eventName,
       mood,
@@ -255,23 +245,27 @@ const CreateMeetupScreen = ({ onBack }) => {
       priceRange,
       description,
       restrictions,
-      invitedFriends: selectedFriends, // This still stores the list in your meetup
+      friends: selectedFriends, // each friend must have uid
       location: locationOption === 'own' ? 'my location' : specificLocation,
-      collections: selectedCollections,
+      collections: selectedCollections, // (IMPORTANT) array of collection objects
     };
+    console.log('Meetup data before creation:', meetupData);
+
     try {
       const meetupId = await createMeetup(meetupData);
-      // Loop over each selected friend to create an invite
+      console.log('Meetup created successfully with id:', meetupId);
+
+      // Create invites for each selected friend
       await Promise.all(
-        selectedFriends.map(friend => createMeetupInvite(friend.id, meetupId))
+        selectedFriends.map(friend => createMeetupInvite(friend.uid, meetupId))
       );
       Alert.alert('Success', `Meetup created successfully! (ID: ${meetupId})`);
       onBack();
     } catch (error) {
+      console.error('Error creating meetup:', error);
       Alert.alert('Error', 'There was an error creating the meetup.');
     }
   };
-  
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -306,7 +300,7 @@ const CreateMeetupScreen = ({ onBack }) => {
           </TouchableOpacity>
           {showCategoryDropdown && (
             <View style={styles.dropdown}>
-              {activityLabels.map((label) => (
+              {activityLabels.map(label => (
                 <TouchableOpacity
                   key={label}
                   style={styles.dropdownItem}
@@ -382,7 +376,8 @@ const CreateMeetupScreen = ({ onBack }) => {
       {/* Price Range */}
       <View style={styles.priceRangeContainer}>
         <Text style={styles.sliderLabel}>
-          Price Range: {priceRange} {priceRange === 0 ? '- Free' : `- ${"$".repeat(Math.ceil(priceRange / 20))}`}
+          Price Range: {priceRange}{' '}
+          {priceRange === 0 ? '- Free' : `- ${'$'.repeat(Math.ceil(priceRange / 20))}`}
         </Text>
         <Slider
           style={styles.slider}
@@ -428,7 +423,9 @@ const CreateMeetupScreen = ({ onBack }) => {
           <Text style={styles.radioLabel}>Use My Location</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.radioButton} onPress={() => setLocationOption('specific')}>
-          <View style={locationOption === 'specific' ? styles.radioSelected : styles.radioUnselected} />
+          <View
+            style={locationOption === 'specific' ? styles.radioSelected : styles.radioUnselected}
+          />
           <Text style={styles.radioLabel}>Enter Specific Location</Text>
         </TouchableOpacity>
       </View>
@@ -443,16 +440,56 @@ const CreateMeetupScreen = ({ onBack }) => {
       )}
 
       {/* Collections Selection */}
-      <TouchableOpacity style={styles.inviteButton} onPress={() => setShowCollectionsModal(true)}>
+      <TouchableOpacity style={styles.inviteButton} onPress={() => setShowCollectionsRow(true)}>
         <Text style={styles.buttonText}>Select Activity Collections</Text>
       </TouchableOpacity>
       <Text style={styles.infoText}>Collections can be added later as well</Text>
+
+      {/* Collections Row */}
+      {showCollectionsRow && (
+        <View style={styles.collectionsRowContainer}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.collectionsScrollContainer}
+          >
+            {collectionsList.map(collection => (
+              <TouchableOpacity
+                key={collection.id}
+                onPress={() => toggleCollection(collection)}
+                style={styles.collectionCardWrapper}
+              >
+                <CollectionCard collection={collection} previewOnly />
+                {selectedCollections.some(c => c.id === collection.id) && (
+                  <View style={styles.selectedOverlay}>
+                    <Ionicons name="checkmark-circle" size={24} color="#00FF00" />
+                  </View>
+                )}
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+          <TouchableOpacity style={styles.doneButton} onPress={() => setShowCollectionsRow(false)}>
+            <Text style={styles.doneButtonText}>Done</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {/* Selected Collections Preview */}
       {selectedCollections.length > 0 && (
-        <View style={styles.selectedFriendsContainer}>
-          <Text style={styles.selectedFriendsTitle}>Selected Collections:</Text>
-          {selectedCollections.map(collection => (
-            <Text key={collection.id} style={styles.selectedFriendName}>{collection.title}</Text>
-          ))}
+        <View style={styles.selectedCollectionsContainer}>
+          <Text style={styles.selectedCollectionsTitle}>Selected Activity Collections:</Text>
+          <View style={styles.selectedCollectionsCardsContainer}>
+            {selectedCollections.map(collection => (
+              <CollectionCard
+                key={collection.id}
+                collection={collection}
+                previewOnly
+                onDelete={() =>
+                  setSelectedCollections(selectedCollections.filter(c => c.id !== collection.id))
+                }
+              />
+            ))}
+          </View>
         </View>
       )}
 
@@ -464,31 +501,31 @@ const CreateMeetupScreen = ({ onBack }) => {
 
       {/* Selected (Invited) Friends as Cards */}
       {selectedFriends.length > 0 && (
-      <View style={styles.selectedFriendsContainer}>
-        <Text style={styles.selectedFriendsTitle}>Invited Friends:</Text>
-        <View style={styles.selectedFriendsCardsContainer}>
-          {selectedFriends.map(friend => (
-            <View key={friend.id} style={styles.invitedFriendCard}>
-              <TouchableOpacity 
-                style={styles.removeIconContainer}
-                onPress={() => setSelectedFriends(selectedFriends.filter(f => f.id !== friend.id))}
-              >
-                <Ionicons name="close" size={16} color="#FF0000" />
-              </TouchableOpacity>
-              <Image
-                source={
-                  friend.avatarUrl
-                    ? { uri: friend.avatarUrl }
-                    : require('../../assets/images/profile.png')
-                }
-                style={styles.invitedFriendAvatar}
-              />
-              <Text style={styles.invitedFriendEmail}>{friend.email}</Text>
-            </View>
-          ))}
+        <View style={styles.selectedFriendsContainer}>
+          <Text style={styles.selectedFriendsTitle}>Invited Friends:</Text>
+          <View style={styles.selectedFriendsCardsContainer}>
+            {selectedFriends.map(friend => (
+              <View key={friend.uid} style={styles.invitedFriendCard}>
+                <TouchableOpacity
+                  style={styles.removeIconContainer}
+                  onPress={() => setSelectedFriends(selectedFriends.filter(f => f.uid !== friend.uid))}
+                >
+                  <Ionicons name="close" size={16} color="#FF0000" />
+                </TouchableOpacity>
+                <Image
+                  source={
+                    friend.avatarUrl
+                      ? { uri: friend.avatarUrl }
+                      : require('../../assets/images/profile.png')
+                  }
+                  style={styles.invitedFriendAvatar}
+                />
+                <Text style={styles.invitedFriendEmail}>{friend.email}</Text>
+              </View>
+            ))}
+          </View>
         </View>
-      </View>
-    )}
+      )}
 
       {/* Create & Back Buttons */}
       <View style={styles.bottomButtons}>
@@ -510,39 +547,15 @@ const CreateMeetupScreen = ({ onBack }) => {
         onConfirm={() => setShowInviteModal(false)}
         onClose={() => setShowInviteModal(false)}
       />
-      <CollectionsModal
-        visible={showCollectionsModal}
-        collectionsList={collectionsList}
-        selectedCollections={selectedCollections}
-        toggleCollection={toggleCollection}
-        onConfirm={() => setShowCollectionsModal(false)}
-        onClose={() => setShowCollectionsModal(false)}
-      />
     </ScrollView>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#0D1117',
-  },
-  content: {
-    padding: 20,
-    paddingBottom: 40,
-    paddingTop: 50,
-  },
-  title: {
-    fontSize: 32,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
-    marginBottom: 20,
-    textAlign: 'center',
-  },
-  row: {
-    flexDirection: 'row',
-    marginBottom: 15,
-  },
+  container: { flex: 1, backgroundColor: '#0D1117' },
+  content: { padding: 20, paddingBottom: 40, paddingTop: 50 },
+  title: { fontSize: 32, fontWeight: 'bold', color: '#FFFFFF', marginBottom: 20, textAlign: 'center' },
+  row: { flexDirection: 'row', marginBottom: 15 },
   input: {
     backgroundColor: '#1B1F24',
     color: '#FFFFFF',
@@ -551,24 +564,10 @@ const styles = StyleSheet.create({
     marginBottom: 15,
     fontSize: 16,
   },
-  inputHalf: {
-    flex: 1,
-    marginHorizontal: 5,
-  },
-  dropdownContainer: {
-    position: 'relative',
-    flex: 1,
-  },
-  pickerContainer: {
-    backgroundColor: '#1B1F24',
-    borderRadius: 8,
-    justifyContent: 'center',
-    padding: 10,
-  },
-  pickerText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-  },
+  inputHalf: { flex: 1, marginHorizontal: 5 },
+  dropdownContainer: { position: 'relative', flex: 1 },
+  pickerContainer: { backgroundColor: '#1B1F24', borderRadius: 8, justifyContent: 'center', padding: 10 },
+  pickerText: { color: '#FFFFFF', fontSize: 16 },
   dropdown: {
     position: 'absolute',
     top: 55,
@@ -579,29 +578,11 @@ const styles = StyleSheet.create({
     zIndex: 1000,
     elevation: 10,
   },
-  dropdownItem: {
-    paddingVertical: 10,
-    paddingHorizontal: 15,
-  },
-  dropdownItemText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-  },
-  counterWrapper: {
-    backgroundColor: '#1B1F24',
-    borderRadius: 8,
-    padding: 10,
-    justifyContent: 'center',
-  },
-  label: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    marginBottom: 5,
-  },
-  counterRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
+  dropdownItem: { paddingVertical: 10, paddingHorizontal: 15 },
+  dropdownItemText: { color: '#FFFFFF', fontSize: 16 },
+  counterWrapper: { backgroundColor: '#1B1F24', borderRadius: 8, padding: 10, justifyContent: 'center' },
+  label: { color: '#FFFFFF', fontSize: 16, marginBottom: 5 },
+  counterRow: { flexDirection: 'row', alignItems: 'center' },
   counterButton: {
     backgroundColor: '#24292F',
     borderRadius: 25,
@@ -610,16 +591,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  counterText: {
-    color: '#FFFFFF',
-    fontSize: 20,
-    fontWeight: 'bold',
-  },
-  counterValue: {
-    color: '#FFFFFF',
-    fontSize: 18,
-    marginHorizontal: 10,
-  },
+  counterText: { color: '#FFFFFF', fontSize: 20, fontWeight: 'bold' },
+  counterValue: { color: '#FFFFFF', fontSize: 18, marginHorizontal: 10 },
   dateTimeBox: {
     backgroundColor: '#1B1F24',
     borderRadius: 8,
@@ -628,31 +601,12 @@ const styles = StyleSheet.create({
     flex: 1,
     marginHorizontal: 5,
   },
-  dateText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-  },
-  priceRangeContainer: {
-    marginBottom: 15,
-  },
-  sliderLabel: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    marginBottom: 5,
-  },
-  slider: {
-    width: '100%',
-    height: 40,
-  },
-  radioContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 15,
-  },
-  radioButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
+  dateText: { color: '#FFFFFF', fontSize: 16 },
+  priceRangeContainer: { marginBottom: 15 },
+  sliderLabel: { color: '#FFFFFF', fontSize: 16, marginBottom: 5 },
+  slider: { width: '100%', height: 40 },
+  radioContainer: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 15 },
+  radioButton: { flexDirection: 'row', alignItems: 'center' },
   radioSelected: {
     width: 20,
     height: 20,
@@ -670,10 +624,7 @@ const styles = StyleSheet.create({
     borderColor: '#FFFFFF',
     marginRight: 8,
   },
-  radioLabel: {
-    color: '#FFFFFF',
-    fontSize: 16,
-  },
+  radioLabel: { color: '#FFFFFF', fontSize: 16 },
   inviteButton: {
     width: '100%',
     height: 60,
@@ -683,28 +634,10 @@ const styles = StyleSheet.create({
     borderRadius: 30,
     marginVertical: 10,
   },
-  buttonText: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
-  },
-  infoText: {
-    fontSize: 16,
-    color: '#AAAAAA',
-    textAlign: 'center',
-    marginTop: 10,
-  },
-  note: {
-    fontSize: 14,
-    color: '#AAAAAA',
-    textAlign: 'center',
-    marginTop: 20,
-  },
-  bottomButtons: {
-    flexDirection: 'row',
-    marginTop: 30,
-    justifyContent: 'center',
-  },
+  buttonText: { fontSize: 20, fontWeight: 'bold', color: '#FFFFFF' },
+  infoText: { fontSize: 16, color: '#AAAAAA', textAlign: 'center', marginTop: 10 },
+  note: { fontSize: 14, color: '#AAAAAA', textAlign: 'center', marginTop: 20 },
+  bottomButtons: { flexDirection: 'row', marginTop: 30, justifyContent: 'center' },
   button: {
     width: 140,
     height: 60,
@@ -719,20 +652,16 @@ const styles = StyleSheet.create({
     backgroundColor: '#1B1F24',
     borderRadius: 8,
   },
-  selectedFriendsTitle: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    marginBottom: 5,
+  selectedFriendsTitle: { color: '#FFFFFF', fontSize: 16, marginBottom: 5 },
+  selectedFriendsCardsContainer: { flexDirection: 'row', flexWrap: 'wrap' },
+  selectedCollectionsContainer: {
+    marginVertical: 10,
+    padding: 10,
+    backgroundColor: '#1B1F24',
+    borderRadius: 8,
   },
-  selectedFriendName: {
-    color: '#FFFFFF',
-    fontSize: 14,
-  },
-  /* A small wrapper to display friend cards in a row/column layout */
-  selectedFriendsCardsContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-  },
+  selectedCollectionsTitle: { color: '#FFFFFF', fontSize: 16, marginBottom: 5 },
+  selectedCollectionsCardsContainer: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
   invitedFriendCard: {
     width: 80,
     height: 100,
@@ -744,7 +673,7 @@ const styles = StyleSheet.create({
     margin: 5,
     alignItems: 'center',
     justifyContent: 'center',
-    position: 'relative', // so the remove icon can be absolutely positioned
+    position: 'relative',
   },
   removeIconContainer: {
     position: 'absolute',
@@ -755,38 +684,34 @@ const styles = StyleSheet.create({
     padding: 2,
     zIndex: 1,
   },
-  invitedFriendAvatar: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    marginBottom: 5,
+  invitedFriendAvatar: { width: 50, height: 50, borderRadius: 25, marginBottom: 5 },
+  invitedFriendEmail: { color: '#FFFFFF', fontSize: 10, textAlign: 'center' },
+  collectionsRowContainer: { marginVertical: 10 },
+  collectionsScrollContainer: { paddingHorizontal: 0, flexDirection: 'row', alignItems: 'center' },
+  collectionCardWrapper: { marginHorizontal: 0, position: 'relative' },
+  selectedOverlay: {
+    position: 'absolute',
+    top: 2,
+    right: 2,
+    backgroundColor: 'rgba(0,255,0,0.7)',
+    borderRadius: 12,
+    padding: 2,
   },
-  invitedFriendEmail: {
-    color: '#FFFFFF',
-    fontSize: 10,
-    textAlign: 'center',
+  doneButton: {
+    marginTop: 10,
+    alignSelf: 'center',
+    backgroundColor: '#1B1F24',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 8,
   },
+  doneButtonText: { color: '#FFFFFF', fontSize: 16 },
 });
 
 const modalStyles = StyleSheet.create({
-  centeredView: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.5)',
-  },
-  modalView: {
-    width: '80%',
-    backgroundColor: '#0D1117',
-    borderRadius: 8,
-    padding: 20,
-    alignItems: 'center',
-  },
-  cardsContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    justifyContent: 'center',
-  },
+  centeredView: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.5)' },
+  modalView: { width: '80%', backgroundColor: '#0D1117', borderRadius: 8, padding: 20, alignItems: 'center' },
+  cardsContainer: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center' },
   friendCard: {
     width: 80,
     height: 100,
@@ -799,47 +724,13 @@ const modalStyles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  friendAvatar: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
-    marginBottom: 5,
-  },
-  friendEmail: {
-    color: '#FFFFFF',
-    fontSize: 10,
-    textAlign: 'center',
-  },
-  friendItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 10,
-  },
-  uncheckedCircle: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    borderWidth: 2,
-    borderColor: '#FFFFFF',
-    marginRight: 10,
-  },
-  checkedCircle: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: '#1B1F24',
-    marginRight: 10,
-  },
-  modalButtons: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    width: '100%',
-    marginTop: 20,
-  },
-  friendName: {
-    color: '#FFFFFF',
-    fontSize: 16,
-  },
+  friendAvatar: { width: 50, height: 50, borderRadius: 25, marginBottom: 5 },
+  friendEmail: { color: '#FFFFFF', fontSize: 10, textAlign: 'center' },
+  friendItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10 },
+  uncheckedCircle: { width: 24, height: 24, borderRadius: 12, borderWidth: 2, borderColor: '#FFFFFF', marginRight: 10 },
+  checkedCircle: { width: 24, height: 24, borderRadius: 12, backgroundColor: '#1B1F24', marginRight: 10 },
+  modalButtons: { flexDirection: 'row', justifyContent: 'space-around', width: '100%', marginTop: 20 },
+  friendName: { color: '#FFFFFF', fontSize: 16 },
   confirmButton: {
     marginTop: 20,
     backgroundColor: '#1B1F24',
@@ -847,20 +738,10 @@ const modalStyles = StyleSheet.create({
     paddingVertical: 10,
     borderRadius: 8,
   },
-  confirmButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-  },
-  cancelButton: {
-    backgroundColor: '#3A3A3A',
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 8,
-  },
-  cancelButtonText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-  },
+  confirmButtonText: { color: '#FFFFFF', fontSize: 16 },
+  cancelButton: { backgroundColor: '#3A3A3A', paddingHorizontal: 20, paddingVertical: 10, borderRadius: 8 },
+  cancelButtonText: { color: '#FFFFFF', fontSize: 16 },
+  selectedOverlay: { position: 'absolute', top: 5, right: 5, backgroundColor: 'rgba(0,255,0,0.7)', borderRadius: 12, padding: 2 },
 });
 
 export default CreateMeetupScreen;

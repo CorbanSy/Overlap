@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
-import { TouchableOpacity, Text, StyleSheet, View } from 'react-native';
+import { TouchableOpacity, Text, StyleSheet, View, FlatList } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import FriendCard from './FriendCard';
+import CollectionCard from './CollectionCard';
 
 interface MeetupCardProps {
   meetup: any;
@@ -24,7 +26,7 @@ const MeetupCard: React.FC<MeetupCardProps> = ({
   };
 
   const truncatedDescription =
-    meetup.description.length > 100
+    meetup.description && meetup.description.length > 100
       ? meetup.description.substring(0, 100) + '...'
       : meetup.description;
 
@@ -65,20 +67,39 @@ const MeetupCard: React.FC<MeetupCardProps> = ({
               ? 'Free'
               : "$".repeat(Math.ceil(meetup.priceRange / 20))} ({meetup.priceRange})
           </Text>
-          <Text style={styles.detailsText}>
-            Description: {meetup.description}
-          </Text>
-          <Text style={styles.detailsText}>
-            Restrictions: {meetup.restrictions}
-          </Text>
+          <Text style={styles.detailsText}>Description: {meetup.description}</Text>
+          <Text style={styles.detailsText}>Restrictions: {meetup.restrictions}</Text>
 
-          <Text style={styles.detailsSubTitle}>Friends in this Meetup:</Text>
+          {/* Collections Section */}
+          {meetup.collections && meetup.collections.length > 0 && (
+            <View style={styles.collectionsContainer}>
+              <Text style={styles.detailsSubTitle}>Collections:</Text>
+              <FlatList
+                data={meetup.collections}
+                horizontal
+                keyExtractor={(item, index) =>
+                  item.id ? item.id.toString() : index.toString()
+                }
+                renderItem={({ item }) => (
+                  <CollectionCard collection={item} previewOnly />
+                )}
+              />
+            </View>
+          )}
+
+          {/* Friends Section */}
           {meetup.friends && meetup.friends.length > 0 ? (
-            meetup.friends.map((friend: any) => (
-              <Text key={friend.id} style={styles.friendText}>
-                {friend.name}
-              </Text>
-            ))
+            <View style={styles.friendsContainer}>
+              <Text style={styles.detailsSubTitle}>Friends in this Meetup:</Text>
+              <FlatList
+                data={meetup.friends}
+                horizontal
+                keyExtractor={(item, index) =>
+                  item.uid ? item.uid.toString() : index.toString()
+                }
+                renderItem={({ item }) => <FriendCard item={item} />}
+              />
+            </View>
           ) : (
             <Text style={styles.detailsText}>No friends added yet.</Text>
           )}
@@ -147,11 +168,11 @@ const styles = StyleSheet.create({
     marginTop: 10,
     marginBottom: 5,
   },
-  friendText: {
-    fontSize: 16,
-    color: '#CCCCCC',
-    marginLeft: 10,
-    marginBottom: 5,
+  collectionsContainer: {
+    marginBottom: 10,
+  },
+  friendsContainer: {
+    marginBottom: 10,
   },
   startButton: {
     flexDirection: 'row',

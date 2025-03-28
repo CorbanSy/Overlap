@@ -1,12 +1,22 @@
-// friendProfile.jsx (unchanged, now correctly displays username & email)
+// friendProfile.jsx
+
 import React, { useState, useEffect } from 'react';
-import { SafeAreaView, View, Text, Image, StyleSheet, ActivityIndicator } from 'react-native';
-import { useSearchParams } from 'expo-router';
+import { 
+  SafeAreaView, 
+  View, 
+  Text, 
+  Image, 
+  StyleSheet, 
+  ActivityIndicator, 
+  ScrollView, 
+  TouchableOpacity 
+} from 'react-native';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { getFirestore, doc, getDoc } from 'firebase/firestore';
-import { getAuth } from 'firebase/auth';
 
 const FriendProfile = () => {
-  const { uid } = useSearchParams();
+  const { uid } = useLocalSearchParams();
+  const router = useRouter();
   const [profileData, setProfileData] = useState(null);
   const [loading, setLoading] = useState(true);
   const firestore = getFirestore();
@@ -14,6 +24,7 @@ const FriendProfile = () => {
   useEffect(() => {
     const fetchProfile = async () => {
       try {
+        // Fetch the friend's profile from 'users/{uid}/profile/main'
         const profileRef = doc(firestore, 'users', uid, 'profile', 'main');
         const snap = await getDoc(profileRef);
         if (snap.exists()) {
@@ -51,45 +62,118 @@ const FriendProfile = () => {
 
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.profileContainer}>
-        {profileData.avatarUrl ? (
-          <Image source={{ uri: profileData.avatarUrl }} style={styles.avatar} />
-        ) : (
-          <Image source={require('../../assets/images/profile.png')} style={styles.avatar} />
-        )}
-        <Text style={styles.name}>{profileData.name || 'No Name'}</Text>
-        {profileData.username && (
-          <Text style={styles.username}>@{profileData.username}</Text>
-        )}
-        {profileData.email && (
-          <Text style={styles.email}>{profileData.email}</Text>
-        )}
-        <Text style={styles.tagline}>{profileData.bio || 'No Bio available'}</Text>
-        {profileData.topCategories && profileData.topCategories.length > 0 && (
-          <View style={styles.categoriesContainer}>
-            <Text style={styles.categoriesTitle}>Interests:</Text>
-            {profileData.topCategories.map((cat, index) => (
-              <Text key={index} style={styles.category}>{cat}</Text>
-            ))}
+      <ScrollView contentContainerStyle={styles.scrollContent}>
+        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+          <Text style={styles.backButtonText}>Back</Text>
+        </TouchableOpacity>
+        <View style={styles.profileContainer}>
+          <View style={styles.avatarContainer}>
+            {profileData.avatarUrl ? (
+              <Image source={{ uri: profileData.avatarUrl }} style={styles.avatar} />
+            ) : (
+              <Image source={require('../../assets/images/profile.png')} style={styles.avatar} />
+            )}
           </View>
-        )}
-      </View>
+          <Text style={styles.name}>{profileData.name || 'No Name'}</Text>
+          {profileData.username && (
+            <Text style={styles.username}>@{profileData.username}</Text>
+          )}
+          {profileData.email && (
+            <Text style={styles.email}>{profileData.email}</Text>
+          )}
+          <Text style={styles.bio}>{profileData.bio || 'No Bio available'}</Text>
+          {profileData.topCategories && profileData.topCategories.length > 0 && (
+            <View style={styles.categoriesContainer}>
+              <Text style={styles.categoriesTitle}>Interests</Text>
+              <View style={styles.categoriesList}>
+                {profileData.topCategories.map((cat, index) => (
+                  <Text key={index} style={styles.category}>{cat}</Text>
+                ))}
+              </View>
+            </View>
+          )}
+        </View>
+      </ScrollView>
     </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#0D1117', justifyContent: 'center', alignItems: 'center' },
-  profileContainer: { alignItems: 'center', padding: 20 },
-  avatar: { width: 120, height: 120, borderRadius: 60, marginBottom: 20 },
-  name: { fontSize: 24, fontWeight: 'bold', color: '#FFF', marginBottom: 8 },
-  username: { fontSize: 18, color: '#AAA', marginBottom: 8 },
-  email: { fontSize: 16, color: '#DDD', marginBottom: 8 },
-  tagline: { fontSize: 16, color: '#AAA' },
-  categoriesContainer: { marginTop: 15, alignItems: 'center' },
-  categoriesTitle: { fontSize: 18, color: '#FFF', fontWeight: 'bold', marginBottom: 5 },
-  category: { fontSize: 16, color: '#CCC' },
-  errorText: { fontSize: 18, color: '#F44336' },
+  container: { 
+    flex: 1, 
+    backgroundColor: '#0D1117' 
+  },
+  scrollContent: {
+    padding: 20,
+    alignItems: 'center',
+  },
+  backButton: {
+    alignSelf: 'flex-start',
+    marginBottom: 10,
+  },
+  backButtonText: {
+    color: '#FFA500',
+    fontSize: 16,
+  },
+  profileContainer: { 
+    alignItems: 'center', 
+    width: '100%'
+  },
+  avatarContainer: {
+    marginBottom: 20,
+  },
+  avatar: { 
+    width: 120, 
+    height: 120, 
+    borderRadius: 60 
+  },
+  name: { 
+    fontSize: 24, 
+    fontWeight: 'bold', 
+    color: '#FFF', 
+    marginBottom: 4 
+  },
+  username: { 
+    fontSize: 18, 
+    color: '#AAA', 
+    marginBottom: 4 
+  },
+  email: {
+    fontSize: 14,
+    color: '#CCC',
+    marginBottom: 10,
+  },
+  bio: { 
+    fontSize: 16, 
+    color: '#AAA', 
+    textAlign: 'center',
+    marginBottom: 20,
+  },
+  categoriesContainer: { 
+    alignItems: 'center',
+    width: '100%',
+  },
+  categoriesTitle: { 
+    fontSize: 18, 
+    color: '#FFF', 
+    fontWeight: 'bold',
+    marginBottom: 8,
+  },
+  categoriesList: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+  },
+  category: { 
+    fontSize: 16, 
+    color: '#CCC', 
+    marginHorizontal: 4,
+  },
+  errorText: { 
+    fontSize: 18, 
+    color: '#F44336', 
+    textAlign: 'center'
+  },
 });
 
 export default FriendProfile;
