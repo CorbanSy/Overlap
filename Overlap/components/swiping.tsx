@@ -12,9 +12,10 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { getMeetupLikes, getProfileData } from '../app/utils/storage';
+import { getMeetupLikes } from '../app/utils/storage';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
+const SCREEN_HEIGHT = Dimensions.get('window').height;
 
 const SwipingScreen = ({ meetupId }) => {
   const router = useRouter();
@@ -30,56 +31,20 @@ const SwipingScreen = ({ meetupId }) => {
         setLoading(false);
         return;
       }
+      console.log("Fetching liked activities for meetupId:", meetupId);
       try {
-        // Use getMeetupLikes to aggregate likes for all users in this meetup.
+        // Directly set liked activities without filtering
         const likedActivities = await getMeetupLikes(meetupId);
-        const profileData = await getProfileData();
-  
-        // (Optional) Additional client-side filtering:
-        // const filteredByMeetup = likedActivities.filter(activity => activity.meetupId === meetupId);
-  
-        if (
-          profileData &&
-          profileData.topCategories &&
-          profileData.topCategories.length > 0
-        ) {
-          const filteredActivities = likedActivities.filter((activity) => {
-            if (!activity.types || !Array.isArray(activity.types)) return false;
-            return activity.types.some((type) =>
-              profileData.topCategories.includes(type)
-            );
-          });
-          setCards(filteredActivities);
-        } else {
-          setCards(likedActivities);
-        }
+        console.log("Fetched liked activities:", likedActivities);
+        setCards(likedActivities);
       } catch (error) {
-        console.error("Error fetching liked activities or profile data:", error);
+        console.error("Error fetching liked activities:", error);
       } finally {
         setLoading(false);
       }
     }
     loadCards();
   }, [meetupId]);
-
-  // Interpolated opacities for swipe indicators
-  const yesOpacity = position.x.interpolate({
-    inputRange: [0, SCREEN_WIDTH / 4],
-    outputRange: [0, 1],
-    extrapolate: 'clamp',
-  });
-  const noOpacity = position.x.interpolate({
-    inputRange: [-SCREEN_WIDTH / 4, 0],
-    outputRange: [1, 0],
-    extrapolate: 'clamp',
-  });
-
-  // When a card is tapped, navigate to ExploreMoreCard screen.
-  const handleCardPress = () => {
-    const card = cards[currentCardIndex];
-    if (!card) return;
-    router.push(`/exploreMoreCard?activityId=${card.id}`);
-  };
 
   const panResponder = useRef(
     PanResponder.create({
@@ -89,8 +54,12 @@ const SwipingScreen = ({ meetupId }) => {
       },
       onPanResponderRelease: (_, gesture) => {
         // If movement is minimal, treat as a tap.
-        if (Math.abs(gesture.dx) < 10 && Math.abs(gesture.dy) < 10) {
-          handleCardPress();
+        if (Math.abs(gesture.dx) < 15 && Math.abs(gesture.dy) < 15) {
+          const card = cards[currentCardIndex];
+          if (card) {
+            // Navigate to moreInfo.tsx for more details about the activity.
+            router.push(`/moreInfo?placeId=${card.id}`);
+          }
           return;
         }
         if (gesture.dx > 120) {
@@ -118,7 +87,11 @@ const SwipingScreen = ({ meetupId }) => {
   const handleSwipe = (direction) => {
     console.log('Swiped:', direction);
     position.setValue({ x: 0, y: 0 });
-    setCurrentCardIndex((prevIndex) => prevIndex + 1);
+    setCurrentCardIndex((prevIndex) => {
+      const newIndex = prevIndex + 1;
+      console.log("Current card index updated to:", newIndex);
+      return newIndex;
+    });
   };
 
   const renderCard = () => {
@@ -130,6 +103,7 @@ const SwipingScreen = ({ meetupId }) => {
       );
     }
     if (currentCardIndex >= cards.length) {
+      console.log("No more cards. currentCardIndex:", currentCardIndex, "cards.length:", cards.length);
       return (
         <View style={styles.noMoreCards}>
           <Text style={styles.noMoreCardsText}>No more liked activities</Text>
@@ -137,38 +111,48 @@ const SwipingScreen = ({ meetupId }) => {
       );
     }
     const card = cards[currentCardIndex];
-    const rotate = position.x.interpolate({
-      inputRange: [-SCREEN_WIDTH, 0, SCREEN_WIDTH],
-      outputRange: ['-30deg', '0deg', '30deg'],
-      extrapolate: 'clamp',
-    });
-    const animatedStyle = {
-      transform: [...position.getTranslateTransform(), { rotate }],
-    };
-
     return (
-      <Animated.View style={[styles.card, animatedStyle]} {...panResponder.panHandlers}>
-        <Animated.Text style={[styles.noIndicator, { opacity: noOpacity }]}>
-          NO
-        </Animated.Text>
-        <Animated.Text style={[styles.yesIndicator, { opacity: yesOpacity }]}>
-          YES
-        </Animated.Text>
-        {card.photoReference && (
+      <Animated.View
+        style={[styles.card, { transform: position.getTranslateTransform() }]}
+        {...panResponder.panHandlers}
+      >
+        {card.photoReference ? (
           <Image
             source={{
-              uri: `https://maps.googleapis.com/maps/api/place/photo?maxwidth=800&photoreference=${card.photoReference}&key=YOUR_API_KEY`,
+              uri: `https://maps.googleapis.com/maps/api/place/photo?maxwidth=800&photoreference=${card.photoReference}&key=AIzaSyDcTuitQdQGXwuLp90NqQ_ZwhnMSGrr8mY`,
             }}
             style={styles.image}
+            resizeMode="cover"
           />
+        ) : (
+          <View style={styles.noImagePlaceholder}>
+            <Text style={styles.noImageText}>No Image Available</Text>
+          </View>
         )}
-        <Text style={styles.cardTitle}>{card.name}</Text>
-        {card.rating !== undefined && (
-          <Text style={styles.cardSubtitle}>{card.rating} ⭐</Text>
-        )}
-        <Text style={styles.cardDescription}>
-          {card.description || card.formatted_address || 'No description available.'}
-        </Text>
+        {/* Overlay for activity info */}
+        <View style={styles.infoContainer}>
+          <Text style={styles.activityName}>{card.name}</Text>
+          {card.rating !== undefined && (
+            <Text style={styles.activityRating}>{card.rating} ⭐</Text>
+          )}
+          <TouchableOpacity
+            style={styles.moreInfoButton}
+            onPress={() => router.push(`/moreInfo?placeId=${card.id}`)}
+          >
+            <Text style={styles.moreInfoButtonText}>More Info</Text>
+          </TouchableOpacity>
+        </View>
+        {/* Overlay icons on the bottom corners */}
+        <View style={styles.iconContainer}>
+          <View style={styles.leftIcon}>
+            <Text style={[styles.iconText, { color: '#DC3545' }]}>❌</Text>
+            <Text style={styles.arrowText}>←</Text>
+          </View>
+          <View style={styles.rightIcon}>
+            <Text style={[styles.iconText, { color: '#28A745' }]}>✅</Text>
+            <Text style={styles.arrowText}>→</Text>
+          </View>
+        </View>
       </Animated.View>
     );
   };
@@ -177,7 +161,7 @@ const SwipingScreen = ({ meetupId }) => {
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
-          <Text style={styles.backButtonText}>‹ Back</Text>
+          <Text style={styles.backButtonText}>‹ Leave Meetup</Text>
         </TouchableOpacity>
         <Text style={styles.headerTitle}>Liked Activities</Text>
       </View>
@@ -221,36 +205,78 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   card: {
-    width: SCREEN_WIDTH - 40,
-    padding: 20,
-    borderRadius: 8,
+    width: SCREEN_WIDTH,
+    height: SCREEN_HEIGHT * 0.75,
     backgroundColor: '#1B1F24',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 5 },
-    shadowOpacity: 0.3,
-    shadowRadius: 5,
-    elevation: 5,
+    overflow: 'hidden',
   },
   image: {
     width: '100%',
-    height: 150,
-    borderRadius: 8,
-    marginBottom: 10,
+    height: '100%',
   },
-  cardTitle: {
+  noImagePlaceholder: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#333',
+  },
+  noImageText: {
+    color: '#fff',
+    fontSize: 18,
+  },
+  infoContainer: {
+    position: 'absolute',
+    bottom: 100,
+    left: 20,
+    right: 20,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    padding: 10,
+    borderRadius: 10,
+  },
+  activityName: {
+    color: '#fff',
     fontSize: 24,
     fontWeight: 'bold',
+  },
+  activityRating: {
     color: '#fff',
-    marginBottom: 5,
-  },
-  cardSubtitle: {
     fontSize: 18,
-    color: '#F5A623',
-    marginBottom: 5,
+    marginTop: 4,
   },
-  cardDescription: {
+  moreInfoButton: {
+    marginTop: 10,
+    backgroundColor: '#F5A623',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 5,
+    alignSelf: 'flex-start',
+  },
+  moreInfoButtonText: {
+    color: '#0D1117',
     fontSize: 16,
-    color: '#ccc',
+    fontWeight: 'bold',
+  },
+  iconContainer: {
+    position: 'absolute',
+    bottom: 20,
+    left: 40,
+    right: 40,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  leftIcon: {
+    alignItems: 'center',
+  },
+  rightIcon: {
+    alignItems: 'center',
+  },
+  iconText: {
+    fontSize: 60,
+  },
+  arrowText: {
+    fontSize: 24,
+    color: '#fff',
+    marginTop: 4,
   },
   noMoreCards: {
     alignItems: 'center',
@@ -264,24 +290,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     height: 300,
-  },
-  yesIndicator: {
-    position: 'absolute',
-    top: 20,
-    right: 20,
-    fontSize: 32,
-    fontWeight: 'bold',
-    color: '#28A745',
-    zIndex: 1000,
-  },
-  noIndicator: {
-    position: 'absolute',
-    top: 20,
-    left: 20,
-    fontSize: 32,
-    fontWeight: 'bold',
-    color: '#DC3545',
-    zIndex: 1000,
   },
 });
 

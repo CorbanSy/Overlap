@@ -27,6 +27,7 @@ const activityLabels = [
   'Relaxing', 'Learning', 'Cooking', 'Nightlife',
 ];
 
+
 const createMeetupInvite = async (friendId, meetupId) => {
   try {
     const meetupRef = doc(db, 'meetups', meetupId);
@@ -141,7 +142,13 @@ const CreateMeetupScreen = ({ onBack }) => {
 
   const auth = getAuth();
   const [user, setUser] = useState(null);
+  const [meetupCode, setMeetupCode] = useState('');
 
+  // Function to generate a 6-digit code
+  const handleGenerateCode = () => {
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    setMeetupCode(code);
+  };
   // Listen for auth state changes so we can get the current user
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
@@ -248,6 +255,7 @@ const CreateMeetupScreen = ({ onBack }) => {
       friends: selectedFriends, // each friend must have uid
       location: locationOption === 'own' ? 'my location' : specificLocation,
       collections: selectedCollections, // (IMPORTANT) array of collection objects
+      code: meetupCode,
     };
     console.log('Meetup data before creation:', meetupData);
 
@@ -527,6 +535,16 @@ const CreateMeetupScreen = ({ onBack }) => {
         </View>
       )}
 
+      {/* Code Generation Section */}
+      <View style={styles.codeSection}>
+        <TouchableOpacity style={styles.getCodeButton} onPress={handleGenerateCode}>
+          <Text style={styles.buttonText}>Get Code</Text>
+        </TouchableOpacity>
+        {meetupCode !== '' && (
+          <Text style={styles.codeDisplay}>Your Meetup Code: {meetupCode}</Text>
+        )}
+      </View>
+
       {/* Create & Back Buttons */}
       <View style={styles.bottomButtons}>
         <TouchableOpacity style={[styles.button, { marginRight: 10 }]} onPress={handleCreate}>
@@ -742,6 +760,21 @@ const modalStyles = StyleSheet.create({
   cancelButton: { backgroundColor: '#3A3A3A', paddingHorizontal: 20, paddingVertical: 10, borderRadius: 8 },
   cancelButtonText: { color: '#FFFFFF', fontSize: 16 },
   selectedOverlay: { position: 'absolute', top: 5, right: 5, backgroundColor: 'rgba(0,255,0,0.7)', borderRadius: 12, padding: 2 },
+  codeSection: {
+    marginVertical: 10,
+    alignItems: 'center',
+  },
+  getCodeButton: {
+    backgroundColor: '#1B1F24',
+    padding: 10,
+    borderRadius: 30,
+    marginVertical: 5,
+  },
+  codeDisplay: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    marginVertical: 5,
+  },
 });
 
 export default CreateMeetupScreen;

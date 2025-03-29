@@ -41,7 +41,7 @@ const JoinMeetupsScreen = () => {
       // On success, remove the invite from the pending list.
       setInvites(prevInvites => prevInvites.filter(item => item.id !== invite.id));
       // Navigate to the meetup detail page after joining.
-      router.push(`/meetup/${meetupId}`);
+      router.push(`/startMeetUp?meetupId=${meetupId}`);
     } catch (error) {
       console.error("Error joining meetup", error);
     }
@@ -64,7 +64,7 @@ const JoinMeetupsScreen = () => {
     try {
       console.log(`Requesting to join meetup with code: ${inviteCode}`);
       const response = await joinMeetupByCode(inviteCode);
-      if (response.success) { router.push(`/meetup/${response.meetupId}`); }
+      if (response.success) { router.push(`/startMeetUp?meetupId=${meetupId}`); }
     } catch (error) {
       console.error("Error joining meetup by code", error);
     }
