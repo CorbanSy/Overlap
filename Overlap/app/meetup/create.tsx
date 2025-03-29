@@ -10,7 +10,7 @@ import {
   StyleSheet,
   Modal,
   Image,
-  SafeAreaView,
+  Share,
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import Slider from '@react-native-community/slider';
@@ -18,7 +18,7 @@ import { createMeetup, getFriendships } from '../utils/storage';
 import { doc, getDoc, getDocs, addDoc, collection } from 'firebase/firestore';
 import { getAuth, onAuthStateChanged } from 'firebase/auth';
 import { db } from '../../FirebaseConfig';
-import CollectionCard from '../../components/CollectionCard'; // Import the CollectionCard
+import CollectionCard from '../../components/CollectionCard';
 
 // Static list of activity labels
 const activityLabels = [
@@ -27,13 +27,11 @@ const activityLabels = [
   'Relaxing', 'Learning', 'Cooking', 'Nightlife',
 ];
 
-
 const createMeetupInvite = async (friendId, meetupId) => {
   try {
     const meetupRef = doc(db, 'meetups', meetupId);
     const meetupSnap = await getDoc(meetupRef);
     const meetupData = meetupSnap.exists() ? meetupSnap.data() : {};
-
     const inviteData = {
       invitedFriendId: friendId,
       meetupId,
@@ -134,8 +132,7 @@ const CreateMeetupScreen = ({ onBack }) => {
   const [locationOption, setLocationOption] = useState('own'); // 'own' or 'specific'
   const [specificLocation, setSpecificLocation] = useState('');
 
-  // (IMPORTANT) Activity Collections state variables
-  // Ensure this is an array. This is what we'll pass to createMeetup
+  // Activity Collections state variables
   const [selectedCollections, setSelectedCollections] = useState([]);
   const [collectionsList, setCollectionsList] = useState([]);
   const [showCollectionsRow, setShowCollectionsRow] = useState(false);
@@ -144,11 +141,23 @@ const CreateMeetupScreen = ({ onBack }) => {
   const [user, setUser] = useState(null);
   const [meetupCode, setMeetupCode] = useState('');
 
-  // Function to generate a 6-digit code
+  // Generate a 6-digit code and set it in state
   const handleGenerateCode = () => {
     const code = Math.floor(100000 + Math.random() * 900000).toString();
     setMeetupCode(code);
   };
+
+  // Share the generated code using the native share dialog
+  const handleShareCode = async () => {
+    try {
+      await Share.share({
+        message: `Join my meetup using this code: ${meetupCode}`,
+      });
+    } catch (error) {
+      console.error('Error sharing code:', error);
+    }
+  };
+
   // Listen for auth state changes so we can get the current user
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
@@ -216,8 +225,7 @@ const CreateMeetupScreen = ({ onBack }) => {
     }
   };
 
-  // (IMPORTANT) Toggle collection selection
-  // This ensures `selectedCollections` is an array of objects
+  // Toggle collection selection
   const toggleCollection = (collection) => {
     if (selectedCollections.some(c => c.id === collection.id)) {
       setSelectedCollections(selectedCollections.filter(c => c.id !== collection.id));
@@ -233,7 +241,7 @@ const CreateMeetupScreen = ({ onBack }) => {
       return;
     }
 
-    // Verify that every friend in selectedFriends has a uid
+    // Verify every friend in selectedFriends has a uid
     const missingUid = selectedFriends.filter(friend => !friend.uid);
     if (missingUid.length > 0) {
       console.error('One or more selected friends are missing uid:', missingUid);
@@ -241,7 +249,7 @@ const CreateMeetupScreen = ({ onBack }) => {
       return;
     }
 
-    // (IMPORTANT) The final meetupData includes collections as an array
+    // Include the generated code in meetupData
     const meetupData = {
       eventName,
       mood,
@@ -252,9 +260,9 @@ const CreateMeetupScreen = ({ onBack }) => {
       priceRange,
       description,
       restrictions,
-      friends: selectedFriends, // each friend must have uid
+      friends: selectedFriends,
       location: locationOption === 'own' ? 'my location' : specificLocation,
-      collections: selectedCollections, // (IMPORTANT) array of collection objects
+      collections: selectedCollections,
       code: meetupCode,
     };
     console.log('Meetup data before creation:', meetupData);
@@ -262,8 +270,6 @@ const CreateMeetupScreen = ({ onBack }) => {
     try {
       const meetupId = await createMeetup(meetupData);
       console.log('Meetup created successfully with id:', meetupId);
-
-      // Create invites for each selected friend
       await Promise.all(
         selectedFriends.map(friend => createMeetupInvite(friend.uid, meetupId))
       );
@@ -405,7 +411,6 @@ const CreateMeetupScreen = ({ onBack }) => {
         placeholder="Description"
         placeholderTextColor="#888"
         multiline
-        blurOnSubmit
         value={description}
         onChangeText={setDescription}
       />
@@ -416,7 +421,6 @@ const CreateMeetupScreen = ({ onBack }) => {
         placeholder="Restrictions (allergies, disabilities)"
         placeholderTextColor="#888"
         multiline
-        blurOnSubmit
         value={restrictions}
         onChangeText={setRestrictions}
       />
@@ -431,9 +435,7 @@ const CreateMeetupScreen = ({ onBack }) => {
           <Text style={styles.radioLabel}>Use My Location</Text>
         </TouchableOpacity>
         <TouchableOpacity style={styles.radioButton} onPress={() => setLocationOption('specific')}>
-          <View
-            style={locationOption === 'specific' ? styles.radioSelected : styles.radioUnselected}
-          />
+          <View style={locationOption === 'specific' ? styles.radioSelected : styles.radioUnselected} />
           <Text style={styles.radioLabel}>Enter Specific Location</Text>
         </TouchableOpacity>
       </View>
@@ -507,7 +509,7 @@ const CreateMeetupScreen = ({ onBack }) => {
       </TouchableOpacity>
       <Text style={styles.infoText}>Friends can also be invited after creation</Text>
 
-      {/* Selected (Invited) Friends as Cards */}
+      {/* Selected Friends as Cards */}
       {selectedFriends.length > 0 && (
         <View style={styles.selectedFriendsContainer}>
           <Text style={styles.selectedFriendsTitle}>Invited Friends:</Text>
@@ -541,7 +543,12 @@ const CreateMeetupScreen = ({ onBack }) => {
           <Text style={styles.buttonText}>Get Code</Text>
         </TouchableOpacity>
         {meetupCode !== '' && (
-          <Text style={styles.codeDisplay}>Your Meetup Code: {meetupCode}</Text>
+          <>
+            <Text style={styles.codeDisplay}>Your Meetup Code: {meetupCode}</Text>
+            <TouchableOpacity style={styles.shareCodeButton} onPress={handleShareCode}>
+              <Text style={styles.shareCodeText}>Share Code</Text>
+            </TouchableOpacity>
+          </>
         )}
       </View>
 
@@ -611,137 +618,50 @@ const styles = StyleSheet.create({
   },
   counterText: { color: '#FFFFFF', fontSize: 20, fontWeight: 'bold' },
   counterValue: { color: '#FFFFFF', fontSize: 18, marginHorizontal: 10 },
-  dateTimeBox: {
-    backgroundColor: '#1B1F24',
-    borderRadius: 8,
-    padding: 10,
-    justifyContent: 'center',
-    flex: 1,
-    marginHorizontal: 5,
-  },
+  dateTimeBox: { backgroundColor: '#1B1F24', borderRadius: 8, padding: 10, justifyContent: 'center', flex: 1, marginHorizontal: 5 },
   dateText: { color: '#FFFFFF', fontSize: 16 },
   priceRangeContainer: { marginBottom: 15 },
   sliderLabel: { color: '#FFFFFF', fontSize: 16, marginBottom: 5 },
   slider: { width: '100%', height: 40 },
   radioContainer: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 15 },
   radioButton: { flexDirection: 'row', alignItems: 'center' },
-  radioSelected: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    backgroundColor: '#1B1F24',
-    borderWidth: 2,
-    borderColor: '#FFFFFF',
-    marginRight: 8,
-  },
-  radioUnselected: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
-    borderWidth: 2,
-    borderColor: '#FFFFFF',
-    marginRight: 8,
-  },
+  radioSelected: { width: 20, height: 20, borderRadius: 10, backgroundColor: '#1B1F24', borderWidth: 2, borderColor: '#FFFFFF', marginRight: 8 },
+  radioUnselected: { width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: '#FFFFFF', marginRight: 8 },
   radioLabel: { color: '#FFFFFF', fontSize: 16 },
-  inviteButton: {
-    width: '100%',
-    height: 60,
-    backgroundColor: '#1B1F24',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderRadius: 30,
-    marginVertical: 10,
-  },
+  inviteButton: { width: '100%', height: 60, backgroundColor: '#1B1F24', justifyContent: 'center', alignItems: 'center', borderRadius: 30, marginVertical: 10 },
   buttonText: { fontSize: 20, fontWeight: 'bold', color: '#FFFFFF' },
   infoText: { fontSize: 16, color: '#AAAAAA', textAlign: 'center', marginTop: 10 },
   note: { fontSize: 14, color: '#AAAAAA', textAlign: 'center', marginTop: 20 },
   bottomButtons: { flexDirection: 'row', marginTop: 30, justifyContent: 'center' },
-  button: {
-    width: 140,
-    height: 60,
-    backgroundColor: '#1B1F24',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderRadius: 30,
-  },
-  selectedFriendsContainer: {
-    marginVertical: 10,
-    padding: 10,
-    backgroundColor: '#1B1F24',
-    borderRadius: 8,
-  },
+  button: { width: 140, height: 60, backgroundColor: '#1B1F24', justifyContent: 'center', alignItems: 'center', borderRadius: 30 },
+  selectedFriendsContainer: { marginVertical: 10, padding: 10, backgroundColor: '#1B1F24', borderRadius: 8 },
   selectedFriendsTitle: { color: '#FFFFFF', fontSize: 16, marginBottom: 5 },
   selectedFriendsCardsContainer: { flexDirection: 'row', flexWrap: 'wrap' },
-  selectedCollectionsContainer: {
-    marginVertical: 10,
-    padding: 10,
-    backgroundColor: '#1B1F24',
-    borderRadius: 8,
-  },
+  selectedCollectionsContainer: { marginVertical: 10, padding: 10, backgroundColor: '#1B1F24', borderRadius: 8 },
   selectedCollectionsTitle: { color: '#FFFFFF', fontSize: 16, marginBottom: 5 },
   selectedCollectionsCardsContainer: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
-  invitedFriendCard: {
-    width: 80,
-    height: 100,
-    borderWidth: 1,
-    borderColor: '#FFFFFF',
-    borderStyle: 'dashed',
-    borderRadius: 8,
-    padding: 5,
-    margin: 5,
-    alignItems: 'center',
-    justifyContent: 'center',
-    position: 'relative',
-  },
-  removeIconContainer: {
-    position: 'absolute',
-    top: -5,
-    left: -5,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 10,
-    padding: 2,
-    zIndex: 1,
-  },
+  invitedFriendCard: { width: 80, height: 100, borderWidth: 1, borderColor: '#FFFFFF', borderStyle: 'dashed', borderRadius: 8, padding: 5, margin: 5, alignItems: 'center', justifyContent: 'center', position: 'relative' },
+  removeIconContainer: { position: 'absolute', top: -5, left: -5, backgroundColor: '#FFFFFF', borderRadius: 10, padding: 2, zIndex: 1 },
   invitedFriendAvatar: { width: 50, height: 50, borderRadius: 25, marginBottom: 5 },
   invitedFriendEmail: { color: '#FFFFFF', fontSize: 10, textAlign: 'center' },
   collectionsRowContainer: { marginVertical: 10 },
   collectionsScrollContainer: { paddingHorizontal: 0, flexDirection: 'row', alignItems: 'center' },
   collectionCardWrapper: { marginHorizontal: 0, position: 'relative' },
-  selectedOverlay: {
-    position: 'absolute',
-    top: 2,
-    right: 2,
-    backgroundColor: 'rgba(0,255,0,0.7)',
-    borderRadius: 12,
-    padding: 2,
-  },
-  doneButton: {
-    marginTop: 10,
-    alignSelf: 'center',
-    backgroundColor: '#1B1F24',
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 8,
-  },
+  selectedOverlay: { position: 'absolute', top: 2, right: 2, backgroundColor: 'rgba(0,255,0,0.7)', borderRadius: 12, padding: 2 },
+  doneButton: { marginTop: 10, alignSelf: 'center', backgroundColor: '#1B1F24', paddingHorizontal: 20, paddingVertical: 10, borderRadius: 8 },
   doneButtonText: { color: '#FFFFFF', fontSize: 16 },
+  codeSection: { marginVertical: 10, alignItems: 'center' },
+  getCodeButton: { backgroundColor: '#1B1F24', padding: 10, borderRadius: 30, marginVertical: 5 },
+  codeDisplay: { color: '#FFFFFF', fontSize: 18, marginVertical: 5 },
+  shareCodeButton: { backgroundColor: '#333', padding: 10, borderRadius: 30, marginTop: 5 },
+  shareCodeText: { color: '#FFFFFF', fontSize: 16, fontWeight: 'bold' },
 });
 
 const modalStyles = StyleSheet.create({
   centeredView: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.5)' },
   modalView: { width: '80%', backgroundColor: '#0D1117', borderRadius: 8, padding: 20, alignItems: 'center' },
   cardsContainer: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center' },
-  friendCard: {
-    width: 80,
-    height: 100,
-    borderWidth: 1,
-    borderColor: '#FFFFFF',
-    borderStyle: 'dashed',
-    borderRadius: 8,
-    padding: 5,
-    margin: 5,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  friendCard: { width: 80, height: 100, borderWidth: 1, borderColor: '#FFFFFF', borderStyle: 'dashed', borderRadius: 8, padding: 5, margin: 5, alignItems: 'center', justifyContent: 'center' },
   friendAvatar: { width: 50, height: 50, borderRadius: 25, marginBottom: 5 },
   friendEmail: { color: '#FFFFFF', fontSize: 10, textAlign: 'center' },
   friendItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10 },
@@ -749,32 +669,14 @@ const modalStyles = StyleSheet.create({
   checkedCircle: { width: 24, height: 24, borderRadius: 12, backgroundColor: '#1B1F24', marginRight: 10 },
   modalButtons: { flexDirection: 'row', justifyContent: 'space-around', width: '100%', marginTop: 20 },
   friendName: { color: '#FFFFFF', fontSize: 16 },
-  confirmButton: {
-    marginTop: 20,
-    backgroundColor: '#1B1F24',
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 8,
-  },
+  confirmButton: { marginTop: 20, backgroundColor: '#1B1F24', paddingHorizontal: 20, paddingVertical: 10, borderRadius: 8 },
   confirmButtonText: { color: '#FFFFFF', fontSize: 16 },
   cancelButton: { backgroundColor: '#3A3A3A', paddingHorizontal: 20, paddingVertical: 10, borderRadius: 8 },
   cancelButtonText: { color: '#FFFFFF', fontSize: 16 },
   selectedOverlay: { position: 'absolute', top: 5, right: 5, backgroundColor: 'rgba(0,255,0,0.7)', borderRadius: 12, padding: 2 },
-  codeSection: {
-    marginVertical: 10,
-    alignItems: 'center',
-  },
-  getCodeButton: {
-    backgroundColor: '#1B1F24',
-    padding: 10,
-    borderRadius: 30,
-    marginVertical: 5,
-  },
-  codeDisplay: {
-    color: '#FFFFFF',
-    fontSize: 18,
-    marginVertical: 5,
-  },
+  codeSection: { marginVertical: 10, alignItems: 'center' },
+  getCodeButton: { backgroundColor: '#1B1F24', padding: 10, borderRadius: 30, marginVertical: 5 },
+  codeDisplay: { color: '#FFFFFF', fontSize: 18, marginVertical: 5 },
 });
 
 export default CreateMeetupScreen;

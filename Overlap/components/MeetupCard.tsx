@@ -1,3 +1,4 @@
+// MeetupCard.tsx
 import React, { useState } from 'react';
 import { TouchableOpacity, Text, StyleSheet, View, FlatList } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -25,10 +26,21 @@ const MeetupCard: React.FC<MeetupCardProps> = ({
     setExpanded(prev => !prev);
   };
 
+  // Create a truncated description for the summary (if desired)
   const truncatedDescription =
     meetup.description && meetup.description.length > 100
       ? meetup.description.substring(0, 100) + '...'
       : meetup.description;
+
+  // Format dates for display
+  const formattedDate = new Date(meetup.date).toLocaleDateString();
+  const formattedTime = new Date(meetup.time).toLocaleTimeString([], {
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+  const formattedCreatedAt = meetup.createdAt
+    ? new Date(meetup.createdAt).toLocaleString()
+    : 'N/A';
 
   // Handler for the Start/Stop button.
   const handleToggleMeetup = () => {
@@ -48,27 +60,27 @@ const MeetupCard: React.FC<MeetupCardProps> = ({
       {/* Expanded Details */}
       {expanded && (
         <View style={styles.detailsContainer}>
+          <Text style={styles.detailsText}>Category: {meetup.category || 'N/A'}</Text>
+          {meetup.code ? (
+            <Text style={styles.detailsText}>Code: {meetup.code}</Text>
+          ) : null}
           <Text style={styles.detailsText}>Mood: {meetup.mood || 'N/A'}</Text>
-          <Text style={styles.detailsText}>Category: {meetup.category}</Text>
           <Text style={styles.detailsText}>Group Size: {meetup.groupSize}</Text>
-          <Text style={styles.detailsText}>
-            Date: {new Date(meetup.date).toLocaleDateString()}
-          </Text>
-          <Text style={styles.detailsText}>
-            Time:{' '}
-            {new Date(meetup.time).toLocaleTimeString([], {
-              hour: '2-digit',
-              minute: '2-digit',
-            })}
-          </Text>
-          <Text style={styles.detailsText}>
-            Price Range:{' '}
-            {meetup.priceRange === 0
-              ? 'Free'
-              : "$".repeat(Math.ceil(meetup.priceRange / 20))} ({meetup.priceRange})
-          </Text>
+          <Text style={styles.detailsText}>Price Range: {meetup.priceRange === 0 ? 'Free' : "$".repeat(Math.ceil(meetup.priceRange / 20))} ({meetup.priceRange})</Text>
+          <Text style={styles.detailsText}>Date: {formattedDate}</Text>
+          <Text style={styles.detailsText}>Time: {formattedTime}</Text>
+          <Text style={styles.detailsText}>Location: {meetup.location}</Text>
           <Text style={styles.detailsText}>Description: {meetup.description}</Text>
           <Text style={styles.detailsText}>Restrictions: {meetup.restrictions}</Text>
+          <Text style={styles.detailsText}>Meetup ID: {meetup.meetupId}</Text>
+          <Text style={styles.detailsText}>Created At: {formattedCreatedAt}</Text>
+          <Text style={styles.detailsText}>Creator ID: {meetup.creatorId}</Text>
+          <Text style={styles.detailsText}>
+            Participants: {meetup.participants ? meetup.participants.length : 0}
+          </Text>
+          <Text style={styles.detailsText}>
+            Invited Friends: {meetup.friends ? meetup.friends.length : 0}
+          </Text>
 
           {/* Collections Section */}
           {meetup.collections && meetup.collections.length > 0 && (
@@ -117,7 +129,7 @@ const MeetupCard: React.FC<MeetupCardProps> = ({
           </TouchableOpacity>
 
           <View style={styles.actionRow}>
-            {/* Always show pencil icon */}
+            {/* Always show edit icon */}
             <TouchableOpacity style={styles.iconButton} onPress={onEdit || (() => {})}>
               <Ionicons name="pencil-outline" size={20} color="#4DA6FF" />
             </TouchableOpacity>

@@ -64,7 +64,7 @@ const JoinMeetupsScreen = () => {
     try {
       console.log(`Requesting to join meetup with code: ${inviteCode}`);
       const response = await joinMeetupByCode(inviteCode);
-      if (response.success) { router.push(`/startMeetUp?meetupId=${meetupId}`); }
+      router.push(`/startMeetUp?meetupId=${meetupId}`);
     } catch (error) {
       console.error("Error joining meetup by code", error);
     }

@@ -144,7 +144,10 @@ export async function storeReviewsForPlace(placeId, reviews) {
     const auth = getAuth();
     const user = auth.currentUser;
     if (!user) throw new Error('No user is signed in');
-  
+    // Auto-generate a 6-digit code if none was provided
+    if (!meetupData.code) {
+      meetupData.code = Math.floor(100000 + Math.random() * 900000).toString();
+    }
     // Ensure each field is defined (use defaults if necessary)
     const cleanedData = {
       eventName: meetupData.eventName || "",
@@ -166,6 +169,7 @@ export async function storeReviewsForPlace(placeId, reviews) {
       location: meetupData.location || "",
       // Ensure collections is at least an empty array
       collections: meetupData.collections || [],
+      code: meetupData.code,
     };
   
     // Build additional fields
