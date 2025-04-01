@@ -1,40 +1,41 @@
 import React, { useRef, useState } from 'react';
-import { View, Image, Animated, Easing } from 'react-native';
+import { View, Image, Animated, Easing as RNEasing } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import CustomButton from '../components/CustomButton';
 import VennDiagram from '../components/VennDiagram';
+// Import Reanimated so it's available, but don't import Easing from here
+import 'react-native-reanimated';
 
 export default function App() {
   // Controls if the VennDiagram animation should start
   const [startVennAnimation, setStartVennAnimation] = useState(false);
 
-  // Animated values for additional animations (optional)
+  // React Native Animated values for the example image
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const slideAnim = useRef(new Animated.Value(0)).current;
 
-  // Handle start button press: trigger Venn diagram animation and additional animations
+  // When the "Start" button is pressed, trigger both the Venn animation + the RN Animations
   const handleStart = () => {
     setStartVennAnimation(true);
-
     Animated.sequence([
       Animated.timing(scaleAnim, {
         toValue: 0.5,
         duration: 500,
-        easing: Easing.out(Easing.ease),
+        easing: RNEasing.out(RNEasing.ease),
         useNativeDriver: true,
       }),
       Animated.timing(slideAnim, {
         toValue: -100,
         duration: 500,
-        easing: Easing.inOut(Easing.ease),
+        easing: RNEasing.inOut(RNEasing.ease),
         useNativeDriver: true,
       }),
     ]).start();
   };
 
-  // Callback when the Venn diagram animation finishes
+  // Called when the VennDiagram’s complex animation finishes
   const handleVennAnimationComplete = () => {
     router.push('/sign-in');
   };
@@ -42,16 +43,19 @@ export default function App() {
   return (
     <SafeAreaView className="bg-primary h-full">
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-        {/* VennDiagram component with triggered animation */}
+        {/* VennDiagram with advanced Reanimated transitions */}
         <VennDiagram
           startAnimation={startVennAnimation}
           onAnimationComplete={handleVennAnimationComplete}
         />
 
-        {/* Additional animated element example (optional) */}
+        {/* Example: React Native Animated image (optional) */}
         <Animated.View
           style={{
-            transform: [{ scale: scaleAnim }, { translateY: slideAnim }],
+            transform: [
+              { scale: scaleAnim },
+              { translateY: slideAnim },
+            ],
             marginTop: 40,
           }}
         >
