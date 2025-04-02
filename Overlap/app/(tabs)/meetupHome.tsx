@@ -1,21 +1,21 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  View, 
-  Text, 
-  TouchableOpacity, 
-  StyleSheet, 
-  Image
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  Image,
 } from 'react-native';
-import CreateMeetupScreen from '../meetup/create';
-import MyMeetupsScreen from '../meetup/MyMeetupsScreen';
+import CreateMeetupScreen from '../meetupFolder/create';
+import MyMeetupsScreen from '../meetupFolder/MyMeetupsScreen';
+import JoinMeetupsScreen from '../meetupFolder/join';
 import { getPendingMeetupInvites } from '../utils/storage';
-import { useRouter } from 'expo-router';
 
 const Meetup = () => {
   const [showCreate, setShowCreate] = useState(false);
   const [showMyMeetups, setShowMyMeetups] = useState(false);
+  const [showJoin, setShowJoin] = useState(false);
   const [pendingInvites, setPendingInvites] = useState([]);
-  const router = useRouter();
 
   useEffect(() => {
     const fetchInvites = async () => {
@@ -38,38 +38,42 @@ const Meetup = () => {
     return <MyMeetupsScreen onBack={() => setShowMyMeetups(false)} />;
   }
 
+  if (showJoin) {
+    return <JoinMeetupsScreen onBack={() => setShowJoin(false)} />;
+  }
+
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Meet Up</Text>
-      
+
       <View style={styles.buttonContainer}>
         {/* Create Button */}
         <View style={styles.buttonWrapper}>
           <View style={styles.iconWrapper}>
-            <Image 
-              source={require('../../assets/icons/single_meetup.png')} 
-              style={styles.icon} 
+            <Image
+              source={require('../../assets/icons/single_meetup.png')}
+              style={styles.icon}
             />
           </View>
-          <TouchableOpacity 
-            style={styles.button} 
+          <TouchableOpacity
+            style={styles.button}
             onPress={() => setShowCreate(true)}
           >
             <Text style={styles.buttonText}>Create</Text>
           </TouchableOpacity>
         </View>
 
-        {/* Join Button with pending invites badge */}
+        {/* Join Button (Updated to use setShowJoin instead of router) */}
         <View style={styles.buttonWrapper}>
           <View style={styles.iconWrapper}>
-            <Image 
-              source={require('../../assets/icons/multiple_meetup.png')} 
-              style={styles.icon} 
+            <Image
+              source={require('../../assets/icons/multiple_meetup.png')}
+              style={styles.icon}
             />
           </View>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.button}
-            onPress={() => router.push('/meetup/join')}
+            onPress={() => setShowJoin(true)} // ✅ FIXED: previously used router.push
           >
             <Text style={styles.buttonText}>Join</Text>
             {pendingInvites.length > 0 && (
@@ -82,13 +86,13 @@ const Meetup = () => {
       </View>
 
       {/* My Meetups Button */}
-      <TouchableOpacity 
+      <TouchableOpacity
         style={styles.largeButton}
         onPress={() => setShowMyMeetups(true)}
       >
-        <Image 
-          source={require('../../assets/icons/my_meetups.png')} 
-          style={styles.meetupsIcon} 
+        <Image
+          source={require('../../assets/icons/my_meetups.png')}
+          style={styles.meetupsIcon}
         />
         <Text style={styles.buttonText}>My Meetups</Text>
       </TouchableOpacity>
@@ -144,7 +148,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     borderRadius: 30,
-    flexDirection: 'row'
+    flexDirection: 'row',
   },
   buttonText: {
     fontSize: 20,

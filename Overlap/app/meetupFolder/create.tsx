@@ -27,44 +27,6 @@ const activityLabels = [
   'Relaxing', 'Learning', 'Cooking', 'Nightlife',
 ];
 
-const createMeetupInvite = async (friendId, meetupId) => {
-  try {
-    const meetupRef = doc(db, 'meetups', meetupId);
-    const meetupSnap = await getDoc(meetupRef);
-    const meetupData = meetupSnap.exists() ? meetupSnap.data() : {};
-    const inviteData = {
-      invitedFriendId: friendId,
-      meetupId,
-      status: 'pending',
-      title: meetupData.eventName || 'Meetup Invitation',
-      createdAt: new Date().toISOString(),
-    };
-    await addDoc(collection(db, 'meetupInvites'), inviteData);
-  } catch (error) {
-    console.error('Error creating meetup invite:', error);
-  }
-};
-
-const getFriendProfile = async (friendId) => {
-  try {
-    const userDocRef = doc(db, 'users', friendId);
-    const userDoc = await getDoc(userDocRef);
-    if (userDoc.exists()) {
-      const userData = userDoc.data();
-      return {
-        uid: friendId,
-        email: userData.email,
-        name: userData.email,
-        avatarUrl: userData.avatarUrl,
-      };
-    }
-    return { uid: friendId, email: friendId, name: friendId };
-  } catch (error) {
-    console.error('Error fetching friend profile:', error);
-    return { uid: friendId, email: friendId, name: friendId };
-  }
-};
-
 // Modal Component for inviting friends
 const InviteFriendsModal = ({
   visible,
@@ -102,12 +64,28 @@ const InviteFriendsModal = ({
   </Modal>
 );
 
+const createMeetupInvite = async (friendId, meetupId) => {
+  try {
+    const meetupRef = doc(db, 'meetups', meetupId);
+    const meetupSnap = await getDoc(meetupRef);
+    const meetupData = meetupSnap.exists() ? meetupSnap.data() : {};
+    const inviteData = {
+      invitedFriendId: friendId,
+      meetupId: meetupId,
+      status: 'pending',
+      title: meetupData.eventName || 'Meetup Invitation',
+      createdAt: new Date().toISOString(),
+    };
+    await addDoc(collection(db, 'meetupInvites'), inviteData);
+  } catch (error) {
+    console.error('Error creating meetup invite:', error);
+  }
+};
+
 const CreateMeetupScreen = ({ onBack }) => {
   // Required field states
   const [eventName, setEventName] = useState('');
-  const [mood, setMood] = useState('');
   const [description, setDescription] = useState('');
-  const [restrictions, setRestrictions] = useState('');
 
   // Date & time states
   const [date, setDate] = useState(new Date());
@@ -158,6 +136,26 @@ const CreateMeetupScreen = ({ onBack }) => {
     }
   };
 
+  const getFriendProfile = async (friendId) => {
+    try {
+      const userDocRef = doc(db, 'users', friendId);
+      const userDoc = await getDoc(userDocRef);
+      if (userDoc.exists()) {
+        const userData = userDoc.data();
+        return {
+          uid: friendId,
+          email: userData.email,
+          name: userData.email,
+          avatarUrl: userData.avatarUrl,
+        };
+      }
+      return { uid: friendId, email: friendId, name: friendId };
+    } catch (error) {
+      console.error('Error fetching friend profile:', error);
+      return { uid: friendId, email: friendId, name: friendId };
+    }
+  };
+  
   // Listen for auth state changes so we can get the current user
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
@@ -176,7 +174,7 @@ const CreateMeetupScreen = ({ onBack }) => {
         const friendIds = friendships.map(f =>
           f.users.find(id => id !== currentUserId)
         );
-        const friendProfiles = await Promise.all(friendIds.map(getFriendProfile));
+        const friendProfiles = await Promise.all(friendIds.map(friendId => getFriendProfile(friendId)));
         setFriendsList(friendProfiles);
       } catch (error) {
         console.error('Error fetching friends:', error);
@@ -249,22 +247,20 @@ const CreateMeetupScreen = ({ onBack }) => {
       return;
     }
 
-    // Include the generated code in meetupData
     const meetupData = {
-      eventName,
-      mood,
+      eventName: eventName,
       category: selectedCategory,
-      groupSize,
+      groupSize: groupSize,
       date: date.toISOString(),
       time: time.toISOString(),
-      priceRange,
-      description,
-      restrictions,
+      priceRange: priceRange,
+      description: description,
       friends: selectedFriends,
       location: locationOption === 'own' ? 'my location' : specificLocation,
       collections: selectedCollections,
       code: meetupCode,
     };
+
     console.log('Meetup data before creation:', meetupData);
 
     try {
@@ -296,15 +292,8 @@ const CreateMeetupScreen = ({ onBack }) => {
         />
       </View>
 
-      {/* Mood & Category */}
+      {/* Category */}
       <View style={styles.row}>
-        <TextInput
-          style={[styles.input, styles.inputHalf]}
-          placeholder="Mood"
-          placeholderTextColor="#888"
-          value={mood}
-          onChangeText={setMood}
-        />
         <View style={[styles.inputHalf, styles.dropdownContainer]}>
           <TouchableOpacity
             style={styles.pickerContainer}
@@ -413,16 +402,6 @@ const CreateMeetupScreen = ({ onBack }) => {
         multiline
         value={description}
         onChangeText={setDescription}
-      />
-
-      {/* Restrictions */}
-      <TextInput
-        style={styles.input}
-        placeholder="Restrictions (allergies, disabilities)"
-        placeholderTextColor="#888"
-        multiline
-        value={restrictions}
-        onChangeText={setRestrictions}
       />
 
       {/* Location Selection */}

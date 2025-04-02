@@ -15,7 +15,7 @@ import {
 } from '../utils/storage';
 import { useRouter } from 'expo-router';
 
-const JoinMeetupsScreen = () => {
+const JoinMeetupsScreen = ({ onBack }: { onBack: () => void }) => {
   const [invites, setInvites] = useState([]);
   const [inviteCode, setInviteCode] = useState('');
   const router = useRouter();
@@ -33,38 +33,29 @@ const JoinMeetupsScreen = () => {
     fetchInvites();
   }, []);
 
-  // Function to handle accepting an invitation from the list.
   const handleAcceptInvite = async (invite) => {
     try {
-      console.log(`Joining meetup with ${invite.code ? "code " + invite.code : "direct invitation"}`);
-      const meetupId = await joinMeetup(invite.id); // Get the actual meetup ID.
-      // On success, remove the invite from the pending list.
+      const meetupId = await joinMeetup(invite.id);
       setInvites(prevInvites => prevInvites.filter(item => item.id !== invite.id));
-      // Navigate to the meetup detail page after joining.
-      router.push(`/startMeetUp?meetupId=${meetupId}`);
+      router.push(`/meetupFolder/startMeetUp?meetupId=${meetupId}`);
     } catch (error) {
       console.error("Error joining meetup", error);
     }
   };
-  
-  // Function to handle declining an invitation.
+
   const handleDeclineInvite = async (invite) => {
     try {
-      console.log(`Declining meetup invitation for ${invite.code ? "code " + invite.code : "direct invitation"}`);
       await declineMeetup(invite.id);
-      // On success, remove the invite from the pending list.
       setInvites(prevInvites => prevInvites.filter(item => item.id !== invite.id));
     } catch (error) {
       console.error("Error declining meetup invitation", error);
     }
   };
 
-  // Function to handle joining by invite code.
   const handleJoinByCode = async () => {
     try {
-      console.log(`Requesting to join meetup with code: ${inviteCode}`);
-      const response = await joinMeetupByCode(inviteCode);
-      router.push(`/startMeetUp?meetupId=${meetupId}`);
+      const meetupId = await joinMeetupByCode(inviteCode);
+      router.push(`/meetupFolder/startMeetUp?meetupId=${meetupId}`);
     } catch (error) {
       console.error("Error joining meetup by code", error);
     }
@@ -73,22 +64,14 @@ const JoinMeetupsScreen = () => {
   const renderInvite = ({ item }) => (
     <View style={styles.inviteCard}>
       <Text style={styles.inviteTitle}>{item.title || 'Meetup Invitation'}</Text>
-      {item.code ? (
-        <Text style={styles.inviteCode}>Code: {item.code}</Text>
-      ) : (
-        <Text style={styles.inviteCode}>Direct Invitation</Text>
-      )}
+      <Text style={styles.inviteCode}>
+        {item.code ? `Code: ${item.code}` : 'Direct Invitation'}
+      </Text>
       <View style={styles.buttonRow}>
-        <TouchableOpacity 
-          style={styles.joinButton} 
-          onPress={() => handleAcceptInvite(item)}
-        >
+        <TouchableOpacity style={styles.joinButton} onPress={() => handleAcceptInvite(item)}>
           <Text style={styles.joinButtonText}>Join</Text>
         </TouchableOpacity>
-        <TouchableOpacity 
-          style={styles.declineButton} 
-          onPress={() => handleDeclineInvite(item)}
-        >
+        <TouchableOpacity style={styles.declineButton} onPress={() => handleDeclineInvite(item)}>
           <Text style={styles.declineButtonText}>Decline</Text>
         </TouchableOpacity>
       </View>
@@ -124,7 +107,7 @@ const JoinMeetupsScreen = () => {
         </TouchableOpacity>
       </View>
 
-      <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+      <TouchableOpacity style={styles.backButton} onPress={onBack}>
         <Text style={styles.backButtonText}>Back</Text>
       </TouchableOpacity>
     </View>
@@ -132,7 +115,6 @@ const JoinMeetupsScreen = () => {
 };
 
 export default JoinMeetupsScreen;
-
 const styles = StyleSheet.create({
   container: {
     flex: 1,

@@ -5,7 +5,6 @@ import Animated, {
   useSharedValue,
   useAnimatedProps,
   useAnimatedStyle,
-  useDerivedValue,
   withSpring,
   withRepeat,
   withTiming,
@@ -20,11 +19,6 @@ const AnimatedPath = Animated.createAnimatedComponent(Path);
 // We'll animate transform on a <G> (group) to show a star pulsing
 const AnimatedG = Animated.createAnimatedComponent(G);
 
-/**
- * VennDiagram with a Sparkly Star effect.
- * - Moves two circles from far apart to overlapping with a single spring.
- * - Then triggers a pulsing star shape at the center.
- */
 export default function VennDiagram({ startAnimation, onAnimationComplete }) {
   // Circle radius & vertical center
   const r = 80;
@@ -37,8 +31,7 @@ export default function VennDiagram({ startAnimation, onAnimationComplete }) {
   // 1) progress: controls circle separation (0 = far apart, 1 = overlapped)
   const progress = useSharedValue(0);
 
-  // 2) sparkle: controls the pulsing scale of the star
-  //    (1 = normal size, >1 = bigger star)
+  // 2) sparkle: controls the pulsing scale of the star (1 = normal size, >1 = bigger star)
   const sparkle = useSharedValue(1);
 
   // Animate left circle’s centerX from finalLeftX - 120 => finalLeftX
@@ -103,16 +96,11 @@ export default function VennDiagram({ startAnimation, onAnimationComplete }) {
   });
 
   // Star path is centered at (0,0), we'll animate it via a <G transform="...">
-  // Quick 5-point star around the origin, radius ~30.
   const starPath =
     'M 0 -30 L 9 -9 L 29 -9 L 14 3 L 18 23 L 0 12 L -18 23 L -14 3 L -29 -9 L -9 -9 Z';
 
   // We'll animate the scale of <G> so the star pulses
   const animatedStarProps = useAnimatedStyle(() => {
-    // We'll do a manual transform string for <G>
-    // translate(150,150) moves it to the center,
-    // scale(...) does the pulse,
-    // translate(-150,-150) resets origin.
     const scale = sparkle.value;
     return {
       transform: [
@@ -125,16 +113,6 @@ export default function VennDiagram({ startAnimation, onAnimationComplete }) {
     };
   });
 
-  // Once circles are overlapped, start the star pulse
-  const startSparkle = () => {
-    sparkle.value = withRepeat(
-      // Pulse up to 1.5 then back
-      withTiming(1.5, { duration: 700 }),
-      -1, // infinite repeats
-      true // reverse
-    );
-  };
-
   useEffect(() => {
     if (startAnimation) {
       // Single spring from progress=0 -> 1
@@ -144,11 +122,17 @@ export default function VennDiagram({ startAnimation, onAnimationComplete }) {
           damping: 9,
           stiffness: 120,
         },
+        // Inline worklet callback
         (finished) => {
+          'worklet';
           if (finished) {
             // Start the star pulsing
-            startSparkle();
-            // Optionally let parent know the Venn is done
+            sparkle.value = withRepeat(
+              withTiming(1.5, { duration: 700 }),
+              -1, // infinite repeats
+              true // reverse
+            );
+            // Let parent know the animation is done, on the JS thread
             if (onAnimationComplete) {
               runOnJS(onAnimationComplete)();
             }

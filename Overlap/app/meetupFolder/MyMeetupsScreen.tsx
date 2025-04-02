@@ -1,15 +1,15 @@
-// MyMeetupsScreen.tsx
 import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, FlatList, ActivityIndicator } from 'react-native';
 import { getUserMeetups, removeMeetup, updateMeetup, getPendingMeetupInvites } from '../utils/storage';
 import MeetupCard from '../../components/MeetupCard';
-import { useRouter } from 'expo-router';
+import StartMeetupScreen from './startMeetUp'; // ✅ Use your new component!
 
 const MyMeetupsScreen = ({ onBack }: { onBack: () => void }) => {
   const [meetups, setMeetups] = useState<any[]>([]);
   const [pendingInvites, setPendingInvites] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const router = useRouter();
+  const [showStart, setShowStart] = useState(false); // ✅ Show the swiping screen
+  const [currentMeetupId, setCurrentMeetupId] = useState<string | null>(null); // ✅ Track the selected meetup
 
   useEffect(() => {
     const fetchMeetups = async () => {
@@ -51,7 +51,8 @@ const MyMeetupsScreen = ({ onBack }: { onBack: () => void }) => {
       setMeetups(prev =>
         prev.map(m => (m.id === meetupId ? { ...m, ongoing: true } : m))
       );
-      router.push(`/meetup/startMeetUp?meetupId=${meetupId}`);
+      setCurrentMeetupId(meetupId); // ✅ Set the ID
+      setShowStart(true); // ✅ Show the swiping screen
     } catch (error) {
       console.error('Error starting meetup:', error);
     }
@@ -68,6 +69,19 @@ const MyMeetupsScreen = ({ onBack }: { onBack: () => void }) => {
     }
   };
 
+  // ✅ Show the StartMeetupScreen instead if triggered
+  if (showStart && currentMeetupId) {
+    return (
+      <StartMeetupScreen
+        meetupId={currentMeetupId}
+        onBack={() => {
+          setShowStart(false);
+          setCurrentMeetupId(null);
+        }}
+      />
+    );
+  }
+
   if (loading) {
     return (
       <View style={styles.center}>
@@ -76,7 +90,6 @@ const MyMeetupsScreen = ({ onBack }: { onBack: () => void }) => {
     );
   }
 
-  // Separate meetups into regular and ongoing groups.
   const regularMeetups = meetups.filter(m => !m.ongoing);
   const ongoingMeetups = meetups.filter(m => m.ongoing);
 
@@ -141,7 +154,7 @@ const styles = StyleSheet.create({
   },
   topHalf: {
     flex: 1,
-    paddingTop: 20, // extra padding for My Meetups
+    paddingTop: 20,
   },
   bottomHalf: {
     flex: 1,
