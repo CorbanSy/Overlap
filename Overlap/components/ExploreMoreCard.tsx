@@ -1,3 +1,4 @@
+// ExploreMoreCard.tsx
 import React, { useEffect, useState } from 'react';
 import {
   View,
@@ -5,141 +6,100 @@ import {
   TouchableOpacity,
   StyleSheet,
   ScrollView,
+  ImageBackground,
+  LayoutAnimation,
+  UIManager,
+  Platform,
 } from 'react-native';
-import { getProfileData } from '../app/utils/storage';
-
-const EXPAND_CATEGORIES = [
-  'Dining', 'Outdoors', 'Nightlife', 'Movies', 'Fitness', 'Gaming',
-  'Social', 'Music', 'Shopping', 'Travel', 'Art', 'Relaxing',
-  'Learning', 'Cooking',
-];
-
-// We remove punctuation from dynamic keywords (like "." or ",").
-function cleanKeyword(kw: string) {
-  // remove any punctuation except letters/numbers/spaces
-  return kw.replace(/[^\p{L}\p{N}\s]/gu, '').trim();
-}
-
-// Additional blocked words
-const BLOCKED_WORDS = new Set([
-  'covid', 'trash', 'awful', 'terrible', 
-  'bad', 'unfriendly', '2 ladies', 'mr', 'ms', '',
-  // ... add more as needed
-]);
+import { PLACE_CATEGORIES } from '../app/utils/placeCategories';
 
 type Props = {
   style?: any;
-  onCategoryPress?: (keyword: string) => void;
+  onSubCategoryPress?: (subKey: string) => void;
+  onBroadCategoryPress?: (catKey: string) => void;
+  // New props:
+  currentSubCategories: { key: string; label: string }[];
+  otherBroadCategories: { key: string; label: string; image?: any }[];
 };
 
-const ExploreMoreCard: React.FC<Props> = ({ style, onCategoryPress }) => {
-  const [loading, setLoading] = useState(true);
-  const [combinedKeywords, setCombinedKeywords] = useState<string[]>([]);
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 
-  useEffect(() => {
-    loadProfileData();
-  }, []);
+const ExploreMoreCard: React.FC<Props> = ({
+  style,
+  onSubCategoryPress,
+  onBroadCategoryPress,
+  currentSubCategories,
+  otherBroadCategories,
+}) => {
+  const [expandedCategoryKey, setExpandedCategoryKey] = useState<string | null>(null);
 
-  async function loadProfileData() {
-    setLoading(true);
-    try {
-      const profile = await getProfileData();
-      if (!profile) {
-        setCombinedKeywords([]);
-      } else {
-        const defaults = profile.topCategories || [];
-        const keywordsMap = profile.keywords || {};
+  function handleExpandToggle(catKey: string) {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setExpandedCategoryKey((prev) => (prev === catKey ? null : catKey));
+  }
 
-        // Filter dynamic keywords:
-        // 1) remove punctuation
-        // 2) remove blocked words
-        // 3) ensure it was used >1 time to avoid single weird hits
-        const dynamic = Object.keys(keywordsMap).map(k => cleanKeyword(k));
-        const filteredDynamic = dynamic.filter((kw) => {
-          if (!kw || BLOCKED_WORDS.has(kw.toLowerCase())) return false;
-          // check frequency
-          if (keywordsMap[kw] < 2) return false;
-          return true;
-        });
-
-        // Merge approach – for example, keep the user’s default categories plus some dynamic ones
-        // If the user has <5 total likes, we rely more on defaults, else we show more dynamic ones
-        const userLikeCount = Object.values(keywordsMap).reduce((sum, val) => sum + (val as number), 0);
-
-        let finalKeywords: string[] = [];
-        if (userLikeCount < 5) {
-          finalKeywords = [...defaults, ...filteredDynamic.slice(0, 2)];
-        } else {
-          finalKeywords = [...defaults.slice(0, 3), ...filteredDynamic.slice(0, 5)];
-        }
-
-        // remove duplicates & remove any empty
-        const unique = Array.from(new Set(finalKeywords)).filter(Boolean);
-        setCombinedKeywords(unique);
-      }
-    } catch (error) {
-      console.error('Failed to load profile data in ExploreMore:', error);
-      setCombinedKeywords([]);
-    } finally {
-      setLoading(false);
+  // Render narrow down (subcategories) for the current category
+  const renderNarrowDown = () => {
+    if (currentSubCategories.length === 0) {
+      return <Text style={styles.loadingText}>No subcategories defined</Text>;
     }
-  }
+    return currentSubCategories.map((sub) => (
+      <TouchableOpacity
+        key={sub.key}
+        style={styles.subCategoryButton}
+        onPress={() => onSubCategoryPress?.(sub.label)}
+      >
+        <Text style={styles.subCategoryButtonText}>{sub.label}</Text>
+      </TouchableOpacity>
+    ));
+  };
 
-  function handlePress(kw: string) {
-    onCategoryPress?.(kw);
-  }
+  // Render expand section: all other broad categories
+  const renderExpand = () => {
+    return (
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.categoriesContainer}
+      >
+        {otherBroadCategories.map((cat) => (
+          <TouchableOpacity
+            key={cat.key}
+            style={styles.categoryCard}
+            onPress={() => onBroadCategoryPress?.(cat.key)}
+          >
+            <ImageBackground
+              source={cat.image}
+              style={styles.categoryImage}
+              imageStyle={{ borderRadius: 8 }}
+            >
+              <View style={styles.categoryOverlay}>
+                <Text style={styles.categoryLabel}>{cat.label}</Text>
+              </View>
+            </ImageBackground>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+    );
+  };
 
   return (
     <View style={[styles.container, style]}>
       <Text style={styles.title}>Explore More</Text>
       <Text style={styles.subtitle}>
-        Customize your feed by narrowing your search or exploring other categories.
+        Narrow down your search with subcategories or switch to a different category.
       </Text>
 
-      {/* Narrow Down */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Narrow Down</Text>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.optionsContainer}
-        >
-          {loading ? (
-            <Text style={styles.loadingText}>Loading...</Text>
-          ) : combinedKeywords.length === 0 ? (
-            <Text style={styles.noKeywordsText}>No suggestions found</Text>
-          ) : (
-            combinedKeywords.map((kw, i) => (
-              <TouchableOpacity
-                key={`narrow-${i}-${kw}`}
-                style={styles.optionButton}
-                onPress={() => handlePress(kw)}
-              >
-                <Text style={styles.optionText}>{kw}</Text>
-              </TouchableOpacity>
-            ))
-          )}
-        </ScrollView>
+        {renderNarrowDown()}
       </View>
 
-      {/* Expand Your Search */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Expand Your Search</Text>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.optionsContainer}
-        >
-          {EXPAND_CATEGORIES.map((cat, i) => (
-            <TouchableOpacity
-              key={`expand-${i}-${cat}`}
-              style={styles.optionButton}
-              onPress={() => handlePress(cat)}
-            >
-              <Text style={styles.optionText}>{cat}</Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
+        {renderExpand()}
       </View>
     </View>
   );
@@ -178,30 +138,47 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginBottom: 8,
   },
-  optionsContainer: {
+  subCategoryButton: {
+    backgroundColor: '#333',
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 6,
+    marginBottom: 4,
+    marginRight: 6,
+  },
+  subCategoryButtonText: {
+    color: '#fff',
+    fontSize: 14,
+  },
+  categoriesContainer: {
     flexDirection: 'row',
     paddingHorizontal: 8,
   },
-  optionButton: {
-    backgroundColor: '#F5A623',
-    paddingVertical: 10,
-    paddingHorizontal: 18,
+  categoryCard: {
+    width: 140,
+    height: 140,
     borderRadius: 8,
+    overflow: 'hidden',
     marginRight: 10,
+    backgroundColor: '#333',
   },
-  optionText: {
-    color: '#0D1117',
+  categoryImage: {
+    width: '100%',
+    height: '100%',
+    justifyContent: 'flex-end',
+  },
+  categoryOverlay: {
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    padding: 6,
+    borderBottomLeftRadius: 8,
+    borderBottomRightRadius: 8,
+  },
+  categoryLabel: {
+    color: '#fff',
+    fontSize: 14,
     fontWeight: 'bold',
-    fontSize: 16,
   },
   loadingText: {
     color: '#ccc',
-    fontSize: 14,
-    marginLeft: 4,
-  },
-  noKeywordsText: {
-    color: '#aaa',
-    fontSize: 14,
-    marginLeft: 4,
   },
 });

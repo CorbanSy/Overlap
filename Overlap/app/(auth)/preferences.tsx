@@ -1,3 +1,4 @@
+// preferences.tsx
 import React, { useState } from "react";
 import {
   View,
@@ -6,15 +7,16 @@ import {
   Dimensions,
   Modal,
   StyleSheet,
+  FlatList,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useNavigation } from "@react-navigation/native";
 import { getAuth } from "firebase/auth";
-import { markPreferencesComplete, saveProfileData } from '../utils/storage'; // adjust the path as needed
-import { router } from 'expo-router'
-const { width, height } = Dimensions.get("window");
+import { router } from 'expo-router';
+import { markPreferencesComplete, saveProfileData } from '../utils/storage';
+import { PLACE_CATEGORIES } from '../utils/placeCategories'; // single source
 
-// Define Theme Colors
+const { width } = Dimensions.get("window");
+
 const themeColors = {
   bg: "#0D1117",
   primary: "#F5A623",
@@ -22,102 +24,25 @@ const themeColors = {
   secondary: "#1B1F24",
 };
 
-type Bubble = {
-  id: string;
-  label: string;
-  x: number;
-  y: number;
-  size: number;
-  rank: number | null;
-};
-
-const defaultBubbleSize = 100; // Increased size so text fits on one line
-
-const activityLabels: string[] = [
-  "Dining",
-  "Fitness",
-  "Outdoors",
-  "Movies",
-  "Gaming",
-  "Social",
-  "Music",
-  "Shopping",
-  "Travel",
-  "Art",
-  "Relaxing",
-  "Learning",
-  "Cooking",
-  "Nightlife",
-];
-
-// Arrange bubbles in a circle (ferris wheel layout) in the top third of the screen
-const createBubbles = (): Bubble[] => {
-  const bubbles: Bubble[] = [];
-  const centerX = width / 2;
-  const centerY = height / 3;
-  const circleRadius = Math.min(width, height) / 3;
-  activityLabels.forEach((label, index) => {
-    const angle = (index / activityLabels.length) * 2 * Math.PI;
-    const x = centerX + Math.cos(angle) * circleRadius;
-    const y = centerY + Math.sin(angle) * circleRadius;
-    bubbles.push({ id: label, label, x, y, size: defaultBubbleSize, rank: null });
-  });
-  return bubbles;
-};
-
 export default function PreferencesScreen() {
-  const navigation = useNavigation();
-  const auth = getAuth();
-  const [bubbles, setBubbles] = useState<Bubble[]>(createBubbles());
-  const [isDisclaimerVisible, setIsDisclaimerVisible] = useState<boolean>(true);
+  // Instead of an array, we now store only one selected category key.
+  const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  const [isDisclaimerVisible, setIsDisclaimerVisible] = useState(true);
 
-  // Toggle selection state: change color and update rank ordering
-  const toggleSelection = (bubbleId: string) => {
-    setBubbles((prevBubbles) => {
-      const bubble = prevBubbles.find((b) => b.id === bubbleId);
-      if (!bubble) return prevBubbles;
-      const isSelected = bubble.rank !== null;
-      if (isSelected) {
-        // Deselect the bubble
-        const updatedBubbles = prevBubbles.map((b) =>
-          b.id === bubbleId ? { ...b, rank: null } : b
-        );
-        // Reassign ranks for the remaining selections
-        const selected = updatedBubbles
-          .filter((b) => b.rank !== null)
-          .sort((a, b) => (a.rank as number) - (b.rank as number));
-        return updatedBubbles.map((b) => {
-          if (b.rank !== null) {
-            const newRank = selected.findIndex((item) => item.id === b.id) + 1;
-            return { ...b, rank: newRank };
-          }
-          return b;
-        });
-      } else {
-        // If not selected, add it if fewer than 5 are already selected
-        const selectedCount = prevBubbles.filter((b) => b.rank !== null).length;
-        if (selectedCount >= 5) {
-          return prevBubbles;
-        }
-        const newRank = selectedCount + 1;
-        return prevBubbles.map((b) =>
-          b.id === bubbleId ? { ...b, rank: newRank } : b
-        );
-      }
-    });
+  const handleSelectCategory = (catKey: string) => {
+    setSelectedKey(catKey);
   };
 
   const handleSubmitPreferences = async () => {
     const auth = getAuth();
     if (!auth.currentUser) return;
+    if (!selectedKey) {
+      console.warn("Please select a category.");
+      return;
+    }
     try {
-      // Gather selected bubble labels in order
-      const finalRanks = bubbles
-        .filter((b) => b.rank !== null)
-        .sort((a, b) => (a.rank as number) - (b.rank as number))
-        .map((b) => b.label);
-
-      await saveProfileData(finalRanks);
+      // Save the user’s selected category (as an array with one element)
+      await saveProfileData([selectedKey]);
       await markPreferencesComplete();
       router.push("/home");
     } catch (error) {
@@ -125,19 +50,15 @@ export default function PreferencesScreen() {
     }
   };
 
-  // Get selected bubbles sorted by rank for display
-  const selectedBubbles = bubbles
-    .filter((b) => b.rank !== null)
-    .sort((a, b) => (a.rank as number) - (b.rank as number));
-
   return (
     <SafeAreaView style={styles.container}>
+      {/* Disclaimer modal */}
       <Modal visible={isDisclaimerVisible} transparent animationType="fade">
         <View style={styles.modalContainer}>
           <View style={styles.modalContent}>
             <Text style={styles.modalText}>
-              Welcome! Ranking your preferences helps us personalize your
-              experience. Don't worry—these can be updated later!
+              Welcome! Choosing your top category helps us personalize your experience.
+              You can update this later.
             </Text>
             <TouchableOpacity
               style={styles.modalButton}
@@ -149,55 +70,50 @@ export default function PreferencesScreen() {
         </View>
       </Modal>
 
-      <Text style={styles.header}>Select Your Top 5 Preferences</Text>
+      <Text style={styles.header}>Select Your Top Category</Text>
 
-      <View style={styles.bubblesContainer}>
-        {bubbles.map((bubble) => (
-          <TouchableOpacity
-            key={bubble.id}
-            style={[
-              styles.bubble,
-              {
-                width: bubble.size,
-                height: bubble.size,
-                borderRadius: bubble.size / 2,
-                top: bubble.y - bubble.size / 2,
-                left: bubble.x - bubble.size / 2,
-                backgroundColor: bubble.rank ? themeColors.primary : themeColors.secondary,
-              },
-            ]}
-            onPress={() => toggleSelection(bubble.id)}
-          >
-            <Text style={styles.bubbleText}>
-              {bubble.label} {bubble.rank ? `(${bubble.rank})` : ""}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
+      <FlatList
+        data={PLACE_CATEGORIES}
+        keyExtractor={(item) => item.key}
+        numColumns={2}
+        contentContainerStyle={styles.grid}
+        renderItem={({ item }) => {
+          const selected = selectedKey === item.key;
+          return (
+            <TouchableOpacity
+              style={[styles.card, selected && styles.cardSelected]}
+              onPress={() => handleSelectCategory(item.key)}
+              activeOpacity={0.8}
+            >
+              <Text style={styles.cardTitle}>{item.label}</Text>
+              <Text style={styles.cardSubtitle} numberOfLines={2}>
+                {item.description}
+              </Text>
+              {selected && (
+                <View style={styles.selectedIndicator}>
+                  <Text style={styles.selectedIndicatorText}>Selected</Text>
+                </View>
+              )}
+            </TouchableOpacity>
+          );
+        }}
+      />
 
-      <View style={styles.selectedContainer}>
-        <Text style={styles.selectedHeader}>Your Selections:</Text>
-        <View style={styles.selectionRows}>
-          <View style={styles.selectionRow}>
-            {selectedBubbles.slice(0, 3).map((bubble) => (
-              <View key={bubble.id} style={styles.selectedBubble}>
-                <Text style={styles.selectedText}>
-                  {bubble.rank}. {bubble.label}
-                </Text>
-              </View>
-            ))}
-          </View>
-          <View style={styles.selectionRow}>
-            {selectedBubbles.slice(3, 5).map((bubble) => (
-              <View key={bubble.id} style={styles.selectedBubble}>
-                <Text style={styles.selectedText}>
-                  {bubble.rank}. {bubble.label}
-                </Text>
-              </View>
-            ))}
+      {selectedKey && (
+        <View style={styles.selectedCategoriesContainer}>
+          <Text style={styles.selectedHeader}>Your Selection:</Text>
+          <View style={styles.selectedRow}>
+            {(() => {
+              const cat = PLACE_CATEGORIES.find((c) => c.key === selectedKey);
+              return (
+                <View key={selectedKey} style={styles.selectedBubble}>
+                  <Text style={styles.selectedText}>{cat?.label}</Text>
+                </View>
+              );
+            })()}
           </View>
         </View>
-      </View>
+      )}
 
       <TouchableOpacity style={styles.submitButton} onPress={handleSubmitPreferences}>
         <Text style={styles.submitButtonText}>Submit</Text>
@@ -210,24 +126,12 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: themeColors.bg,
-    padding: 20,
-    justifyContent: "space-between",
-  },
-  modalButton: {
-    backgroundColor: themeColors.primary,
-    paddingVertical: 10,
-    paddingHorizontal: 20,
-    borderRadius: 5,
-  },
-  modalButtonText: {
-    color: themeColors.white,
-    fontWeight: "bold",
   },
   modalContainer: {
     flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
     backgroundColor: "rgba(0, 0, 0, 0.7)",
+    alignItems: "center",
+    justifyContent: "center",
   },
   modalContent: {
     width: "80%",
@@ -242,53 +146,86 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginBottom: 20,
   },
+  modalButton: {
+    backgroundColor: themeColors.primary,
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 5,
+  },
+  modalButtonText: {
+    color: themeColors.white,
+    fontWeight: "bold",
+  },
   header: {
     fontSize: 24,
     fontWeight: "bold",
     color: themeColors.white,
     textAlign: "center",
-    marginVertical: 10,
+    marginTop: 20,
+    marginBottom: 10,
   },
-  bubblesContainer: {
+  grid: {
+    paddingHorizontal: 10,
+  },
+  card: {
     flex: 1,
-    position: "relative",
-  },
-  bubble: {
-    position: "absolute",
+    backgroundColor: themeColors.secondary,
+    margin: 8,
+    borderRadius: 10,
+    padding: 12,
     justifyContent: "center",
-    alignItems: "center",
   },
-  bubbleText: {
+  cardSelected: {
+    borderWidth: 2,
+    borderColor: themeColors.primary,
+  },
+  cardTitle: {
     color: themeColors.white,
+    fontSize: 16,
     fontWeight: "bold",
-    textAlign: "center",
+    marginBottom: 6,
   },
-  selectedContainer: {
-    paddingVertical: 10,
+  cardSubtitle: {
+    color: "#ccc",
+    fontSize: 13,
+  },
+  selectedIndicator: {
+    marginTop: 8,
+    backgroundColor: themeColors.primary,
+    borderRadius: 6,
+    alignSelf: "flex-start",
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  selectedIndicatorText: {
+    color: "#0D1117",
+    fontSize: 12,
+    fontWeight: "bold",
+  },
+  selectedCategoriesContainer: {
     borderTopWidth: 1,
-    borderColor: themeColors.secondary,
+    borderTopColor: themeColors.secondary,
+    marginTop: 10,
+    paddingVertical: 10,
   },
   selectedHeader: {
     color: themeColors.white,
     fontSize: 18,
     fontWeight: "bold",
-    marginBottom: 5,
     textAlign: "center",
+    marginBottom: 5,
   },
-  selectionRows: {
-    flexDirection: "column",
-    alignItems: "center",
-  },
-  selectionRow: {
+  selectedRow: {
     flexDirection: "row",
+    flexWrap: "wrap",
     justifyContent: "center",
-    marginVertical: 5,
+    padding: 10,
   },
   selectedBubble: {
     backgroundColor: themeColors.primary,
-    padding: 10,
+    padding: 8,
     borderRadius: 8,
-    marginHorizontal: 5,
+    margin: 5,
   },
   selectedText: {
     color: themeColors.white,
@@ -296,13 +233,15 @@ const styles = StyleSheet.create({
   },
   submitButton: {
     backgroundColor: themeColors.primary,
-    padding: 15,
+    padding: 12,
     borderRadius: 8,
-    alignSelf: "center",
-    marginVertical: 10,
+    marginHorizontal: 20,
+    marginBottom: 20,
+    alignItems: "center",
   },
   submitButtonText: {
     color: themeColors.white,
     fontWeight: "bold",
+    fontSize: 16,
   },
 });
