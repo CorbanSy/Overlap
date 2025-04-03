@@ -2,14 +2,13 @@ import React, { useState } from 'react';
 import { View, Text, Image, StyleSheet, TouchableOpacity, Share } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
-const CollectionCard = ({ collection, onPress, onDelete }) => {
+const CollectionCard = ({ collection, onPress, onDelete, previewOnly }) => {
   const [expanded, setExpanded] = useState(false);
-  const [isMenuVisible, setIsMenuVisible] = useState(false);
 
   if (!collection?.activities) return null; // Prevent errors if no activities
 
   // Get up to 4 activity images for the preview
-  const previewImages = collection.activities.slice(0, 4).map((activity) => activity.photoReference);
+  const previewImages = collection.activities.slice(0, 4).map(activity => activity.photoReference);
 
   // Function to share the collection
   const handleShare = async () => {
@@ -17,29 +16,27 @@ const CollectionCard = ({ collection, onPress, onDelete }) => {
       const message = `Check out this collection: "${collection.title}"!\n\n${
         collection.description || 'No description provided.'
       }\n\nIncludes activities like: ${collection.activities
-        .map((activity) => activity.name)
+        .map(activity => activity.name)
         .slice(0, 3)
         .join(', ')}...`;
-
-      await Share.share({
-        message,
-      });
+      await Share.share({ message });
     } catch (error) {
       console.error('Error sharing collection:', error);
     }
   };
 
-  return (
-    // Removed the outer View with container style so that FlatList controls the grid layout.
-    !expanded ? (
-      <TouchableOpacity
-        style={styles.card}
-        onPress={() => {
-          setExpanded(true);
-          onPress(collection);
-        }}
-      >
-        {/* Collection Image Grid */}
+  // Render the preview-only (compact) card if previewOnly is true
+  if (previewOnly) {
+    return (
+      <View style={styles.card}>
+        {onDelete && (
+          <TouchableOpacity
+            style={styles.removeIconContainer}
+            onPress={() => onDelete(collection)}
+          >
+            <Ionicons name="close" size={16} color="#FF0000" />
+          </TouchableOpacity>
+        )}
         <View style={styles.imageGrid}>
           {previewImages.map((uri, index) => (
             <Image
@@ -50,22 +47,50 @@ const CollectionCard = ({ collection, onPress, onDelete }) => {
               style={styles.image}
             />
           ))}
-          {/* Fill remaining empty slots if fewer than 4 images */}
           {Array.from({ length: 4 - previewImages.length }).map((_, index) => (
             <View key={index + previewImages.length} style={[styles.image, styles.emptyImage]} />
           ))}
         </View>
-
-        {/* Collection Title */}
         <Text style={styles.title}>{collection.title}</Text>
+      </View>
+    );
+  }
 
-        {/* Dropdown Menu Button */}
-        <TouchableOpacity style={styles.menuButton} onPress={() => setIsMenuVisible(!isMenuVisible)}>
-          <Ionicons name="ellipsis-vertical" size={20} color="#FFFFFF" />
-        </TouchableOpacity>
+  // Render the full tappable and expandable version
+  return (
+    !expanded ? (
+      <TouchableOpacity
+        style={styles.card}
+        onPress={() => {
+          setExpanded(true);
+          onPress && onPress(collection);
+        }}
+      >
+        {onDelete && (
+          <TouchableOpacity
+            style={styles.removeIconContainer}
+            onPress={() => onDelete(collection)}
+          >
+            <Ionicons name="close" size={16} color="#FF0000" />
+          </TouchableOpacity>
+        )}
+        <View style={styles.imageGrid}>
+          {previewImages.map((uri, index) => (
+            <Image
+              key={index}
+              source={{
+                uri: `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photoreference=${uri}&key=AIzaSyDcTuitQdQGXwuLp90NqQ_ZwhnMSGrr8mY`,
+              }}
+              style={styles.image}
+            />
+          ))}
+          {Array.from({ length: 4 - previewImages.length }).map((_, index) => (
+            <View key={index + previewImages.length} style={[styles.image, styles.emptyImage]} />
+          ))}
+        </View>
+        <Text style={styles.title}>{collection.title}</Text>
       </TouchableOpacity>
     ) : (
-      // Expanded View
       <View style={styles.expandedView}>
         <View style={styles.header}>
           <TouchableOpacity onPress={() => setExpanded(false)} style={styles.backButton}>
@@ -95,9 +120,8 @@ const CollectionCard = ({ collection, onPress, onDelete }) => {
 };
 
 const styles = StyleSheet.create({
-  // Removed container style because FlatList will handle the grid.
   card: {
-    width: '48%', // This allows 2 cards per row in FlatList.
+    width: '48%', // Allows 2 cards per row when used in a grid
     aspectRatio: 1,
     backgroundColor: '#1B1F24',
     borderRadius: 8,
@@ -126,36 +150,14 @@ const styles = StyleSheet.create({
     marginTop: 5,
     textAlign: 'center',
   },
-  menuButton: {
+  removeIconContainer: {
     position: 'absolute',
-    top: 10,
-    right: 10,
-    padding: 6,
-  },
-  dropdownMenu: {
-    position: 'absolute',
-    right: 10,
-    top: 35,
-    backgroundColor: '#1B1F24',
-    borderRadius: 6,
-    paddingVertical: 6,
-    width: 120,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 5,
-  },
-  dropdownItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-  },
-  dropdownText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    marginLeft: 6,
+    top: 5,
+    left: 5,
+    zIndex: 1,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 10,
+    padding: 2,
   },
   expandedView: {
     width: '100%',
