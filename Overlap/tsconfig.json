@@ -1,5 +1,4 @@
 {
-<<<<<<<< HEAD:Overlap/tsconfig.json
   "extends": "expo/tsconfig.base",
   "compilerOptions": {
     "strict": true,
@@ -17,8 +16,4 @@
     "nativewind-env.d.ts"
   ]
 }
-========
-  "compilerOptions": {},
-  "extends": "expo/tsconfig.base"
-}
->>>>>>>> origin/CEclone:tsconfig.json
+
