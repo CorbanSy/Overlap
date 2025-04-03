@@ -3,7 +3,10 @@ import { View, Text, Image, StyleSheet } from 'react-native';
 
 const FriendCard = ({ item }) => (
   <View style={styles.friendCard}>
-    <Image source={{ uri: 'https://via.placeholder.com/40' }} style={styles.friendAvatar} />
+    <Image 
+      source={{ uri: item.profilePicUrl || 'https://via.placeholder.com/40' }} 
+      style={styles.friendAvatar} 
+    />
     <Text style={styles.friendName}>{item.name}</Text>
   </View>
 );

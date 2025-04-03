@@ -90,29 +90,48 @@ export default function MoreInfoScreen() {
   const fetchPlaceDetails = async () => {
     setLoading(true);
     try {
-      const fields = [
-        'name',
-        'formatted_phone_number',
-        'formatted_address',
-        'opening_hours',
-        'website',
-        'photos',
-        'reviews',
-        'rating',
-        'url',
-        'editorial_summary',
-        'user_ratings_total',
-      ].join(',');
+      // GET request with placeId in path
+      const url = `https://places.googleapis.com/v1/places/${placeId}`;
+      const resp = await fetch(url, {
+        method: "GET",
+        headers: {
+          "X-Goog-Api-Key": GOOGLE_PLACES_API_KEY,
+          "X-Goog-FieldMask": [
+            "displayName",
+            "id",
+            "formattedAddress",
+            "types",
+            "location",
+            "rating",
+            "userRatingCount",
+            "photos",
+            "regularOpeningHours",
+            "currentOpeningHours",
+            "internationalPhoneNumber",
+            "nationalPhoneNumber",
+            "websiteUri",
+            "editorialSummary",
+            "reviews"
+          ].join(",")
+        },
+      });
 
-      const url = `https://maps.googleapis.com/maps/api/place/details/json?key=${GOOGLE_PLACES_API_KEY}&place_id=${placeId}&fields=${fields}`;
-      const resp = await fetch(url);
-      const data = await resp.json();
-
-      if (data.status === 'OK') {
-        setDetails(data.result);
-      } else {
-        setError(data.status + (data.error_message ? `: ${data.error_message}` : ''));
+      if (!resp.ok) {
+        const errorText = await resp.text();
+        throw new Error(`HTTP error ${resp.status}: ${errorText}`);
       }
+      
+      const data = await resp.json();
+      console.log("Complete Place Details API response:", data);
+      
+      // Construct photoUri for each photo
+      if (data.photos && Array.isArray(data.photos)) {
+        data.photos = data.photos.map((photo: any) => ({
+          photoUri: `https://places.googleapis.com/v1/${photo.name}/media?maxHeightPx=400&maxWidthPx=400&key=${GOOGLE_PLACES_API_KEY}`,
+        }));
+      }
+
+      setDetails(data);
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -127,18 +146,15 @@ export default function MoreInfoScreen() {
     const isLiked = !!userLikes[key];
     try {
       if (isLiked) {
-        // remove like
         await deleteDoc(doc(firestore, 'users', user.uid, 'likes', key));
       } else {
-        // set like
         await setDoc(doc(firestore, 'users', user.uid, 'likes', key), {
-          name: details.name,
+          name: details.displayName?.text || details.name,
           rating: details.rating || 0,
-          userRatingsTotal: details.user_ratings_total || 0,
-          photoReference: details.photos?.[0]?.photo_reference || null,
-          formatted_address: details.formatted_address || '',
+          userRatingsTotal: details.userRatingCount || 0,
+          photoUri: details.photos && details.photos[0]?.photoUri ? details.photos[0].photoUri : null,
+          formattedAddress: details.formattedAddress || '',
         });
-        // optionally store reviews
         if (details.reviews?.length) {
           await storeReviewsForPlace(key, details.reviews);
         }
@@ -159,17 +175,15 @@ export default function MoreInfoScreen() {
     const alreadyIn = existing.activities.some((act: any) => act.id === key);
     let newActivities = [];
     if (alreadyIn) {
-      // remove
       newActivities = existing.activities.filter((act: any) => act.id !== key);
     } else {
-      // add
       newActivities = [
         ...existing.activities,
         {
           id: key,
-          name: details.name,
+          name: details.displayName?.text || details.name,
           rating: details.rating || 0,
-          photoReference: details.photos?.[0]?.photo_reference || null,
+          photoUri: details.photos && details.photos[0]?.photoUri ? details.photos[0].photoUri : null,
         },
       ];
     }
@@ -200,17 +214,26 @@ export default function MoreInfoScreen() {
 
   // Expand/collapse reviews
   function renderReview(review: any, idx: number) {
-    const words = review.text.split(' ');
+    const authorName = review.authorAttribution?.displayName || "Anonymous";
+    const reviewRating = review.rating || 0;
+    // The actual text is stored in `review.text.text`
+    const fullText =
+      typeof review.text === "object" && review.text?.text
+        ? review.text.text
+        : "";
+
+    // Simple snippet approach
+    const words = fullText.split(" ");
     const long = words.length > 40;
     const expanded = expandedReviews[idx] || false;
-    const snippet = long && !expanded ? words.slice(0, 40).join(' ') + '...' : review.text;
+    const snippet = long && !expanded ? words.slice(0, 40).join(" ") + "..." : fullText;
 
     return (
       <View key={idx} style={styles.reviewCard}>
         <View style={styles.reviewHeader}>
-          <Text style={styles.reviewAuthor}>{review.author_name}</Text>
+          <Text style={styles.reviewAuthor}>{authorName}</Text>
           <Text style={styles.reviewRating}>
-            {review.rating.toFixed(1)} {renderStars(review.rating)}
+            {reviewRating.toFixed(1)} {renderStars(reviewRating)}
           </Text>
         </View>
         <Text style={styles.reviewText}>{snippet}</Text>
@@ -242,47 +265,58 @@ export default function MoreInfoScreen() {
   }
   if (!details) return null;
 
+  // Photos
   const photos = details.photos || [];
-  const description = details.editorial_summary?.overview || 'No description available.';
+
+  // Use editorialSummary.text if available; otherwise fallback
+  const editorialText = details.editorialSummary?.text || "No description available.";
+
+  // Hours: can come from regularOpeningHours or currentOpeningHours
+  const hoursList =
+    details.regularOpeningHours?.weekdayDescriptions ||
+    details.currentOpeningHours?.weekdayDescriptions ||
+    [];
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      {/* Header with back button */}
       <View style={styles.header}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
           <Text style={styles.backButtonText}>‹ Back</Text>
         </TouchableOpacity>
-        <Text style={styles.headerTitle} numberOfLines={1}>{details.name}</Text>
+        <Text style={styles.headerTitle} numberOfLines={1}>
+          {details.displayName?.text || details.name}
+        </Text>
       </View>
 
       <ScrollView contentContainerStyle={styles.container}>
-        {/* Horizontal scroll of photos */}
-        {photos.length > 0 && (
+        {/* Photos Carousel */}
+        {photos.length > 0 ? (
           <ScrollView
             horizontal
             pagingEnabled
             showsHorizontalScrollIndicator={true}
             style={styles.imagesScroll}
           >
-            {photos.map((p: any, index: number) => {
-              const photoUrl = `https://maps.googleapis.com/maps/api/place/photo?maxwidth=800&photoreference=${p.photo_reference}&key=${GOOGLE_PLACES_API_KEY}`;
-              return (
-                <TouchableOpacity
-                  key={index}
-                  activeOpacity={0.8}
-                  onPress={() => setExpandedImageUrl(photoUrl)}
-                >
-                  <Image
-                    source={{ uri: photoUrl }}
-                    style={[styles.photo, { width: windowWidth - 32 }]}
-                  />
-                </TouchableOpacity>
-              );
-            })}
+            {photos.map((p: any, index: number) => (
+              <TouchableOpacity
+                key={index}
+                activeOpacity={0.8}
+                onPress={() => setExpandedImageUrl(p.photoUri)}
+              >
+                <Image
+                  source={{ uri: p.photoUri }}
+                  style={[styles.photo, { width: windowWidth - 32 }]}
+                />
+              </TouchableOpacity>
+            ))}
           </ScrollView>
+        ) : (
+          <View style={[styles.photoPlaceholder]}>
+            <Text style={{ color: "#fff" }}>No Photos Available</Text>
+          </View>
         )}
 
-        {/* Single heart button & collection */}
+        {/* Like / Save Icons */}
         <View style={styles.actionRow}>
           <TouchableOpacity onPress={handleLikePress} style={styles.iconButton}>
             <Text style={[styles.iconButtonText, userLikes[placeId!] && { color: 'red' }]}>
@@ -298,35 +332,49 @@ export default function MoreInfoScreen() {
           </TouchableOpacity>
         </View>
 
+        {/* Info Content */}
         <View style={styles.content}>
-          <Text style={styles.title}>{details.name}</Text>
+          {/* Place Name & Rating */}
+          <Text style={styles.title}>
+            {details.displayName?.text || details.name}
+          </Text>
           {details.rating && (
             <Text style={styles.subtitle}>
-              {details.rating.toFixed(1)} ⭐ ({details.user_ratings_total || 0} reviews)
+              {details.rating.toFixed(1)} ⭐ ({details.userRatingCount || 0} reviews)
             </Text>
           )}
-          {details.formatted_address && (
-            <Text style={styles.info}>{details.formatted_address}</Text>
+
+          {/* Address */}
+          {details.formattedAddress && (
+            <Text style={styles.info}>{details.formattedAddress}</Text>
           )}
-          {details.formatted_phone_number && (
-            <TouchableOpacity onPress={() => Linking.openURL(`tel:${details.formatted_phone_number}`)}>
-              <Text style={[styles.info, styles.link]}>📞 {details.formatted_phone_number}</Text>
+
+          {/* Phone Numbers */}
+          {details.internationalPhoneNumber && (
+            <TouchableOpacity onPress={() => Linking.openURL(`tel:${details.internationalPhoneNumber}`)}>
+              <Text style={[styles.info, styles.link]}>
+                📞 {details.internationalPhoneNumber}
+              </Text>
             </TouchableOpacity>
           )}
-          {details.website && (
-            <TouchableOpacity onPress={() => Linking.openURL(details.website)}>
+          {/* If you prefer nationalPhoneNumber: */}
+          {/* details.nationalPhoneNumber && ... */}
+
+          {/* Website */}
+          {details.websiteUri && (
+            <TouchableOpacity onPress={() => Linking.openURL(details.websiteUri)}>
               <Text style={[styles.info, styles.link]}>🌐 Visit Website</Text>
             </TouchableOpacity>
           )}
 
-          {/* Description */}
+          {/* Editorial Summary */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Description</Text>
-            <Text style={styles.info}>{description}</Text>
+            <Text style={styles.info}>{editorialText}</Text>
           </View>
 
-          {/* Hours of operation */}
-          {details.opening_hours?.weekday_text && (
+          {/* Hours */}
+          {hoursList.length > 0 && (
             <View style={styles.section}>
               <TouchableOpacity
                 style={styles.toggleButton}
@@ -335,21 +383,17 @@ export default function MoreInfoScreen() {
                 <Text style={styles.sectionTitle}>Hours of Operation</Text>
                 <Text style={styles.toggleText}>{isHoursExpanded ? '▲' : '▼'}</Text>
               </TouchableOpacity>
-              {isHoursExpanded && details.opening_hours.weekday_text.map((line: string, i: number) => (
-                <Text key={i} style={styles.info}>{line}</Text>
-              ))}
+              {isHoursExpanded &&
+                hoursList.map((line: string, i: number) => (
+                  <Text key={i} style={styles.info}>
+                    {line}
+                  </Text>
+                ))}
             </View>
           )}
 
-          {/* Google Maps Button */}
-          {details.url && (
-            <TouchableOpacity style={styles.mapButton} onPress={() => Linking.openURL(details.url)}>
-              <Text style={styles.mapButtonText}>View on Google Maps</Text>
-            </TouchableOpacity>
-          )}
-
           {/* Reviews */}
-          {details.reviews?.length > 0 && (
+          {Array.isArray(details.reviews) && details.reviews.length > 0 && (
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Reviews</Text>
               {details.reviews.map((review: any, index: number) => renderReview(review, index))}
@@ -358,7 +402,7 @@ export default function MoreInfoScreen() {
         </View>
       </ScrollView>
 
-      {/* Fullscreen image modal */}
+      {/* Fullscreen Image Modal */}
       <Modal
         visible={!!expandedImageUrl}
         transparent
@@ -382,7 +426,7 @@ export default function MoreInfoScreen() {
         </SafeAreaView>
       </Modal>
 
-      {/* Collections modal */}
+      {/* Collections Modal */}
       <Modal
         visible={collectionModalVisible}
         transparent
@@ -466,6 +510,14 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     marginRight: 10,
   },
+  photoPlaceholder: {
+    height: 250,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#333',
+    marginBottom: 16,
+    borderRadius: 8,
+  },
   actionRow: {
     flexDirection: 'row',
     marginTop: 4,
@@ -518,19 +570,6 @@ const styles = StyleSheet.create({
     fontSize: 20,
     color: '#fff',
   },
-  mapButton: {
-    marginTop: 16,
-    backgroundColor: '#F5A623',
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  mapButtonText: {
-    color: '#0D1117',
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
   reviewCard: {
     backgroundColor: '#1B1F24',
     borderRadius: 8,
@@ -554,6 +593,7 @@ const styles = StyleSheet.create({
   reviewText: {
     fontSize: 14,
     color: '#ccc',
+    marginTop: 2,
   },
   expandButton: {
     alignSelf: 'flex-end',

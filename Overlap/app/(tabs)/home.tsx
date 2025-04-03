@@ -1,3 +1,4 @@
+// home.tsx
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View,
@@ -7,24 +8,17 @@ import {
   TouchableOpacity,
   TextInput,
   ActivityIndicator,
-  Modal,
   ScrollView,
   Image,
   RefreshControl,
-  Dimensions,
+  LayoutAnimation,
+  Dimensions
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useNavigation } from '@react-navigation/native';
 import Fuse from 'fuse.js';
 import * as Location from 'expo-location';
 import { getAuth } from 'firebase/auth';
-import {
-  getFirestore,
-  collection,
-  doc,
-  getDocs,
-  onSnapshot,
-} from 'firebase/firestore';
+import { collection, onSnapshot, getFirestore, deleteDoc, doc } from 'firebase/firestore';
 import { useRouter } from 'expo-router';
 import { useFilters } from '../../context/FiltersContext';
 
@@ -35,12 +29,12 @@ import {
   storeReviewsForPlace,
 } from '../utils/storage';
 
-// Make sure ExploreMoreCard.tsx is outside (tabs) so it doesn't become a tab
-import ExploreMoreCard from '../../components/ExploreMoreCard'; 
+import ExploreMoreCard from '../../components/ExploreMoreCard';
+import { PLACE_CATEGORIES } from '../utils/placeCategories'; // single source
 
 const GOOGLE_PLACES_API_KEY = 'AIzaSyDcTuitQdQGXwuLp90NqQ_ZwhnMSGrr8mY';
 
-/* Some helpers */
+// -------------- Helpers --------------
 function deg2rad(deg: number) {
   return deg * (Math.PI / 180);
 }
@@ -60,37 +54,33 @@ function getDistanceFromLatLonInKm(lat1: number, lon1: number, lat2: number, lon
 }
 
 function mapGoogleTypesToCategory(googleTypes: string[]): string[] {
-  if (!Array.isArray(googleTypes)) return ['other'];
-
-  const categories: string[] = [];
-  if (googleTypes.includes('restaurant') || googleTypes.includes('food')) {
-    categories.push('Dining');
+  if (!Array.isArray(googleTypes)) return [];
+  const matchedCategories: string[] = [];
+  for (const cat of PLACE_CATEGORIES) {
+    if (cat.includedTypes?.some((t) => googleTypes.includes(t))) {
+      matchedCategories.push(cat.key);
+    }
   }
-  if (googleTypes.includes('gym')) {
-    categories.push('Fitness');
-  }
-  if (googleTypes.includes('park') || googleTypes.includes('campground')) {
-    categories.push('Outdoors');
-  }
-  if (googleTypes.includes('movie_theater')) {
-    categories.push('Movies');
-  }
-  if (googleTypes.includes('casino') || googleTypes.includes('arcade')) {
-    categories.push('Gaming');
-  }
-  if (googleTypes.includes('bar') || googleTypes.includes('night_club')) {
-    categories.push('Nightlife');
-  }
-  return categories.length ? categories : ['other'];
+  return matchedCategories;
 }
 
-async function fetchPlaceDetailsFromGoogle(placeId: string) {
-  const detailsUrl = `https://maps.googleapis.com/maps/api/place/details/json?key=${GOOGLE_PLACES_API_KEY}&place_id=${placeId}&fields=name,rating,reviews,types,photos,user_ratings_total`;
-  const resp = await fetch(detailsUrl);
-  const data = await resp.json();
-  return data?.result;
+/**
+ * Build a comma-separated list of types from the given category keys.
+ * (Since we're now using only the top category, this function is used only when needed.)
+ */
+function buildIncludedTypesString(categoryKeys: string[]): string {
+  const allTypes: string[] = [];
+  for (const catKey of categoryKeys) {
+    const catObj = PLACE_CATEGORIES.find((c) => c.key === catKey);
+    if (catObj && catObj.includedTypes) {
+      allTypes.push(...catObj.includedTypes);
+    }
+  }
+  const uniqueTypes = Array.from(new Set(allTypes));
+  return uniqueTypes.join(',');
 }
 
+// ------------------------------------------
 export default function HomeScreen() {
   const router = useRouter();
   const firestore = getFirestore();
@@ -100,31 +90,26 @@ export default function HomeScreen() {
   // State
   const [places, setPlaces] = useState<any[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
-  const [nextPageToken, setNextPageToken] = useState<string | null>(null);
-
   const [searchQuery, setSearchQuery] = useState('');
   const fuseRef = useRef<Fuse<any> | null>(null);
-
   const [userLikes, setUserLikes] = useState<Record<string, boolean>>({});
-  const [userSaves, setUserSaves] = useState<Record<string, boolean>>({});
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
-
   const [refreshing, setRefreshing] = useState(false);
-
-  const { filterState, setFilterState } = useFilters();
-  const [userTopPrefs, setUserTopPrefs] = useState<string[]>([]);
-  const [userCollections, setUserCollections] = useState<Record<string, any>>({});
-
-  // We’ll use this to scroll the list to top after new fetches
+  const { filterState } = useFilters();
+  // Using only a single top category
+  const [currentCategory, setCurrentCategory] = useState<string>('');
   const flatListRef = useRef<FlatList<any>>(null);
 
-  /* Load user prefs (top categories) */
+  // ---------------------------
+  // Load user top category from profile (preferences.tsx now saves only one)
+  // ---------------------------
   useEffect(() => {
     (async () => {
       try {
         const profile = await getProfileData();
-        if (profile?.topCategories) {
-          setUserTopPrefs(profile.topCategories);
+        if (profile?.topCategories && profile.topCategories.length > 0) {
+          const topCat = profile.topCategories[0];
+          setCurrentCategory(topCat);
         }
       } catch (err) {
         console.error('Error loading user prefs:', err);
@@ -132,7 +117,9 @@ export default function HomeScreen() {
     })();
   }, []);
 
-  /* Request user location */
+  // ---------------------------
+  // Request user location
+  // ---------------------------
   useEffect(() => {
     (async () => {
       const { status } = await Location.requestForegroundPermissionsAsync();
@@ -143,45 +130,34 @@ export default function HomeScreen() {
     })();
   }, []);
 
-  /* Listen for user likes */
+  // ---------------------------
+  // Listen for user likes
+  // ---------------------------
   useEffect(() => {
     if (!user) return;
     const likesRef = collection(firestore, `users/${user.uid}/likes`);
     const unsubscribe = onSnapshot(likesRef, (snapshot) => {
       const newLikes: Record<string, boolean> = {};
-      snapshot.forEach((doc) => {
-        newLikes[doc.id] = true;
+      snapshot.forEach((docSnap) => {
+        newLikes[docSnap.id] = true;
       });
       setUserLikes(newLikes);
     });
     return () => unsubscribe();
   }, [user]);
 
-  /* Listen for user collections (if needed) */
+  // ---------------------------
+  // Fetch places whenever location, filters, or currentCategory change
+  // ---------------------------
   useEffect(() => {
-    if (!user) return;
-    const colRef = collection(firestore, `users/${user.uid}/collections`);
-    const unsub = onSnapshot(colRef, (snap) => {
-      const temp: Record<string, any> = {};
-      snap.forEach((docSnap) => {
-        temp[docSnap.id] = {
-          title: docSnap.data().title || 'Untitled',
-          activities: docSnap.data().activities || [],
-        };
-      });
-      setUserCollections(temp);
-    });
-    return () => unsub();
-  }, [user]);
-
-  /* Fetch places whenever user location or filters change */
-  useEffect(() => {
-    if (userLocation) {
+    if (userLocation && currentCategory) {
       fetchPlaces();
     }
-  }, [userLocation, filterState]);
+  }, [userLocation, filterState, currentCategory]);
 
-  /* Setup FUSE for fuzzy searching by 'name' */
+  // ---------------------------
+  // Setup Fuse for fuzzy searching
+  // ---------------------------
   useEffect(() => {
     if (places.length) {
       fuseRef.current = new Fuse(places, {
@@ -191,82 +167,177 @@ export default function HomeScreen() {
     }
   }, [places]);
 
-  // main fetch
-  const fetchPlaces = async (pageToken?: string) => {
-    if (!userLocation) return;
+  // ---------------------------
+  // fetchPlaces: Use new Nearby Search API with currentCategory's representativeType
+  // ---------------------------
+  async function fetchPlaces() {
+    if (!userLocation || !currentCategory) return;
     setLoading(true);
-
     try {
+      const catObj = PLACE_CATEGORIES.find((c) => c.key === currentCategory);
+      if (!catObj) {
+        console.warn('Current category not found:', currentCategory);
+        return;
+      }
       const radius = filterState.distance ?? 5000;
-      let keyword = 'activities';
-      if (filterState.sort === 'Movies') keyword = 'movies';
-      if (filterState.sort === 'Dining') keyword = 'restaurant';
-      if (filterState.sort === 'Outdoors') keyword = 'park';
-
-      let url =
-        `https://maps.googleapis.com/maps/api/place/nearbysearch/json?key=${GOOGLE_PLACES_API_KEY}` +
-        `&location=${userLocation.lat},${userLocation.lng}` +
-        `&radius=${radius}` +
-        `&type=establishment` +
-        `&keyword=${encodeURIComponent(keyword)}`;
-
-      if (filterState.openNow) {
-        url += '&opennow=true';
-      }
-      if (pageToken) {
-        url += `&pagetoken=${pageToken}`;
-      }
-
-      const resp = await fetch(url);
+      const payload: any = {
+        maxResultCount: 20,
+        locationRestriction: {
+          circle: {
+            center: {
+              latitude: userLocation.lat,
+              longitude: userLocation.lng,
+            },
+            radius: radius,
+          },
+        },
+        excludedTypes: ["doctor"],
+        // Use the representative type for the API call.
+        includedTypes: [catObj.representativeType],
+      };
+      console.log('fetchPlaces payload =>', payload);
+      const resp = await fetch("https://places.googleapis.com/v1/places:searchNearby", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Goog-Api-Key": GOOGLE_PLACES_API_KEY,
+          "X-Goog-FieldMask":
+            "places.displayName,places.id,places.formattedAddress,places.types,places.location,places.rating,places.userRatingCount,places.photos",
+        },
+        body: JSON.stringify(payload),
+      });
       const data = await resp.json();
-      if (data.status === 'OK') {
-        setNextPageToken(data.next_page_token || null);
-        const newPlaces = data.results.map((p: any) => ({
-          id: p.place_id,
-          name: p.name,
-          rating: p.rating || 0,
-          userRatingsTotal: p.user_ratings_total || 0,
-          photos: p.photos || [], // entire array
-          geometry: p.geometry,
-          types: p.types || [],
-        }));
-        setPlaces((prev) => (pageToken ? [...prev, ...newPlaces] : newPlaces));
+      console.log('New API data:', JSON.stringify(data, null, 2));
+      if (data.places && Array.isArray(data.places)) {
+        const newPlaces = data.places.map((p: any) => {
+          const lat = p.location?.latitude ?? 0;
+          const lng = p.location?.longitude ?? 0;
+          return {
+            id: p.id, // "id" is now returned from the API
+            name: p.displayName?.text || p.name,
+            rating: p.rating || 0,
+            userRatingsTotal: p.userRatingCount || 0,
+            // Map photos: construct a usable photoUri using the photo's "name"
+            photos: p.photos
+              ? p.photos.map((photo: any) => ({
+                  photoUri: `https://places.googleapis.com/v1/${photo.name}/media?maxHeightPx=400&maxWidthPx=400&key=${GOOGLE_PLACES_API_KEY}`,
+                }))
+              : [],
+            geometry: { location: { lat, lng } },
+            types: p.types || [],
+          };
+        });
+        setPlaces(newPlaces);
       } else {
-        console.warn('Google Places API error:', data.status, data.error_message);
+        console.warn('Google Places API (New) error or empty response', data);
       }
     } catch (err) {
       console.error('fetchPlaces error:', err);
     } finally {
       setLoading(false);
     }
-  };
+  }
+  
 
-  /* For user pulling down to refresh */
+  // ---------------------------
+  // fetchPlacesByKeyword: Use new Text Search API with representativeType
+  // ---------------------------
+  async function fetchPlacesByKeyword(keyword: string) {
+    if (!userLocation || !currentCategory) return;
+    setLoading(true);
+    try {
+      const catObj = PLACE_CATEGORIES.find((c) => c.key === currentCategory);
+      let repType = "establishment";
+      if (catObj?.representativeType) {
+        repType = catObj.representativeType;
+      }
+      const radius = filterState.distance ?? 5000;
+      const payload = {
+        query: keyword,
+        maxResultCount: 20,
+        locationRestriction: {
+          circle: {
+            center: {
+              latitude: userLocation.lat,
+              longitude: userLocation.lng,
+            },
+            radius: radius,
+          },
+        },
+        includedType: repType,
+        excludedTypes: ["doctor"],
+      };
+      console.log('fetchPlacesByKeyword payload =>', payload);
+      const resp = await fetch("https://places.googleapis.com/v1/places:searchText", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Goog-Api-Key": GOOGLE_PLACES_API_KEY,
+          "X-Goog-FieldMask":
+            "places.displayName,place.id,places.formattedAddress,places.types,places.location,places.rating,places.userRatingCount,places.photos",
+        },
+        body: JSON.stringify(payload),
+      });
+      const data = await resp.json();
+      console.log('New API text search data:', data);
+      if (data.places && Array.isArray(data.places)) {
+        const newPlaces = data.places.map((p: any) => {
+          const lat = p.location?.latitude ?? 0;
+          const lng = p.location?.longitude ?? 0;
+          return {
+            id: p.id, // "id" is now returned from the API
+            name: p.displayName?.text || p.name,
+            rating: p.rating || 0,
+            userRatingsTotal: p.userRatingCount || 0,
+            // Map photos: construct a usable photoUri using the photo's "name"
+            photos: p.photos
+              ? p.photos.map((photo: any) => ({
+                  photoUri: `https://places.googleapis.com/v1/${photo.name}/media?maxHeightPx=400&maxWidthPx=400&key=${GOOGLE_PLACES_API_KEY}`,
+                }))
+              : [],
+            geometry: { location: { lat, lng } },
+            types: p.types || [],
+          };
+        });
+        setPlaces(newPlaces);
+        setTimeout(() => {
+          flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
+        }, 100);
+      } else {
+        console.warn('Google Places API (New) text search error or empty response', data);
+      }
+    } catch (error) {
+      console.error('fetchPlacesByKeyword error:', error);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // ---------------------------
+  // Pull-down to refresh
+  // ---------------------------
   const onRefresh = async () => {
     setRefreshing(true);
     await fetchPlaces();
     setRefreshing(false);
   };
 
-  /* Fuzzy search + custom sort => final array */
+  // ---------------------------
+  // getDisplayedPlaces: processes and sorts the list of places
+  // ---------------------------
   const getDisplayedPlaces = useCallback(() => {
     let list = places;
-
-    // Fuzzy search
     if (searchQuery && fuseRef.current) {
       const results = fuseRef.current.search(searchQuery);
       list = results.map((r) => r.item);
     }
-
-    // Sort
     if (!filterState.sort || filterState.sort === 'recommended') {
       list = list.map((place) => {
-        const cats = mapGoogleTypesToCategory(place.types);
+        const matchedCats = mapGoogleTypesToCategory(place.types);
         let score = 0;
-        cats.forEach((c) => {
-          const idx = userTopPrefs.indexOf(c);
-          if (idx !== -1) {
-            score += 5 - idx;
+        matchedCats.forEach((catKey) => {
+          if (catKey === currentCategory) {
+            score += 10;
           }
         });
         return { ...place, preferenceScore: score };
@@ -291,112 +362,21 @@ export default function HomeScreen() {
     } else if (filterState.sort === 'rating') {
       list = list.slice().sort((a, b) => b.rating - a.rating);
     }
-
-    // attach liked/saved flags
     return list.map((item) => ({
       ...item,
       liked: !!userLikes[item.id],
-      saved: !!userSaves[item.id],
     }));
-  }, [places, searchQuery, filterState, userLikes, userSaves, userTopPrefs, userLocation]);
+  }, [places, searchQuery, filterState, userLikes, userLocation, currentCategory]);
 
-  /* Like / Unlike */
-  const handleLikePress = async (place: any) => {
-    if (!user) return;
-    const isLiked = !!userLikes[place.id];
-    try {
-      if (isLiked) {
-        await unlikePlace(place.id);
-      } else {
-        // fetch extended place details
-        const details = await fetchPlaceDetailsFromGoogle(place.id);
-        if (details) {
-          if (details.reviews?.length) {
-            await storeReviewsForPlace(place.id, details.reviews);
-          }
-          await likePlace({
-            id: place.id,
-            name: details.name || place.name,
-            rating: details.rating || place.rating,
-            userRatingsTotal: details.user_ratings_total || place.userRatingsTotal,
-            photoReference: details.photos?.[0]?.photo_reference || null,
-            types: details.types || place.types,
-          });
-        } else {
-          // fallback: just store the place
-          await likePlace(place);
-        }
-      }
-    } catch (err) {
-      console.error('Failed to toggle like:', err);
-    }
-  };
-
-  /* Save press => optional logic. Not fully implemented here. */
-  const handleSavePress = (place: any) => {
-    if (!user) return;
-    // Show a modal for collections, or implement your logic
-  };
-
-  /* fetch by keyword => user taps exploreMore category */
-  const fetchPlacesByKeyword = async (keyword: string) => {
-    if (!userLocation) return;
-    setLoading(true);
-    setNextPageToken(null);
-
-    try {
-      const radius = filterState.distance ?? 5000;
-      let url =
-        `https://maps.googleapis.com/maps/api/place/nearbysearch/json?key=${GOOGLE_PLACES_API_KEY}` +
-        `&location=${userLocation.lat},${userLocation.lng}` +
-        `&radius=${radius}` +
-        `&type=establishment` +
-        `&keyword=${encodeURIComponent(keyword)}`;
-
-      if (filterState.openNow) {
-        url += '&opennow=true';
-      }
-
-      const resp = await fetch(url);
-      const data = await resp.json();
-      if (data.status === 'OK') {
-        const newPlaces = data.results.map((p: any) => ({
-          id: p.place_id,
-          name: p.name,
-          rating: p.rating || 0,
-          userRatingsTotal: p.user_ratings_total || 0,
-          photos: p.photos || [],
-          geometry: p.geometry,
-          types: p.types ?? [],
-        }));
-        setPlaces(newPlaces);
-
-        // scroll to top
-        setTimeout(() => {
-          flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
-        }, 100);
-      } else {
-        console.warn('fetchPlacesByKeyword error:', data.status, data.error_message);
-      }
-    } catch (error) {
-      console.error('fetchPlacesByKeyword error:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  /* Build final data => insert ExploreMoreCard every 20 items */
   const getFinalData = () => {
     const displayed = getDisplayedPlaces();
     const finalData: any[] = [];
-
     for (let i = 0; i < displayed.length; i++) {
       finalData.push(displayed[i]);
       if ((i + 1) % 20 === 0) {
         finalData.push({ _type: 'exploreMoreCard', key: `exploreMore_${i + 1}` });
       }
     }
-
     if (displayed.length === 0) {
       return finalData;
     } else if (displayed.length % 20 !== 0) {
@@ -405,40 +385,97 @@ export default function HomeScreen() {
     return finalData;
   };
 
-  // *** REVERT BACK TO A SINGLE IMAGE INSTEAD OF A CAROUSEL ***
-  function renderSingleImage(item: any) {
-    if (!item.photos?.length) {
+  const handleLikePress = async (place: any) => {
+    if (!user) return;
+    const isLiked = !!userLikes[place.id];
+    try {
+      if (isLiked) {
+        await deleteDoc(doc(firestore, 'users', user.uid, 'likes', place.id));
+      } else {
+        const details = await fetchPlaceDetailsFromGoogle(place.id);
+        if (details) {
+          if (details.reviews?.length) {
+            await storeReviewsForPlace(place.id, details.reviews);
+          }
+          await likePlace({
+            id: place.id,
+            name: details.displayName?.text || details.name,
+            rating: details.rating || place.rating,
+            userRatingsTotal: details.userRatingCount || place.userRatingsTotal,
+            photos: details.photos || [],
+            types: details.types || place.types,
+          });
+        } else {
+          await likePlace(place);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to toggle like:', err);
+    }
+  };
+
+  const handleSavePress = (place: any) => {
+    if (!user) return;
+    // Not implemented here
+  };
+
+  // ---------------------------
+  // Render images: if one image, show it; if multiple, display a carousel.
+  // ---------------------------
+  function renderImages(item: any) {
+    if (!item.photos || item.photos.length === 0) {
       return (
         <View style={[styles.imageWrapper, { justifyContent: 'center', alignItems: 'center' }]}>
           <Text style={{ color: '#ccc' }}>No Photo</Text>
         </View>
       );
     }
-    // Just the first photo
-    const firstPhoto = item.photos[0];
-    const photoUrl = `https://maps.googleapis.com/maps/api/place/photo?maxwidth=800&photoreference=${firstPhoto.photo_reference}&key=${GOOGLE_PLACES_API_KEY}`;
-    return (
-      <Image
-        source={{ uri: photoUrl }}
-        style={[styles.imageWrapper, { resizeMode: 'cover' }]}
-      />
-    );
-  }
-
-  /* Render each list item */
-  const renderItem = ({ item }: { item: any }) => {
-    if (item._type === 'exploreMoreCard') {
-      // Our "Explore More" section
+    const screenWidth = Dimensions.get('window').width;
+    if (item.photos.length === 1) {
       return (
-        <ExploreMoreCard
-          style={styles.exploreCard}
-          onCategoryPress={(kw) => {
-            fetchPlacesByKeyword(kw);
-          }}
+        <Image
+          source={{ uri: item.photos[0].photoUri }}
+          style={{ width: screenWidth - 32, height: 180, resizeMode: 'cover' }}
         />
       );
     }
+    // For multiple images, you can do something similar:
+    return (
+      <ScrollView
+        horizontal
+        pagingEnabled
+        showsHorizontalScrollIndicator={false}
+        style={styles.carousel}
+      >
+        {item.photos.map((photo: any, index: number) => (
+          <Image
+            key={index}
+            source={{ uri: photo.photoUri }}
+            style={{ width: screenWidth - 32, height: 180, resizeMode: 'cover' }}
+          />
+        ))}
+      </ScrollView>
+    );
+  }
 
+  function renderItem({ item }: { item: any }) {
+    if (item._type === 'exploreMoreCard') {
+      return (
+        <ExploreMoreCard
+          style={styles.exploreCard}
+          onSubCategoryPress={(subLabel) => {
+            fetchPlacesByKeyword(subLabel);
+          }}
+          onBroadCategoryPress={(catKey) => {
+            setCurrentCategory(catKey);
+          }}
+          currentSubCategories={
+            (PLACE_CATEGORIES.find((c) => c.key === currentCategory)?.subCategories) || []
+          }
+          otherBroadCategories={PLACE_CATEGORIES.filter((c) => c.key !== currentCategory)}
+        />
+      );
+    }
     const distanceText =
       userLocation && item.geometry?.location
         ? `${getDistanceFromLatLonInKm(
@@ -448,15 +485,14 @@ export default function HomeScreen() {
             item.geometry.location.lng
           ).toFixed(2)} km`
         : '';
-
+    const typesString = item.types?.length ? item.types.join(', ') : '';
     return (
       <TouchableOpacity
         style={styles.dashCard}
         onPress={() => router.push(`/moreInfo?placeId=${item.id}`)}
       >
-        {/* SINGLE IMAGE */}
         <View style={{ position: 'relative' }}>
-          {renderSingleImage(item)}
+          {renderImages(item)}
           <View style={styles.iconRow}>
             <TouchableOpacity style={styles.iconContainer} onPress={() => handleLikePress(item)}>
               <Text style={[styles.iconText, item.liked && { color: 'red' }]}>
@@ -468,7 +504,6 @@ export default function HomeScreen() {
             </TouchableOpacity>
           </View>
         </View>
-
         <View style={styles.dashInfoContainer}>
           <Text style={styles.dashTitle} numberOfLines={1}>
             {item.name}
@@ -477,17 +512,20 @@ export default function HomeScreen() {
             {item.rating.toFixed(1)} ⭐ ({item.userRatingsTotal}+)
             {distanceText ? `  •  ${distanceText} away` : ''}
           </Text>
+          {typesString !== '' && (
+            <Text style={styles.typesText} numberOfLines={2}>
+              {typesString}
+            </Text>
+          )}
         </View>
       </TouchableOpacity>
     );
-  };
+  }
 
-  /* Final data, plus optional loading spinner at bottom */
   const finalData = getFinalData();
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      {/* Search bar / header */}
       <View style={styles.header}>
         <TextInput
           style={styles.searchInput}
@@ -497,48 +535,37 @@ export default function HomeScreen() {
           onChangeText={setSearchQuery}
         />
       </View>
-
-      {/* Horizontal scrollable filter bar with spacing */}
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
-        contentContainerStyle={[styles.filterScrollContainer, { flexDirection: 'row' }]}
+        contentContainerStyle={styles.filterScrollContainer}
         style={{ backgroundColor: '#0D1117' }}
       >
-        <TouchableOpacity style={styles.filterButton} onPress={() => {
-          // open a sort modal or cycle sort
-        }}>
+        <TouchableOpacity
+          style={styles.filterButton}
+          onPress={() => {
+            // handle sort cycling
+          }}
+        >
           <Text style={styles.filterButtonText}>
             {filterState.sort ? `Sort: ${filterState.sort}` : 'Sort'}
           </Text>
         </TouchableOpacity>
-
         <TouchableOpacity
           style={[styles.filterButton, filterState.openNow && { backgroundColor: '#F5A623' }]}
-          onPress={() => setFilterState((prev) => ({ ...prev, openNow: !prev.openNow }))}
+          onPress={() => {
+            // handle openNow toggle
+          }}
         >
           <Text style={styles.filterButtonText}>Open Now</Text>
         </TouchableOpacity>
-
-        <TouchableOpacity style={styles.filterButton}
-          onPress={() => {
-            // open a location modal
-          }}
-        >
-          <Text style={styles.filterButtonText}>Location</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.filterButton}
-          onPress={() => router.push('/morefilters')}
-        >
-          <Text style={styles.filterButtonText}>More Filters</Text>
-        </TouchableOpacity>
       </ScrollView>
-
       <FlatList
         ref={flatListRef}
         data={finalData}
-        keyExtractor={(item, index) => (item._type === 'exploreMoreCard' ? item.key : item.id)}
+        keyExtractor={(item, index) =>
+          item._type === 'exploreMoreCard' ? item.key : item.id
+        }
         renderItem={renderItem}
         contentContainerStyle={styles.listContent}
         ListFooterComponent={
@@ -557,6 +584,7 @@ export default function HomeScreen() {
   );
 }
 
+// -------------- STYLES --------------
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
@@ -584,7 +612,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderRadius: 10,
     marginRight: 8,
-    height: 35, // fixed height prevents clipping
+    height: 35,
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 12,
@@ -605,11 +633,14 @@ const styles = StyleSheet.create({
     marginTop: 12,
     overflow: 'hidden',
   },
-  // We'll reuse imageWrapper for the single image's size
   imageWrapper: {
     width: '100%',
     height: 180,
     backgroundColor: '#333',
+  },
+  carousel: {
+    width: '100%',
+    height: 180,
   },
   iconRow: {
     position: 'absolute',
@@ -638,6 +669,11 @@ const styles = StyleSheet.create({
   dashSubtitle: {
     color: '#AAAAAA',
     fontSize: 14,
+    marginTop: 4,
+  },
+  typesText: {
+    color: '#F5A623',
+    fontSize: 12,
     marginTop: 4,
   },
   exploreCard: {

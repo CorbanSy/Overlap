@@ -25,19 +25,26 @@ const ForgotPassword = () => {
   };
 
   return (
-    <SafeAreaView className="bg-primary h-full">
-      <ScrollView>
-        <View className="w-full justify-center h-full px-4 my-6">
-          
-          {/* Logo Image */}
-          <View className="w-full items-center mt-10">
-            <Image 
-              source={images.overlap} 
-              style={{ width: 100, height: 100, resizeMode: 'contain' }} 
-            />
-          </View>
+    <SafeAreaView className="bg-primary h-full relative">
+      {/* Absolutely positioned background image */}
+      <View className="absolute inset-0 z-0 items-center justify-center">
+        <Image
+          source={images.overlap}
+          style={{
+            width: 700,
+            height: 700,
+            resizeMode: 'contain',
+            // Adjust as needed to move the image up/down
+            marginTop: -350
+          }}
+        />
+      </View>
 
-          {/* Back Button */}
+      {/* Give the main content a large margin/padding on top to push it lower */}
+      <ScrollView className="z-10">
+        {/* Example: 'mt-64' pushes everything 16 * 4 = 256px down */}
+        <View className="w-full justify-center h-full px-4 mt-60 my-6">
+          
           <View className="mt-4">
             <Link href="/sign-in" className="text-lg font-psemibold text-secondary">
               &larr; Back
