@@ -119,7 +119,7 @@ const SwipingScreen = ({ meetupId }) => {
         {card.photoReference ? (
           <Image
             source={{
-              uri: `https://maps.googleapis.com/maps/api/place/photo?maxwidth=800&photoreference=${card.photoReference}&key=AIzaSyDcTuitQdQGXwuLp90NqQ_ZwhnMSGrr8mY`,
+              uri: `https://maps.googleapis.com/maps/api/place/photo?maxwidth=800&photoreference=${card.photoReference}&key=AIzaSyB6fvIePcBwSZQvyXtZvW-9XCbcKMf2I7o`,
             }}
             style={styles.image}
             resizeMode="cover"

@@ -22,13 +22,15 @@ const ActivityCard = ({ item, onRemoveFromCollection, onRemoveFromLiked, onAddTo
       onPress={() => router.push(`/moreInfo?placeId=${item.id}`)} // Navigate to moreInfo.tsx
     >
       {/* Activity Image */}
-      {item.photoReference && (
+      {item.photos && item.photos.length > 0 ? (
         <Image
           source={{
-            uri: `https://maps.googleapis.com/maps/api/place/photo?maxwidth=800&photoreference=${item.photoReference}&key=AIzaSyDcTuitQdQGXwuLp90NqQ_ZwhnMSGrr8mY`,
+            uri: `https://maps.googleapis.com/maps/api/place/photo?maxwidth=800&photoreference=${item.photos[0].photo_reference}&key=AIzaSyB6fvIePcBwSZQvyXtZvW-9XCbcKMf2I7o`,
           }}
           style={styles.image}
         />
+      ) : (
+        <Text style={{ color: '#ccc' }}>No Photo</Text>
       )}
 
       {/* Title & Buttons in a Row */}

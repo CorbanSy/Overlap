@@ -32,26 +32,34 @@ export async function checkPreferencesComplete() {
    2) Firestore: Save & Read Preferences Subcollection
       /users/{uid}/profile/main
    ------------------------------------------------------------------ */
-export async function saveProfileData({ topCategories, name, bio, avatarUrl, email, username }) {
-  const auth = getAuth();
-  const user = auth.currentUser;
-  if (!user) throw new Error('No user is signed in');
-
-  const profileRef = doc(db, 'users', user.uid, 'profile', 'main');
-  await setDoc(
-    profileRef,
-    {
-      topCategories: topCategories || [],
-      name,
-      bio,
-      avatarUrl,
-      email,     // <-- New field
-      username,  // <-- New field
-      lastUpdated: new Date(),
-    },
-    { merge: true }
-  );
-}
+   export async function saveProfileData({ topCategories, name, bio, avatarUrl, email, username }) {
+    // Reassemble the properties into an object called profileData.
+    const profileData = { topCategories, name, bio, avatarUrl, email, username };
+  
+    const auth = getAuth();
+    const user = auth.currentUser;
+    if (!user) throw new Error('No user is signed in');
+  
+    const profileRef = doc(db, 'users', user.uid, 'profile', 'main');
+    
+    // Filter out properties that are undefined
+    const cleanedData = {};
+    Object.keys(profileData).forEach((key) => {
+      if (profileData[key] !== undefined) {
+        cleanedData[key] = profileData[key];
+      }
+    });
+  
+    // Ensure topCategories is at least an empty array if not provided
+    if (!cleanedData.topCategories) {
+      cleanedData.topCategories = [];
+    }
+    
+    cleanedData.lastUpdated = new Date();
+    
+    await setDoc(profileRef, cleanedData, { merge: true });
+  }
+  
 
 export async function getProfileData() {
   const auth = getAuth();

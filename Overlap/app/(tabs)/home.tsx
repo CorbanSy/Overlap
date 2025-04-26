@@ -11,14 +11,14 @@ import {
   ScrollView,
   Image,
   RefreshControl,
-  LayoutAnimation,
-  Dimensions
+  Dimensions,
+  Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Fuse from 'fuse.js';
 import * as Location from 'expo-location';
 import { getAuth } from 'firebase/auth';
-import { collection, onSnapshot, getFirestore, deleteDoc, doc } from 'firebase/firestore';
+import { collection, onSnapshot, getFirestore, deleteDoc, doc, setDoc, updateDoc, } from 'firebase/firestore';
 import { useRouter } from 'expo-router';
 import { useFilters } from '../../context/FiltersContext';
 
@@ -32,7 +32,7 @@ import {
 import ExploreMoreCard from '../../components/ExploreMoreCard';
 import { PLACE_CATEGORIES } from '../utils/placeCategories'; // single source
 
-const GOOGLE_PLACES_API_KEY = 'AIzaSyDcTuitQdQGXwuLp90NqQ_ZwhnMSGrr8mY';
+const GOOGLE_PLACES_API_KEY = 'AIzaSyB6fvIePcBwSZQvyXtZvW-9XCbcKMf2I7o';
 
 // -------------- Helpers --------------
 function deg2rad(deg: number) {
@@ -96,10 +96,16 @@ export default function HomeScreen() {
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const { filterState } = useFilters();
+  const [userSaves, setUserSaves] = useState<Record<string, boolean>>({});
   // Using only a single top category
   const [currentCategory, setCurrentCategory] = useState<string>('');
   const flatListRef = useRef<FlatList<any>>(null);
+  // Collections
+  const [userCollections, setUserCollections] = useState<Record<string, any>>({});
 
+  // Modal flow
+  const [collectionModalVisible, setCollectionModalVisible] = useState(false);
+  const [selectedPlaceForCollection, setSelectedPlaceForCollection] = useState<any>(null);
   // ---------------------------
   // Load user top category from profile (preferences.tsx now saves only one)
   // ---------------------------
@@ -130,6 +136,19 @@ export default function HomeScreen() {
     })();
   }, []);
 
+  useEffect(() => {
+    if (!user) return;
+    const savesRef = collection(firestore, `users/${user.uid}/collections`);
+    const unsubscribe = onSnapshot(savesRef, (snapshot) => {
+      const newSaves: Record<string, boolean> = {};
+      snapshot.forEach((docSnap) => {
+        newSaves[docSnap.id] = true;
+      });
+      setUserSaves(newSaves);
+    });
+    return () => unsubscribe();
+  }, [user]);
+
   // ---------------------------
   // Listen for user likes
   // ---------------------------
@@ -146,6 +165,27 @@ export default function HomeScreen() {
     return () => unsubscribe();
   }, [user]);
 
+    // ---------------------------
+  // Listen for user collections
+  // Each collection doc has a "title" and an array of "activities", for example.
+  // We'll store them in userCollections by docId => { title, activities, ... }
+  // ---------------------------
+  useEffect(() => {
+    if (!user) return;
+    const colRef = collection(firestore, `users/${user.uid}/collections`);
+    const unsub = onSnapshot(colRef, (snap) => {
+      const temp: Record<string, any> = {};
+      snap.forEach((docSnap) => {
+        temp[docSnap.id] = {
+          title: docSnap.data().title || 'Untitled',
+          activities: docSnap.data().activities || [],
+        };
+      });
+      setUserCollections(temp);
+    });
+    return () => unsub();
+  }, [user]);
+  
   // ---------------------------
   // Fetch places whenever location, filters, or currentCategory change
   // ---------------------------
@@ -167,6 +207,13 @@ export default function HomeScreen() {
     }
   }, [places]);
 
+  async function fetchPlaceDetailsFromGoogle(placeId: string) {
+    const detailsUrl = `https://maps.googleapis.com/maps/api/place/details/json?key=${GOOGLE_PLACES_API_KEY}&place_id=${placeId}&fields=name,rating,reviews,types,photos,user_ratings_total`;
+    const resp = await fetch(detailsUrl);
+    const data = await resp.json();
+    return data?.result;
+  }
+  
   // ---------------------------
   // fetchPlaces: Use new Nearby Search API with currentCategory's representativeType
   // ---------------------------
@@ -365,6 +412,7 @@ export default function HomeScreen() {
     return list.map((item) => ({
       ...item,
       liked: !!userLikes[item.id],
+      saved: !!userSaves[item.id],
     }));
   }, [places, searchQuery, filterState, userLikes, userLocation, currentCategory]);
 
@@ -414,10 +462,27 @@ export default function HomeScreen() {
     }
   };
 
-  const handleSavePress = (place: any) => {
+  const handleSavePress = async (place: any) => {
     if (!user) return;
-    // Not implemented here
+    
+    const isSaved = !!userSaves[place.id];
+    try {
+      if (isSaved) {
+        // Remove from user's collections
+        await deleteDoc(doc(firestore, 'users', user.uid, 'collections', place.id));
+      } else {
+        // Add this place to user's collections
+        // (You can store as much detail as you want here)
+        await setDoc(doc(firestore, 'users', user.uid, 'collections', place.id), {
+          ...place,
+          savedAt: new Date().toISOString(),
+        });
+      }
+    } catch (err) {
+      console.error('Failed to toggle save:', err);
+    }
   };
+  
 
   // ---------------------------
   // Render images: if one image, show it; if multiple, display a carousel.

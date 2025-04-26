@@ -42,7 +42,9 @@ export default function PreferencesScreen() {
     }
     try {
       // Save the user’s selected category (as an array with one element)
-      await saveProfileData([selectedKey]);
+      await saveProfileData({
+        topCategories: [selectedKey]  // Only the topCategories field will be updated if the others are undefined.
+      });
       await markPreferencesComplete();
       router.push("/home");
     } catch (error) {

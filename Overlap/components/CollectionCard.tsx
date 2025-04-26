@@ -5,18 +5,22 @@ import { Ionicons } from '@expo/vector-icons';
 const CollectionCard = ({ collection, onPress, onDelete, previewOnly }) => {
   const [expanded, setExpanded] = useState(false);
 
-  if (!collection?.activities) return null; // Prevent errors if no activities
+  if (!collection?.activities) return null;
 
   // Get up to 4 activity images for the preview
-  const previewImages = collection.activities.slice(0, 4).map(activity => activity.photoReference);
+  const previewImages = collection.activities.slice(0, 4).map((activity) => {
+    // Safely grab the first photo's photo_reference, or null if none
+    const firstPhoto = activity.photos?.[0];
+    return firstPhoto?.photo_reference || null;
+  });
 
-  // Function to share the collection
+  // Share function (unchanged)
   const handleShare = async () => {
     try {
       const message = `Check out this collection: "${collection.title}"!\n\n${
         collection.description || 'No description provided.'
       }\n\nIncludes activities like: ${collection.activities
-        .map(activity => activity.name)
+        .map((activity) => activity.name)
         .slice(0, 3)
         .join(', ')}...`;
       await Share.share({ message });
@@ -25,7 +29,7 @@ const CollectionCard = ({ collection, onPress, onDelete, previewOnly }) => {
     }
   };
 
-  // Render the preview-only (compact) card if previewOnly is true
+  // ---------- PREVIEW-ONLY RENDER ----------
   if (previewOnly) {
     return (
       <View style={styles.card}>
@@ -38,15 +42,22 @@ const CollectionCard = ({ collection, onPress, onDelete, previewOnly }) => {
           </TouchableOpacity>
         )}
         <View style={styles.imageGrid}>
-          {previewImages.map((uri, index) => (
-            <Image
-              key={index}
-              source={{
-                uri: `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photoreference=${uri}&key=AIzaSyDcTuitQdQGXwuLp90NqQ_ZwhnMSGrr8mY`,
-              }}
-              style={styles.image}
-            />
-          ))}
+          {previewImages.map((photoRef, index) => {
+            if (!photoRef) {
+              // If there's no photoRef, render an empty placeholder
+              return <View key={index} style={[styles.image, styles.emptyImage]} />;
+            }
+            // Otherwise, render the image
+            return (
+              <Image
+                key={index}
+                source={{
+                  uri: `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photoreference=${photoRef}&key=AIzaSyB6fvIePcBwSZQvyXtZvW-9XCbcKMf2I7o`,
+                }}
+                style={styles.image}
+              />
+            );
+          })}
           {Array.from({ length: 4 - previewImages.length }).map((_, index) => (
             <View key={index + previewImages.length} style={[styles.image, styles.emptyImage]} />
           ))}
@@ -56,72 +67,75 @@ const CollectionCard = ({ collection, onPress, onDelete, previewOnly }) => {
     );
   }
 
-  // Render the full tappable and expandable version
-  return (
-    !expanded ? (
-      <TouchableOpacity
-        style={styles.card}
-        onPress={() => {
-          setExpanded(true);
-          onPress && onPress(collection);
-        }}
-      >
-        {onDelete && (
-          <TouchableOpacity
-            style={styles.removeIconContainer}
-            onPress={() => onDelete(collection)}
-          >
-            <Ionicons name="close" size={16} color="#FF0000" />
-          </TouchableOpacity>
-        )}
-        <View style={styles.imageGrid}>
-          {previewImages.map((uri, index) => (
+  // ---------- FULL, EXPANDABLE RENDER ----------
+  return !expanded ? (
+    <TouchableOpacity
+      style={styles.card}
+      onPress={() => {
+        setExpanded(true);
+        onPress && onPress(collection);
+      }}
+    >
+      {onDelete && (
+        <TouchableOpacity
+          style={styles.removeIconContainer}
+          onPress={() => onDelete(collection)}
+        >
+          <Ionicons name="close" size={16} color="#FF0000" />
+        </TouchableOpacity>
+      )}
+      <View style={styles.imageGrid}>
+        {previewImages.map((photoRef, index) => {
+          if (!photoRef) {
+            return <View key={index} style={[styles.image, styles.emptyImage]} />;
+          }
+          return (
             <Image
               key={index}
               source={{
-                uri: `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photoreference=${uri}&key=AIzaSyDcTuitQdQGXwuLp90NqQ_ZwhnMSGrr8mY`,
+                uri: `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photoreference=${photoRef}&key=AIzaSyB6fvIePcBwSZQvyXtZvW-9XCbcKMf2I7o`,
               }}
               style={styles.image}
             />
-          ))}
-          {Array.from({ length: 4 - previewImages.length }).map((_, index) => (
-            <View key={index + previewImages.length} style={[styles.image, styles.emptyImage]} />
-          ))}
-        </View>
-        <Text style={styles.title}>{collection.title}</Text>
-      </TouchableOpacity>
-    ) : (
-      <View style={styles.expandedView}>
-        <View style={styles.header}>
-          <TouchableOpacity onPress={() => setExpanded(false)} style={styles.backButton}>
-            <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
-          </TouchableOpacity>
-          <Text style={styles.expandedTitle}>{collection.title}</Text>
-        </View>
-        {collection.description ? (
-          <Text style={styles.description}>{collection.description}</Text>
-        ) : (
-          <Text style={styles.description}>No description available.</Text>
-        )}
-        <View style={styles.activityList}>
-          {collection.activities.length > 0 ? (
-            collection.activities.map((activity, index) => (
-              <Text key={index} style={styles.activityItem}>
-                {activity.name}
-              </Text>
-            ))
-          ) : (
-            <Text style={styles.noActivitiesText}>No activities in this collection.</Text>
-          )}
-        </View>
+          );
+        })}
+        {Array.from({ length: 4 - previewImages.length }).map((_, index) => (
+          <View key={index + previewImages.length} style={[styles.image, styles.emptyImage]} />
+        ))}
       </View>
-    )
+      <Text style={styles.title}>{collection.title}</Text>
+    </TouchableOpacity>
+  ) : (
+    <View style={styles.expandedView}>
+      <View style={styles.header}>
+        <TouchableOpacity onPress={() => setExpanded(false)} style={styles.backButton}>
+          <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
+        </TouchableOpacity>
+        <Text style={styles.expandedTitle}>{collection.title}</Text>
+      </View>
+      {collection.description ? (
+        <Text style={styles.description}>{collection.description}</Text>
+      ) : (
+        <Text style={styles.description}>No description available.</Text>
+      )}
+      <View style={styles.activityList}>
+        {collection.activities.length > 0 ? (
+          collection.activities.map((activity, index) => (
+            <Text key={index} style={styles.activityItem}>
+              {activity.name}
+            </Text>
+          ))
+        ) : (
+          <Text style={styles.noActivitiesText}>No activities in this collection.</Text>
+        )}
+      </View>
+    </View>
   );
 };
 
 const styles = StyleSheet.create({
   card: {
-    width: '48%', // Allows 2 cards per row when used in a grid
+    width: '48%', // 2 cards per row in a grid
     aspectRatio: 1,
     backgroundColor: '#1B1F24',
     borderRadius: 8,
