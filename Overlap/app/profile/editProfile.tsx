@@ -10,10 +10,13 @@ import {
   Keyboard 
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { getProfileData, saveProfileData } from '../utils/storage';
+import { getProfileData, saveProfileData } from '../_utils/storage';
 import { getAuth } from 'firebase/auth';
 import { useRouter } from 'expo-router';
 
+export const options = {
+  headerShown: false,
+};
 // Hide the default Expo Router header
 export const unstable_settings = {
   headerShown: false,

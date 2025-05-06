@@ -45,6 +45,3 @@ export const signIn = async (email: string, password: string) => {
     throw error;
   }
 };
-
-// Prevent Expo Router from treating this as a route
-export default {};

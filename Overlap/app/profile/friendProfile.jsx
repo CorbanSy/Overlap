@@ -1,5 +1,4 @@
 // friendProfile.jsx
-
 import React, { useState, useEffect } from 'react';
 import { 
   SafeAreaView, 
@@ -13,6 +12,10 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { getFirestore, doc, getDoc } from 'firebase/firestore';
+
+export const options = {
+  headerShown: false,
+};
 
 const FriendProfile = () => {
   const { uid } = useLocalSearchParams();

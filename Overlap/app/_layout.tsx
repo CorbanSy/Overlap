@@ -36,6 +36,8 @@ export default function RootLayout() {
       <Stack>
         <Stack.Screen name="index" options={{ headerShown: false }} />
         <Stack.Screen name="(auth)" options={{ headerShown: false }} />
+        {/* hide the header on every /profile/* route */}
+        <Stack.Screen name="profile"   options={{ headerShown: false }} />
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="morefilters" options={{ title: 'More Filters', headerShown: false }} />
         <Stack.Screen name="moreInfo" options={{ title: 'More Info', headerShown: false }} />

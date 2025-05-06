@@ -5,7 +5,7 @@ import { Link, router } from 'expo-router';
 import VennDiagram from '../../components/VennDiagram';
 import FormField from '../../components/FormField';
 import CustomButton from '../../components/CustomButton';
-import { signIn } from './auth';
+import { signIn } from '../_utils/auth';
 
 const SignIn = () => {
   const [form, setform] = useState({ email: '', password: '' });

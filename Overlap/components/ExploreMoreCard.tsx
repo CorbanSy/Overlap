@@ -11,13 +11,12 @@ import {
   UIManager,
   Platform,
 } from 'react-native';
-import { PLACE_CATEGORIES } from '../app/utils/placeCategories';
+import { PLACE_CATEGORIES } from '../app/_utils/placeCategories';
 
 type Props = {
   style?: any;
   onSubCategoryPress?: (subKey: string) => void;
   onBroadCategoryPress?: (catKey: string) => void;
-  // New props:
   currentSubCategories: { key: string; label: string }[];
   otherBroadCategories: { key: string; label: string; image?: any }[];
 };
@@ -40,50 +39,51 @@ const ExploreMoreCard: React.FC<Props> = ({
     setExpandedCategoryKey((prev) => (prev === catKey ? null : catKey));
   }
 
-  // Render narrow down (subcategories) for the current category
+  // Wrap sub‑categories in a View to avoid returning a “bare” array
   const renderNarrowDown = () => {
     if (currentSubCategories.length === 0) {
       return <Text style={styles.loadingText}>No subcategories defined</Text>;
     }
-    return currentSubCategories.map((sub) => (
-      <TouchableOpacity
-        key={sub.key}
-        style={styles.subCategoryButton}
-        onPress={() => onSubCategoryPress?.(sub.label)}
-      >
-        <Text style={styles.subCategoryButtonText}>{sub.label}</Text>
-      </TouchableOpacity>
-    ));
-  };
-
-  // Render expand section: all other broad categories
-  const renderExpand = () => {
     return (
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.categoriesContainer}
-      >
-        {otherBroadCategories.map((cat) => (
+      <View style={styles.subCategoriesContainer}>
+        {currentSubCategories.map((sub, idx) => (
           <TouchableOpacity
-            key={cat.key}
-            style={styles.categoryCard}
-            onPress={() => onBroadCategoryPress?.(cat.key)}
+            key={sub.key ?? `sub-${idx}`}               // ensure string key
+            style={styles.subCategoryButton}
+            onPress={() => onSubCategoryPress?.(sub.key)} // pass sub.key not label
           >
-            <ImageBackground
-              source={cat.image}
-              style={styles.categoryImage}
-              imageStyle={{ borderRadius: 8 }}
-            >
-              <View style={styles.categoryOverlay}>
-                <Text style={styles.categoryLabel}>{cat.label}</Text>
-              </View>
-            </ImageBackground>
+            <Text style={styles.subCategoryButtonText}>{sub.label}</Text>
           </TouchableOpacity>
         ))}
-      </ScrollView>
+      </View>
     );
   };
+
+  const renderExpand = () => (
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      contentContainerStyle={styles.categoriesContainer}
+    >
+      {otherBroadCategories.map((cat, idx) => (
+        <TouchableOpacity
+          key={cat.key ?? `cat-${idx}`}                  // fallback in case key is missing
+          style={styles.categoryCard}
+          onPress={() => onBroadCategoryPress?.(cat.key)}
+        >
+          <ImageBackground
+            source={cat.image}
+            style={styles.categoryImage}
+            imageStyle={{ borderRadius: 8 }}
+          >
+            <View style={styles.categoryOverlay}>
+              <Text style={styles.categoryLabel}>{cat.label}</Text>
+            </View>
+          </ImageBackground>
+        </TouchableOpacity>
+      ))}
+    </ScrollView>
+  );
 
   return (
     <View style={[styles.container, style]}>

@@ -12,7 +12,7 @@ import {
   TouchableOpacity,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { getMeetupLikes } from '../app/utils/storage';
+import { getMeetupLikes } from '../app/_utils/storage';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const SCREEN_HEIGHT = Dimensions.get('window').height;

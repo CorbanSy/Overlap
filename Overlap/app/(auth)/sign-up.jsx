@@ -6,8 +6,8 @@ import { Link, router } from 'expo-router';
 import FormField from '../../components/FormField';
 import CustomButton from '../../components/CustomButton';
 import VennDiagram from '../../components/VennDiagram'; // ✅ Import VennDiagram
-import { signUp } from './auth';
-import { saveProfileData } from '../utils/storage';
+import { signUp } from '../_utils/auth';
+import { saveProfileData } from '../_utils/storage';
 
 const SignUp = () => {
   const [form, setForm] = useState({

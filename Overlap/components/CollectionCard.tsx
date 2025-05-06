@@ -2,35 +2,42 @@ import React, { useState } from 'react';
 import { View, Text, Image, StyleSheet, TouchableOpacity, Share } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
+/**
+ * CollectionCard
+ * - previewOnly: shows a 2x2 grid of up to 4 photos and title.
+ * - full: toggles expanded view with details.
+ */
 const CollectionCard = ({ collection, onPress, onDelete, previewOnly }) => {
   const [expanded, setExpanded] = useState(false);
-
   if (!collection?.activities) return null;
-
-  // Get up to 4 activity images for the preview
-  const previewImages = collection.activities.slice(0, 4).map((activity) => {
-    // Safely grab the first photo's photo_reference, or null if none
-    const firstPhoto = activity.photos?.[0];
-    return firstPhoto?.photo_reference || null;
-  });
-
-  // Share function (unchanged)
-  const handleShare = async () => {
-    try {
-      const message = `Check out this collection: "${collection.title}"!\n\n${
-        collection.description || 'No description provided.'
-      }\n\nIncludes activities like: ${collection.activities
-        .map((activity) => activity.name)
-        .slice(0, 3)
-        .join(', ')}...`;
-      await Share.share({ message });
-    } catch (error) {
-      console.error('Error sharing collection:', error);
-    }
-  };
 
   // ---------- PREVIEW-ONLY RENDER ----------
   if (previewOnly) {
+    // If no activities, show overlay message
+    if (collection.activities.length === 0) {
+      return (
+        <View style={styles.card}>
+          {onDelete && (
+            <TouchableOpacity
+              style={styles.removeIconContainer}
+              onPress={() => onDelete(collection)}
+            >
+              <Ionicons name="close" size={16} color="#FF0000" />
+            </TouchableOpacity>
+          )}
+          <Text style={styles.emptyMessage}>
+            No activities in this collection.
+          </Text>
+        </View>
+      );
+    }
+
+    // Otherwise, show up to 4 preview images
+    const previewImages = collection.activities.slice(0, 4).map((activity) => {
+      const firstPhoto = activity.photos?.[0];
+      return firstPhoto?.photo_reference || null;
+    });
+
     return (
       <View style={styles.card}>
         {onDelete && (
@@ -42,13 +49,8 @@ const CollectionCard = ({ collection, onPress, onDelete, previewOnly }) => {
           </TouchableOpacity>
         )}
         <View style={styles.imageGrid}>
-          {previewImages.map((photoRef, index) => {
-            if (!photoRef) {
-              // If there's no photoRef, render an empty placeholder
-              return <View key={index} style={[styles.image, styles.emptyImage]} />;
-            }
-            // Otherwise, render the image
-            return (
+          {previewImages.map((photoRef, index) =>
+            photoRef ? (
               <Image
                 key={index}
                 source={{
@@ -56,10 +58,15 @@ const CollectionCard = ({ collection, onPress, onDelete, previewOnly }) => {
                 }}
                 style={styles.image}
               />
-            );
-          })}
-          {Array.from({ length: 4 - previewImages.length }).map((_, index) => (
-            <View key={index + previewImages.length} style={[styles.image, styles.emptyImage]} />
+            ) : (
+              <View key={index} style={[styles.image, styles.emptyImage]} />
+            )
+          )}
+          {Array.from({ length: 4 - previewImages.length }).map((_, idx) => (
+            <View
+              key={idx + previewImages.length}
+              style={[styles.image, styles.emptyImage]}
+            />
           ))}
         </View>
         <Text style={styles.title}>{collection.title}</Text>
@@ -68,6 +75,11 @@ const CollectionCard = ({ collection, onPress, onDelete, previewOnly }) => {
   }
 
   // ---------- FULL, EXPANDABLE RENDER ----------
+  const previewImages = collection.activities.slice(0, 4).map((activity) => {
+    const firstPhoto = activity.photos?.[0];
+    return firstPhoto?.photo_reference || null;
+  });
+
   return !expanded ? (
     <TouchableOpacity
       style={styles.card}
@@ -85,11 +97,8 @@ const CollectionCard = ({ collection, onPress, onDelete, previewOnly }) => {
         </TouchableOpacity>
       )}
       <View style={styles.imageGrid}>
-        {previewImages.map((photoRef, index) => {
-          if (!photoRef) {
-            return <View key={index} style={[styles.image, styles.emptyImage]} />;
-          }
-          return (
+        {previewImages.map((photoRef, index) =>
+          photoRef ? (
             <Image
               key={index}
               source={{
@@ -97,10 +106,15 @@ const CollectionCard = ({ collection, onPress, onDelete, previewOnly }) => {
               }}
               style={styles.image}
             />
-          );
-        })}
-        {Array.from({ length: 4 - previewImages.length }).map((_, index) => (
-          <View key={index + previewImages.length} style={[styles.image, styles.emptyImage]} />
+          ) : (
+            <View key={index} style={[styles.image, styles.emptyImage]} />
+          )
+        )}
+        {Array.from({ length: 4 - previewImages.length }).map((_, idx) => (
+          <View
+            key={idx + previewImages.length}
+            style={[styles.image, styles.emptyImage]}
+          />
         ))}
       </View>
       <Text style={styles.title}>{collection.title}</Text>
@@ -113,11 +127,9 @@ const CollectionCard = ({ collection, onPress, onDelete, previewOnly }) => {
         </TouchableOpacity>
         <Text style={styles.expandedTitle}>{collection.title}</Text>
       </View>
-      {collection.description ? (
-        <Text style={styles.description}>{collection.description}</Text>
-      ) : (
-        <Text style={styles.description}>No description available.</Text>
-      )}
+      <Text style={styles.description}>
+        {collection.description || 'No description available.'}
+      </Text>
       <View style={styles.activityList}>
         {collection.activities.length > 0 ? (
           collection.activities.map((activity, index) => (
@@ -126,7 +138,9 @@ const CollectionCard = ({ collection, onPress, onDelete, previewOnly }) => {
             </Text>
           ))
         ) : (
-          <Text style={styles.noActivitiesText}>No activities in this collection.</Text>
+          <Text style={styles.noActivitiesText}>
+            No activities in this collection.
+          </Text>
         )}
       </View>
     </View>
@@ -135,7 +149,7 @@ const CollectionCard = ({ collection, onPress, onDelete, previewOnly }) => {
 
 const styles = StyleSheet.create({
   card: {
-    width: '48%', // 2 cards per row in a grid
+    width: '48%', // 2 cards per row
     aspectRatio: 1,
     backgroundColor: '#1B1F24',
     borderRadius: 8,
@@ -172,6 +186,12 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderRadius: 10,
     padding: 2,
+  },
+  emptyMessage: {
+    color: '#888888',
+    fontSize: 14,
+    textAlign: 'center',
+    paddingHorizontal: 8,
   },
   expandedView: {
     width: '100%',

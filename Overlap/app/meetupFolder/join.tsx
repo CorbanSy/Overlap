@@ -12,7 +12,7 @@ import {
   joinMeetup, 
   joinMeetupByCode, 
   declineMeetup 
-} from '../utils/storage';
+} from '../_utils/storage';
 import { useRouter } from 'expo-router';
 
 const JoinMeetupsScreen = ({ onBack }: { onBack: () => void }) => {

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, FlatList, ActivityIndicator } from 'react-native';
-import { getUserMeetups, removeMeetup, updateMeetup, getPendingMeetupInvites } from '../utils/storage';
+import { getUserMeetups, removeMeetup, updateMeetup, getPendingMeetupInvites } from '../_utils/storage';
 import MeetupCard from '../../components/MeetupCard';
 import StartMeetupScreen from './startMeetUp'; // ✅ Use your new component!
 

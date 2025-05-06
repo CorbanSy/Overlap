@@ -1,6 +1,10 @@
 import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 
+export const options = {
+  headerShown: false,
+};
+
 const TabBar = ({ activeTab, onTabPress }) => {
   const tabs = ['Liked Activities', 'Collections']; // ✅ Removed 'Friends'
 

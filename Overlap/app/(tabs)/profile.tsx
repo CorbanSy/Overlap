@@ -21,7 +21,7 @@ import SearchBar from '../../components/SearchBar';
 import ActivityCard from '../../components/ActivityCard';
 import CollectionCard from '../../components/CollectionCard';
 import FullProfileInfo from '../profile/FullProfileInfo';
-import { unlikePlace } from '../utils/storage';
+import { unlikePlace } from '../_utils/storage';
 
 /* =========================
    Modal Components

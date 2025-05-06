@@ -9,7 +9,7 @@ import {
 import CreateMeetupScreen from '../meetupFolder/create';
 import MyMeetupsScreen from '../meetupFolder/MyMeetupsScreen';
 import JoinMeetupsScreen from '../meetupFolder/join';
-import { getPendingMeetupInvites } from '../utils/storage';
+import { getPendingMeetupInvites } from '../_utils/storage';
 
 const Meetup = () => {
   const [showCreate, setShowCreate] = useState(false);

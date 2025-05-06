@@ -14,7 +14,7 @@ import VennDiagram from '../../components/VennDiagram'; // ✅ Import VennDiagra
 import { sendPasswordResetEmail } from 'firebase/auth';
 import { FIREBASE_AUTH } from '../../FirebaseConfig';
 
-const ForgotPassword = () => {
+export default function ForgotPassword() {
   const [email, setEmail] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
@@ -62,6 +62,7 @@ const ForgotPassword = () => {
 
             <FormField
               title="Email"
+              placeholder="you@example.com" 
               value={email}
               handleChangeText={setEmail}
               otherStyles="mt-7"
@@ -80,6 +81,8 @@ const ForgotPassword = () => {
               title="Reset Password"
               handlePress={handleResetPassword}
               containerStyles="w-full mt-7"
+              textStyles="text-white text-center font-bold"
+              isLoading={false}
             />
 
             <View className="mt-10">
@@ -106,5 +109,3 @@ const ForgotPassword = () => {
     </SafeAreaView>
   );
 };
-
-export default ForgotPassword;

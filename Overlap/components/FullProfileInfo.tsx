@@ -12,7 +12,7 @@ import {
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
 import { getAuth } from 'firebase/auth';
-import { saveProfileData } from '../app/utils/storage';
+import { saveProfileData } from '../app/_utils/storage';
 
 ///////////////////////////
 // ProfilePicture Component

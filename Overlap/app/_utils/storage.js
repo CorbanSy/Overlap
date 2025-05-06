@@ -145,6 +145,25 @@ export async function storeReviewsForPlace(placeId, reviews) {
 }
 
 /* ------------------------------------------------------------------
+   New: Firestore helper to add a place to a user's collection
+      /users/{uid}/collections/{collectionId}
+   ------------------------------------------------------------------ */
+   export async function addToCollection(collectionId, place) {
+    const auth = getAuth();
+    const user = auth.currentUser;
+    if (!user) throw new Error('No user is signed in');
+  
+    const colDocRef = doc(db, 'users', user.uid, 'collections', collectionId);
+    const snap = await getDoc(colDocRef);
+    let activities: any[] = [];
+    if (snap.exists()) {
+      activities = snap.data().activities || [];
+    }
+    activities.push(place);
+    await updateDoc(colDocRef, { activities });
+  }
+  
+/* ------------------------------------------------------------------
    5) Firestore: Create a Meetup Document
       /meetups/{autoId}
    ------------------------------------------------------------------ */

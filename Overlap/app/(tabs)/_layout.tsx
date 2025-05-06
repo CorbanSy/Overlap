@@ -1,7 +1,7 @@
 // app/(tabs)/_layout.tsx
 import { useEffect, useState } from "react";
 import { Tabs, Redirect } from "expo-router";
-import { checkPreferencesComplete } from "../utils/storage"; // Adjust the path as needed
+import { checkPreferencesComplete } from "../_utils/storage"; // Adjust the path as needed
 
 const TabsLayout = () => {
   const [loading, setLoading] = useState(true);

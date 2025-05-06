@@ -27,10 +27,11 @@ import {
   likePlace,
   unlikePlace,
   storeReviewsForPlace,
-} from '../utils/storage';
+  addToCollection,
+} from '../_utils/storage';
 
 import ExploreMoreCard from '../../components/ExploreMoreCard';
-import { PLACE_CATEGORIES } from '../utils/placeCategories'; // single source
+import { PLACE_CATEGORIES } from '../_utils/placeCategories'; // single source
 
 const GOOGLE_PLACES_API_KEY = 'AIzaSyB6fvIePcBwSZQvyXtZvW-9XCbcKMf2I7o';
 
@@ -122,6 +123,20 @@ export default function HomeScreen() {
       }
     })();
   }, []);
+
+  // Load user collections
+  useEffect(() => {
+    if (!user) return;
+    const colRef = collection(firestore, `users/${user.uid}/collections`);
+    const unsub = onSnapshot(colRef, (snap) => {
+      const temp: any = {};
+      snap.forEach((docSnap) => {
+        temp[docSnap.id] = { id: docSnap.id, ...docSnap.data() };
+      });
+      setUserCollections(temp);
+    });
+    return () => unsub();
+  }, [user]);
 
   // ---------------------------
   // Request user location
@@ -462,28 +477,12 @@ export default function HomeScreen() {
     }
   };
 
-  const handleSavePress = async (place: any) => {
-    if (!user) return;
-    
-    const isSaved = !!userSaves[place.id];
-    try {
-      if (isSaved) {
-        // Remove from user's collections
-        await deleteDoc(doc(firestore, 'users', user.uid, 'collections', place.id));
-      } else {
-        // Add this place to user's collections
-        // (You can store as much detail as you want here)
-        await setDoc(doc(firestore, 'users', user.uid, 'collections', place.id), {
-          ...place,
-          savedAt: new Date().toISOString(),
-        });
-      }
-    } catch (err) {
-      console.error('Failed to toggle save:', err);
-    }
+  // Open modal to pick collection
+  const handleAddToCollection = (place: any) => {
+    setSelectedPlaceForCollection(place);
+    setCollectionModalVisible(true);
   };
   
-
   // ---------------------------
   // Render images: if one image, show it; if multiple, display a carousel.
   // ---------------------------
@@ -512,9 +511,9 @@ export default function HomeScreen() {
         showsHorizontalScrollIndicator={false}
         style={styles.carousel}
       >
-        {item.photos.map((photo: any, index: number) => (
+        {item.photos.map((photo: any) => (
           <Image
-            key={index}
+            key={photo.photoUri}        // ← use the URI (or any other unique id) here
             source={{ uri: photo.photoUri }}
             style={{ width: screenWidth - 32, height: 180, resizeMode: 'cover' }}
           />
@@ -564,7 +563,7 @@ export default function HomeScreen() {
                 {item.liked ? '♥' : '♡'}
               </Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.iconContainer} onPress={() => handleSavePress(item)}>
+            <TouchableOpacity style={styles.iconContainer} onPress={() => handleAddToCollection(item)}>
               <Text style={styles.iconText}>💾</Text>
             </TouchableOpacity>
           </View>
@@ -586,6 +585,41 @@ export default function HomeScreen() {
       </TouchableOpacity>
     );
   }
+
+const addPlaceToCollectionHandler = async (collectionId: string) => {
+  if (!user || !selectedPlaceForCollection) return;
+  try {
+    await addToCollection(collectionId, selectedPlaceForCollection);
+  } catch (err) {
+    console.error('Failed to add to collection:', err);
+  }
+  setCollectionModalVisible(false);
+  setSelectedPlaceForCollection(null);
+};
+// Modal listing all collections
+const renderCollectionModal = () => (
+  <Modal visible={collectionModalVisible} transparent animationType="fade">
+    <View style={styles.modalOverlay}>
+      <View style={styles.modalContent}>
+        <Text style={styles.modalTitle}>Add to Collection</Text>
+        <ScrollView>
+          {Object.values(userCollections).map((col: any) => (
+            <TouchableOpacity
+              key={col.id}
+              style={styles.collectionItem}
+              onPress={() => addPlaceToCollectionHandler(col.id)}
+            >
+              <Text style={styles.collectionText}>{col.title}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+        <TouchableOpacity onPress={() => setCollectionModalVisible(false)} style={styles.modalCancel}>
+          <Text style={styles.modalCancelText}>Cancel</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  </Modal>
+);
 
   const finalData = getFinalData();
 
@@ -645,6 +679,7 @@ export default function HomeScreen() {
           />
         }
       />
+      {renderCollectionModal()}
     </SafeAreaView>
   );
 }
@@ -743,5 +778,41 @@ const styles = StyleSheet.create({
   },
   exploreCard: {
     marginVertical: 20,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    backgroundColor: '#1B1F24',
+    width: '80%',
+    maxHeight: '60%',
+    borderRadius: 8,
+    padding: 16,
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#FFF',
+    marginBottom: 12,
+  },
+  collectionItem: {
+    paddingVertical: 10,
+    borderBottomColor: '#333',
+    borderBottomWidth: 1,
+  },
+  collectionText: {
+    color: '#FFF',
+    fontSize: 16,
+  },
+  modalCancel: {
+    marginTop: 12,
+    alignSelf: 'center',
+  },
+  modalCancelText: {
+    color: '#F44336',
+    fontSize: 16,
   },
 });
