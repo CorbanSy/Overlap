@@ -1,3 +1,4 @@
+// startMeetUp.tsx
 import React, { useState } from 'react';
 import {
   SafeAreaView,
@@ -7,23 +8,38 @@ import {
   Text,
   TouchableOpacity,
 } from 'react-native';
+
 import SwipingScreen from '../../components/swiping';
 import ExploreMoreCard from '../../components/ExploreMoreCard';
+import { PLACE_CATEGORIES } from '../_utils/placeCategories';
 
 type Props = {
   meetupId: string;
   onBack: () => void;
 };
 
-const StartMeetupScreen = ({ meetupId, onBack }: Props) => {
+export default function StartMeetupScreen({ meetupId, onBack }: Props) {
   const [modalVisible, setModalVisible] = useState(false);
+
+  // ---- pick your “current” category key however you like ----
+  // e.g. you might load it from the meetup itself
+  const currentCategoryKey = PLACE_CATEGORIES[0].key;
+
+  // find the subCategories array for your current category
+  const currentCatObj =
+    PLACE_CATEGORIES.find((c) => c.key === currentCategoryKey) || { subCategories: [] };
+
+  // build “other” broad categories for the horizontal list
+  const otherBroadCategories = PLACE_CATEGORIES.filter(
+    (c) => c.key !== currentCategoryKey
+  );
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* Main swiping screen */}
+      {/* Main swipe deck */}
       <SwipingScreen meetupId={meetupId} />
 
-      {/* "Change Direction" button */}
+      {/* Change Direction */}
       <TouchableOpacity
         style={styles.changeDirectionButton}
         onPress={() => setModalVisible(true)}
@@ -31,29 +47,35 @@ const StartMeetupScreen = ({ meetupId, onBack }: Props) => {
         <Text style={styles.buttonText}>Change Direction</Text>
       </TouchableOpacity>
 
-      {/* Back button */}
-      <TouchableOpacity
-        style={styles.backButton}
-        onPress={onBack}
-      >
+      {/* Back */}
+      <TouchableOpacity style={styles.backButton} onPress={onBack}>
         <Text style={styles.buttonText}>Back</Text>
       </TouchableOpacity>
 
-      {/* Modal for ExploreMoreCard */}
+      {/* Modal with ExploreMoreCard */}
       <Modal
         animationType="slide"
-        transparent={true}
+        transparent
         visible={modalVisible}
         onRequestClose={() => setModalVisible(false)}
       >
         <View style={styles.modalContainer}>
           <View style={styles.modalContent}>
             <ExploreMoreCard
-              onCategoryPress={(keyword) => {
-                console.log('Category pressed:', keyword);
+              currentSubCategories={currentCatObj.subCategories}
+              otherBroadCategories={otherBroadCategories}
+              onSubCategoryPress={(subKey) => {
+                console.log('Sub‑category pressed:', subKey);
+                // trigger a new fetch or reroute your swipe deck here…
+                setModalVisible(false);
+              }}
+              onBroadCategoryPress={(catKey) => {
+                console.log('Broad category pressed:', catKey);
+                // maybe switch your swipe deck over to a wholly new category…
                 setModalVisible(false);
               }}
             />
+
             <TouchableOpacity
               style={styles.closeButton}
               onPress={() => setModalVisible(false)}
@@ -65,9 +87,7 @@ const StartMeetupScreen = ({ meetupId, onBack }: Props) => {
       </Modal>
     </SafeAreaView>
   );
-};
-
-export default StartMeetupScreen;
+}
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#0D1117' },
@@ -96,7 +116,7 @@ const styles = StyleSheet.create({
   },
   modalContainer: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: 'rgba(0,0,0,0.5)',
     justifyContent: 'center',
     alignItems: 'center',
   },

@@ -17,9 +17,11 @@ import { getMeetupLikes } from '../app/_utils/storage';
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const SCREEN_HEIGHT = Dimensions.get('window').height;
 
-const SwipingScreen = ({ meetupId }) => {
+const GOOGLE_PLACES_API_KEY = 'AIzaSyB6fvIePcBwSZQvyXtZvW-9XCbcKMf2I7o';
+
+const SwipingScreen = ({ meetupId }: { meetupId: string }) => {
   const router = useRouter();
-  const [cards, setCards] = useState([]);
+  const [cards, setCards] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [currentCardIndex, setCurrentCardIndex] = useState(0);
   const position = useRef(new Animated.ValueXY()).current;
@@ -27,18 +29,15 @@ const SwipingScreen = ({ meetupId }) => {
   useEffect(() => {
     async function loadCards() {
       if (!meetupId) {
-        console.error("No meetupId provided in route parameters.");
+        console.error('No meetupId provided in route parameters.');
         setLoading(false);
         return;
       }
-      console.log("Fetching liked activities for meetupId:", meetupId);
       try {
-        // Directly set liked activities without filtering
         const likedActivities = await getMeetupLikes(meetupId);
-        console.log("Fetched liked activities:", likedActivities);
         setCards(likedActivities);
       } catch (error) {
-        console.error("Error fetching liked activities:", error);
+        console.error('Error fetching liked activities:', error);
       } finally {
         setLoading(false);
       }
@@ -53,11 +52,9 @@ const SwipingScreen = ({ meetupId }) => {
         position.setValue({ x: gesture.dx, y: gesture.dy });
       },
       onPanResponderRelease: (_, gesture) => {
-        // If movement is minimal, treat as a tap.
         if (Math.abs(gesture.dx) < 15 && Math.abs(gesture.dy) < 15) {
           const card = cards[currentCardIndex];
           if (card) {
-            // Navigate to moreInfo.tsx for more details about the activity.
             router.push(`/moreInfo?placeId=${card.id}`);
           }
           return;
@@ -84,14 +81,9 @@ const SwipingScreen = ({ meetupId }) => {
     })
   ).current;
 
-  const handleSwipe = (direction) => {
-    console.log('Swiped:', direction);
+  const handleSwipe = (direction: string) => {
     position.setValue({ x: 0, y: 0 });
-    setCurrentCardIndex((prevIndex) => {
-      const newIndex = prevIndex + 1;
-      console.log("Current card index updated to:", newIndex);
-      return newIndex;
-    });
+    setCurrentCardIndex(prev => prev + 1);
   };
 
   const renderCard = () => {
@@ -102,24 +94,32 @@ const SwipingScreen = ({ meetupId }) => {
         </View>
       );
     }
+
     if (currentCardIndex >= cards.length) {
-      console.log("No more cards. currentCardIndex:", currentCardIndex, "cards.length:", cards.length);
       return (
         <View style={styles.noMoreCards}>
           <Text style={styles.noMoreCardsText}>No more liked activities</Text>
         </View>
       );
     }
+
     const card = cards[currentCardIndex];
+    // Option 1: Derive firstPhotoRef from nested photos array
+    const firstPhotoRef =
+      card.photoReference ||
+      (Array.isArray(card.photos) && card.photos.length > 0
+        ? card.photos[0].photo_reference
+        : null);
+
     return (
       <Animated.View
         style={[styles.card, { transform: position.getTranslateTransform() }]}
         {...panResponder.panHandlers}
       >
-        {card.photoReference ? (
+        {firstPhotoRef ? (
           <Image
             source={{
-              uri: `https://maps.googleapis.com/maps/api/place/photo?maxwidth=800&photoreference=${card.photoReference}&key=AIzaSyB6fvIePcBwSZQvyXtZvW-9XCbcKMf2I7o`,
+              uri: `https://maps.googleapis.com/maps/api/place/photo?maxwidth=800&photoreference=${firstPhotoRef}&key=${GOOGLE_PLACES_API_KEY}`,
             }}
             style={styles.image}
             resizeMode="cover"
@@ -129,6 +129,7 @@ const SwipingScreen = ({ meetupId }) => {
             <Text style={styles.noImageText}>No Image Available</Text>
           </View>
         )}
+
         {/* Overlay for activity info */}
         <View style={styles.infoContainer}>
           <Text style={styles.activityName}>{card.name}</Text>
@@ -142,7 +143,8 @@ const SwipingScreen = ({ meetupId }) => {
             <Text style={styles.moreInfoButtonText}>More Info</Text>
           </TouchableOpacity>
         </View>
-        {/* Overlay icons on the bottom corners */}
+
+        {/* Overlay icons */}
         <View style={styles.iconContainer}>
           <View style={styles.leftIcon}>
             <Text style={[styles.iconText, { color: '#DC3545' }]}>❌</Text>
@@ -171,10 +173,7 @@ const SwipingScreen = ({ meetupId }) => {
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#0D1117',
-  },
+  container: { flex: 1, backgroundColor: '#0D1117' },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -184,13 +183,8 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#232533',
   },
-  backButton: {
-    paddingRight: 16,
-  },
-  backButtonText: {
-    color: '#F5A623',
-    fontSize: 20,
-  },
+  backButton: { paddingRight: 16 },
+  backButtonText: { color: '#F5A623', fontSize: 20 },
   headerTitle: {
     flex: 1,
     color: '#fff',
@@ -199,31 +193,11 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginRight: 32,
   },
-  cardContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  card: {
-    width: SCREEN_WIDTH,
-    height: SCREEN_HEIGHT * 0.75,
-    backgroundColor: '#1B1F24',
-    overflow: 'hidden',
-  },
-  image: {
-    width: '100%',
-    height: '100%',
-  },
-  noImagePlaceholder: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#333',
-  },
-  noImageText: {
-    color: '#fff',
-    fontSize: 18,
-  },
+  cardContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  card: { width: SCREEN_WIDTH, height: SCREEN_HEIGHT * 0.75, backgroundColor: '#1B1F24', overflow: 'hidden' },
+  image: { width: '100%', height: '100%' },
+  noImagePlaceholder: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#333' },
+  noImageText: { color: '#fff', fontSize: 18 },
   infoContainer: {
     position: 'absolute',
     bottom: 100,
@@ -233,16 +207,8 @@ const styles = StyleSheet.create({
     padding: 10,
     borderRadius: 10,
   },
-  activityName: {
-    color: '#fff',
-    fontSize: 24,
-    fontWeight: 'bold',
-  },
-  activityRating: {
-    color: '#fff',
-    fontSize: 18,
-    marginTop: 4,
-  },
+  activityName: { color: '#fff', fontSize: 24, fontWeight: 'bold' },
+  activityRating: { color: '#fff', fontSize: 18, marginTop: 4 },
   moreInfoButton: {
     marginTop: 10,
     backgroundColor: '#F5A623',
@@ -251,46 +217,15 @@ const styles = StyleSheet.create({
     borderRadius: 5,
     alignSelf: 'flex-start',
   },
-  moreInfoButtonText: {
-    color: '#0D1117',
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  iconContainer: {
-    position: 'absolute',
-    bottom: 20,
-    left: 40,
-    right: 40,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  leftIcon: {
-    alignItems: 'center',
-  },
-  rightIcon: {
-    alignItems: 'center',
-  },
-  iconText: {
-    fontSize: 60,
-  },
-  arrowText: {
-    fontSize: 24,
-    color: '#fff',
-    marginTop: 4,
-  },
-  noMoreCards: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  noMoreCardsText: {
-    fontSize: 20,
-    color: '#fff',
-  },
-  loadingContainer: {
-    justifyContent: 'center',
-    alignItems: 'center',
-    height: 300,
-  },
+  moreInfoButtonText: { color: '#0D1117', fontSize: 16, fontWeight: 'bold' },
+  iconContainer: { position: 'absolute', bottom: 20, left: 40, right: 40, flexDirection: 'row', justifyContent: 'space-between' },
+  leftIcon: { alignItems: 'center' },
+  rightIcon: { alignItems: 'center' },
+  iconText: { fontSize: 60 },
+  arrowText: { fontSize: 24, color: '#fff', marginTop: 4 },
+  noMoreCards: { alignItems: 'center', justifyContent: 'center' },
+  noMoreCardsText: { fontSize: 20, color: '#fff' },
+  loadingContainer: { justifyContent: 'center', alignItems: 'center', height: 300 },
 });
 
 export default SwipingScreen;
