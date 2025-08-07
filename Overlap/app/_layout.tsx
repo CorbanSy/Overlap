@@ -1,10 +1,12 @@
 // app/_layout.jsx
+import 'expo-dev-client';
 import { SplashScreen, Stack } from 'expo-router';
 import { useFonts } from 'expo-font';
 import "../global.css";
 import { useEffect } from 'react';
 // If you’re using a separate file for FiltersContext:
 import { FiltersProvider } from '../context/FiltersContext'; 
+import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -32,16 +34,18 @@ export default function RootLayout() {
 
   // Wrap the entire Stack in FiltersProvider
   return (
-    <FiltersProvider>
-      <Stack>
-        <Stack.Screen name="index" options={{ headerShown: false }} />
-        <Stack.Screen name="(auth)" options={{ headerShown: false }} />
-        {/* hide the header on every /profile/* route */}
-        <Stack.Screen name="profile"   options={{ headerShown: false }} />
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="morefilters" options={{ title: 'More Filters', headerShown: false }} />
-        <Stack.Screen name="moreInfo" options={{ title: 'More Info', headerShown: false }} />
-      </Stack>
-    </FiltersProvider>
+    <BottomSheetModalProvider>
+      <FiltersProvider>
+        <Stack>
+          <Stack.Screen name="index" options={{ headerShown: false }} />
+          <Stack.Screen name="(auth)" options={{ headerShown: false }} />
+          {/* hide the header on every /profile/* route */}
+          <Stack.Screen name="profile"   options={{ headerShown: false }} />
+          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+          <Stack.Screen name="morefilters" options={{ title: 'More Filters', headerShown: false }} />
+          <Stack.Screen name="moreInfo" options={{ title: 'More Info', headerShown: false }} />
+        </Stack>
+      </FiltersProvider>
+      </BottomSheetModalProvider>
   );
 }

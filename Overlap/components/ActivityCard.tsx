@@ -25,7 +25,7 @@ const ActivityCard = ({ item, onRemoveFromCollection, onRemoveFromLiked, onAddTo
       {item.photos && item.photos.length > 0 ? (
         <Image
           source={{
-            uri: `https://maps.googleapis.com/maps/api/place/photo?maxwidth=800&photoreference=${item.photos[0].photo_reference}&key=AIzaSyB6fvIePcBwSZQvyXtZvW-9XCbcKMf2I7o`,
+            uri: `https://maps.googleapis.com/maps/api/place/photo?maxwidth=800&photoreference=${item.photos[0].photo_reference}&key=AIzaSyDcTuitQdQGXwuLp90NqQ_ZwhnMSGrr8mY`,
           }}
           style={styles.image}
         />

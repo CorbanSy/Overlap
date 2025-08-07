@@ -1,8 +1,16 @@
 {
   "expo": {
     "name": "Overlap",
-    "slug": "overlap",
-    "sdkVersion": "53.0.0",
+    "slug": "Overlap",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/images/icon.png",
+    "scheme": "myapp",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true
+    },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
@@ -10,8 +18,10 @@
       },
       "package": "com.anonymous.Overlap"
     },
-    "ios": {
-      "supportsTablet": true
+    "web": {
+      "bundler": "metro",
+      "output": "static",
+      "favicon": "./assets/images/favicon.png"
     },
     "plugins": [
       "expo-dev-client",
@@ -29,9 +39,14 @@
       [
         "expo-build-properties",
         {
-          "android": { "kotlinVersion": "1.9.25" }
+          "android": {
+            "kotlinVersion": "1.9.25"
+          }
         }
       ]
-    ]
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
   }
 }

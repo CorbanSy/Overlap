@@ -33,7 +33,7 @@ import {
 import ExploreMoreCard from '../../components/ExploreMoreCard';
 import { PLACE_CATEGORIES } from '../_utils/placeCategories'; // single source
 
-const GOOGLE_PLACES_API_KEY = 'AIzaSyB6fvIePcBwSZQvyXtZvW-9XCbcKMf2I7o';
+const GOOGLE_PLACES_API_KEY = 'AIzaSyDcTuitQdQGXwuLp90NqQ_ZwhnMSGrr8mY';
 
 // -------------- Helpers --------------
 function deg2rad(deg: number) {

@@ -24,7 +24,7 @@ import {
 } from 'firebase/firestore';
 import { storeReviewsForPlace } from './_utils/storage';
 
-const GOOGLE_PLACES_API_KEY = 'AIzaSyB6fvIePcBwSZQvyXtZvW-9XCbcKMf2I7o';
+const GOOGLE_PLACES_API_KEY = 'AIzaSyDcTuitQdQGXwuLp90NqQ_ZwhnMSGrr8mY';
 
 export default function MoreInfoScreen() {
   const router = useRouter();

@@ -54,7 +54,7 @@ const CollectionCard = ({ collection, onPress, onDelete, previewOnly }) => {
               <Image
                 key={index}
                 source={{
-                  uri: `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photoreference=${photoRef}&key=AIzaSyB6fvIePcBwSZQvyXtZvW-9XCbcKMf2I7o`,
+                  uri: `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photoreference=${photoRef}&key=AIzaSyDcTuitQdQGXwuLp90NqQ_ZwhnMSGrr8mY`,
                 }}
                 style={styles.image}
               />
