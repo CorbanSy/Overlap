@@ -10,7 +10,7 @@ import {
   Keyboard 
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { getProfileData, saveProfileData } from '../_utils/storage';
+import { getProfileData, saveProfileData } from '../../_utils/storage';
 import { getAuth } from 'firebase/auth';
 import { useRouter } from 'expo-router';
 

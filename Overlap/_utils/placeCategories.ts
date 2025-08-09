@@ -21,7 +21,7 @@ export interface AppCategory {
     {
       key: 'Dining',
       label: 'Dining',
-      image: require('../../assets/categoryImg/dining.png'),
+      image: require('../assets/categoryImg/dining.png'),
       description: 'Restaurants, cafés, bakeries, and more.',
       representativeType: "restaurant",
       includedTypes: [
@@ -40,7 +40,7 @@ export interface AppCategory {
     {
       key: 'Nightlife',
       label: 'Nightlife',
-      image: require('../../assets/categoryImg/nightlife.png'),
+      image: require('../assets/categoryImg/nightlife.png'),
       description: 'Bars, clubs, dancing spots, etc.',
       representativeType: "night_club",
       includedTypes: [
@@ -59,7 +59,7 @@ export interface AppCategory {
     {
       key: 'Shopping',
       label: 'Shopping',
-      image: require('../../assets/categoryImg/shopping.png'),
+      image: require('../assets/categoryImg/shopping.png'),
       description: 'Malls, outlets, and boutique stores.',
       representativeType: "shopping_mall",
       includedTypes: [
@@ -80,7 +80,7 @@ export interface AppCategory {
     {
       key: 'Entertainment',
       label: 'Entertainment',
-      image: require('../../assets/categoryImg/entertainment.png'),
+      image: require('../assets/categoryImg/entertainment.png'),
       description: 'Movies, arcades, comedy clubs, and more.',
       representativeType: "movie_theater",
       includedTypes: [
@@ -105,7 +105,7 @@ export interface AppCategory {
     {
       key: 'ArtsAndCulture',
       label: 'Arts & Culture',
-      image: require('../../assets/categoryImg/art.png'),
+      image: require('../assets/categoryImg/art.png'),
       description: 'Museums, galleries, and cultural landmarks.',
       representativeType: "cultural_landmark",
       includedTypes: [
@@ -132,7 +132,7 @@ export interface AppCategory {
     {
       key: 'Outdoors',
       label: 'Outdoors',
-      image: require('../../assets/categoryImg/outdoors.png'),
+      image: require('../assets/categoryImg/outdoors.png'),
       description: 'Parks, campgrounds, beaches, etc.',
       representativeType: "park",
       includedTypes: [
@@ -155,7 +155,7 @@ export interface AppCategory {
     {
       key: 'SportsAndFitness',
       label: 'Sports & Fitness',
-      image: require('../../assets/categoryImg/sports.png'),
+      image: require('../assets/categoryImg/sports.png'),
       description: 'Gyms, golf courses, stadiums, skating rinks...',
       representativeType: "fitness_center",
       includedTypes: [
@@ -183,7 +183,7 @@ export interface AppCategory {
     {
       key: 'Wellness',
       label: 'Wellness',
-      image: require('../../assets/categoryImg/wellness.png'),
+      image: require('../assets/categoryImg/wellness.png'),
       description: 'Spas, saunas, massages, and more.',
       representativeType: "spa",
       includedTypes: [
@@ -202,7 +202,7 @@ export interface AppCategory {
     {
       key: 'Gaming',
       label: 'Gaming',
-      image: require('../../assets/categoryImg/gaming.png'),
+      image: require('../assets/categoryImg/gaming.png'),
       description: 'Amusement parks, bowling, casinos, etc.',
       representativeType: "amusement_park",
       includedTypes: [
@@ -221,7 +221,7 @@ export interface AppCategory {
     {
       key: 'Travel',
       label: 'Travel',
-      image: require('../../assets/categoryImg/travel.png'),
+      image: require('../assets/categoryImg/travel.png'),
       description: 'Tourist attractions, event venues, visitor centers.',
       representativeType: "tourist_attraction",
       includedTypes: [
@@ -240,7 +240,7 @@ export interface AppCategory {
     {
       key: 'FamilyFun',
       label: 'Family Fun',
-      image: require('../../assets/categoryImg/familyfun.png'),
+      image: require('../assets/categoryImg/familyfun.png'),
       description: 'Kid-friendly outings, playgrounds, etc.',
       representativeType: "playground",
       includedTypes: [
@@ -269,7 +269,7 @@ export interface AppCategory {
     {
       key: 'Education',
       label: 'Education',
-      image: require('../../assets/categoryImg/education.png'),
+      image: require('../assets/categoryImg/education.png'),
       description: 'Museums, planetariums, libraries, etc.',
       representativeType: "museum",
       includedTypes: [

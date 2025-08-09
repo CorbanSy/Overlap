@@ -20,7 +20,7 @@ import {
   doc
 } from 'firebase/firestore';
 import { useRouter } from 'expo-router';
-import { sendFriendRequest, removeFriend, acceptFriendRequest } from '../_utils/storage';
+import { sendFriendRequest, removeFriend, acceptFriendRequest } from '../../_utils/storage';
 import FriendCard from '../../components/FriendCard';
 
 export const options = {

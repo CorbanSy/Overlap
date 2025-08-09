@@ -2,6 +2,8 @@
   "expo": {
     "name": "Overlap",
     "slug": "overlap",
+    "scheme": "overlap",   
+    "userInterfaceStyle": "automatic", 
     "sdkVersion": "53.0.0",
     "android": {
       "adaptiveIcon": {
@@ -15,7 +17,6 @@
     },
     "plugins": [
       "expo-dev-client",
-      "react-native-reanimated/plugin",
       "expo-router",
       [
         "expo-splash-screen",
@@ -29,7 +30,7 @@
       [
         "expo-build-properties",
         {
-          "android": { "kotlinVersion": "1.9.25" }
+          "android": { "kotlinVersion": "2.1.20" }
         }
       ]
     ]

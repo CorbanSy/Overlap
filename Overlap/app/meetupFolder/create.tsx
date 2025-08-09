@@ -14,7 +14,7 @@ import {
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import Slider from '@react-native-community/slider';
-import { createMeetup, getFriendships } from '../_utils/storage';
+import { createMeetup, getFriendships } from '../../_utils/storage';
 import { doc, getDoc, getDocs, addDoc, collection } from 'firebase/firestore';
 import { getAuth, onAuthStateChanged } from 'firebase/auth';
 import { db } from '../../FirebaseConfig';

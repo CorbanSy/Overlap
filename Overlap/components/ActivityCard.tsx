@@ -1,15 +1,52 @@
+// components/ActivityCard.tsx
+
 import React from 'react';
-import { View, Text, Image, TouchableOpacity, StyleSheet, Share } from 'react-native';
+import {
+  View,
+  Text,
+  Image,
+  TouchableOpacity,
+  StyleSheet,
+  Share,
+} from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 
-const ActivityCard = ({ item, onRemoveFromCollection, onRemoveFromLiked, onAddToCollection, isInCollection }) => {
-  const router = useRouter(); // Initialize router for navigation
+interface ActivityCardProps {
+  item: {
+    id: string;
+    name: string;
+    rating?: number;
+    photos?: { photoUri: string }[];    // from HomeScreen / storage
+    photoUrls?: string[];               // from fetchPlacePhotos
+  };
+  onRemoveFromCollection?: (id: string) => void;
+  onRemoveFromLiked?: (id: string) => void;
+  onAddToCollection?: (item: any) => void;
+  isInCollection?: boolean;
+}
+
+const ActivityCard: React.FC<ActivityCardProps> = ({
+  item,
+  onRemoveFromCollection,
+  onRemoveFromLiked,
+  onAddToCollection,
+  isInCollection,
+}) => {
+  const router = useRouter();
+
+  // Pick the first available image URI
+  const imageUri =
+    item.photoUrls?.[0] ||
+    item.photos?.[0]?.photoUri ||
+    null;
 
   // Share Activity
   const handleShare = async () => {
     try {
-      const message = `Check out this activity: ${item.name}\nRating: ${item.rating} ⭐\nMore details: https://www.google.com/maps/place/?q=place_id:${item.id}`;
+      const message = `Check out this activity: ${item.name}${
+        item.rating ? `\nRating: ${item.rating} ⭐` : ''
+      }\nMore details in the app!`;
       await Share.share({ message });
     } catch (error) {
       console.error('Error sharing activity:', error);
@@ -17,32 +54,31 @@ const ActivityCard = ({ item, onRemoveFromCollection, onRemoveFromLiked, onAddTo
   };
 
   return (
-    <TouchableOpacity 
-      style={styles.card} 
-      onPress={() => router.push(`/moreInfo?placeId=${item.id}`)} // Navigate to moreInfo.tsx
+    <TouchableOpacity
+      style={styles.card}
+      onPress={() => router.push(`/moreInfo?placeId=${item.id}`)}
     >
-      {/* Activity Image */}
-      {item.photos && item.photos.length > 0 ? (
-        <Image
-          source={{
-            uri: `https://maps.googleapis.com/maps/api/place/photo?maxwidth=800&photoreference=${item.photos[0].photo_reference}&key=AIzaSyDcTuitQdQGXwuLp90NqQ_ZwhnMSGrr8mY`,
-          }}
-          style={styles.image}
-        />
+      {imageUri ? (
+        <Image source={{ uri: imageUri }} style={styles.image} />
       ) : (
-        <Text style={{ color: '#ccc' }}>No Photo</Text>
+        <View style={styles.noImage}>
+          <Text style={styles.noImageText}>No Photo</Text>
+        </View>
       )}
 
-      {/* Title & Buttons in a Row */}
       <View style={styles.titleRow}>
-        <Text style={styles.title} numberOfLines={1}>{item.name}</Text>
+        <Text style={styles.title} numberOfLines={1}>
+          {item.name}
+        </Text>
         <View style={styles.buttonRow}>
           {(onRemoveFromLiked || onRemoveFromCollection) && (
             <TouchableOpacity
               style={styles.button}
               onPress={() =>
-                isInCollection ? onRemoveFromCollection(item.id) : onRemoveFromLiked(item.id)
-              }              
+                isInCollection
+                  ? onRemoveFromCollection?.(item.id)
+                  : onRemoveFromLiked?.(item.id)
+              }
             >
               <Ionicons name="trash-outline" size={20} color="red" />
             </TouchableOpacity>
@@ -51,12 +87,9 @@ const ActivityCard = ({ item, onRemoveFromCollection, onRemoveFromLiked, onAddTo
             <Ionicons name="share-social-outline" size={20} color="#F5A623" />
           </TouchableOpacity>
           {onAddToCollection && (
-            <TouchableOpacity 
-              style={styles.button} 
-              onPress={() => {
-                console.log("Adding activity to local collection:", item);
-                onAddToCollection(item);
-              }}
+            <TouchableOpacity
+              style={styles.button}
+              onPress={() => onAddToCollection(item)}
             >
               <Ionicons name="add-circle-outline" size={20} color="#4DA6FF" />
             </TouchableOpacity>
@@ -64,8 +97,9 @@ const ActivityCard = ({ item, onRemoveFromCollection, onRemoveFromLiked, onAddTo
         </View>
       </View>
 
-      {/* Rating & Other Info */}
-      <Text style={styles.subtitle}>{item.rating} ⭐</Text>
+      {item.rating != null && (
+        <Text style={styles.subtitle}>{item.rating.toFixed(1)} ⭐</Text>
+      )}
     </TouchableOpacity>
   );
 };
@@ -73,41 +107,49 @@ const ActivityCard = ({ item, onRemoveFromCollection, onRemoveFromLiked, onAddTo
 const styles = StyleSheet.create({
   card: {
     backgroundColor: '#1B1F24',
-    padding: 10,
-    marginVertical: 8,
     borderRadius: 8,
+    overflow: 'hidden',
+    marginVertical: 8,
   },
   image: {
     width: '100%',
     height: 150,
-    borderRadius: 8,
+  },
+  noImage: {
+    width: '100%',
+    height: 150,
+    backgroundColor: '#333',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  noImageText: {
+    color: '#ccc',
   },
   titleRow: {
-    flexDirection: 'row', // Align title and buttons horizontally
-    justifyContent: 'space-between', // Push buttons to the right
-    alignItems: 'center', // Keep them vertically aligned
-    paddingHorizontal: 10,
-    marginTop: 8,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 10,
   },
   title: {
+    color: '#FFF',
     fontSize: 16,
     fontWeight: 'bold',
-    color: '#fff',
-    flex: 1, // Ensures title takes up remaining space
-    marginRight: 10, // Adds spacing before buttons
+    flex: 1,
+    marginRight: 10,
   },
   subtitle: {
+    color: '#AAA',
     fontSize: 14,
-    color: '#aaa',
     paddingHorizontal: 10,
-    marginTop: 4,
+    paddingBottom: 10,
   },
   buttonRow: {
     flexDirection: 'row',
     alignItems: 'center',
   },
   button: {
-    marginLeft: 10, // Spacing between buttons
+    marginLeft: 10,
     padding: 6,
   },
 });

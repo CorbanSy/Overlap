@@ -13,7 +13,7 @@ import { BottomSheetModal } from '@gorhom/bottom-sheet';
 import SwipingScreen from '../../components/swiping';
 import ExploreMoreCard from '../../components/ExploreMoreCard';
 import Leader from '../../components/leader';
-import { PLACE_CATEGORIES } from '../_utils/placeCategories';
+import { PLACE_CATEGORIES } from '../../_utils/placeCategories';
 
 interface StartMeetupScreenProps {
   meetupId: string;

@@ -1,7 +1,7 @@
-import { FIREBASE_AUTH } from '../../FirebaseConfig';
+import { FIREBASE_AUTH } from '../FirebaseConfig';
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword } from 'firebase/auth';
 import { doc, setDoc, getDoc } from 'firebase/firestore';
-import { db } from '../../FirebaseConfig'; // Make sure this is your Firestore instance
+import { db } from '../FirebaseConfig'; // Make sure this is your Firestore instance
 
 export const signUp = async (email: string, password: string) => {
   try {

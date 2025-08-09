@@ -1,5 +1,5 @@
 // analytics.ts
-import { analytics } from '../../FirebaseConfig'; // Adjust your path accordingly
+import { analytics } from '../FirebaseConfig'; // Adjust your path accordingly
 
 export const logEvent = async (eventName: string, eventParams = {}) => {
   try {

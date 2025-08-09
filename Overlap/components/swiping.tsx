@@ -10,15 +10,13 @@ import {
   SafeAreaView,
   ActivityIndicator,
   Image,
-  TouchableOpacity,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { getMeetupLikes, recordSwipe } from '../app/_utils/storage';
+import { getMeetupLikes, recordSwipe } from '../_utils/storage';
 import { getAuth } from 'firebase/auth';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const SCREEN_HEIGHT = Dimensions.get('window').height;
-const GOOGLE_PLACES_API_KEY = 'AIzaSyDcTuitQdQGXwuLp90NqQ_ZwhnMSGrr8mY';
 
 const SwipingScreen = ({ meetupId }: { meetupId: string }) => {
   const router = useRouter();
@@ -50,32 +48,26 @@ const SwipingScreen = ({ meetupId }: { meetupId: string }) => {
 
   // record swipe, then advance index
   const handleSwipe = (direction: 'left' | 'right') => {
-    console.log('[handleSwipe] idx=', currentCardIndex, 'of', cards.length, direction);
     const card = cards[currentCardIndex];
-    if (!card) {
-      console.warn('no card to swipe');
-      return;
-    }
+    if (!card) return;
     const user = getAuth().currentUser;
     if (user) {
       recordSwipe(meetupId, user.uid, card.id, direction, card.name)
         .then(() => console.log('[Swipe Recorded]', card.id, direction))
         .catch(err => console.error('⚠️ recordSwipe failed:', err));
     }
-    // reset animation & move to next card
     position.setValue({ x: 0, y: 0 });
     setCurrentCardIndex(i => i + 1);
   };
 
-  // memorize PanResponder so it always sees latest cards/index
+  // PanResponder for swiping/tap
   const panResponder = useMemo(
     () =>
       PanResponder.create({
         onStartShouldSetPanResponder: () => true,
         onPanResponderMove: (_, g) => position.setValue({ x: g.dx, y: g.dy }),
         onPanResponderRelease: (_, g) => {
-          console.log('[PanResponderRelease]', 'dx=', g.dx, 'dy=', g.dy);
-          // tap => go to moreInfo
+          // tap => moreInfo
           if (Math.abs(g.dx) < 15 && Math.abs(g.dy) < 15) {
             const card = cards[currentCardIndex];
             card && router.push(`/moreInfo?placeId=${card.id}`);
@@ -100,7 +92,7 @@ const SwipingScreen = ({ meetupId }: { meetupId: string }) => {
     [cards, currentCardIndex, position]
   );
 
-  // render current card (or loading / no more)
+  // render current card or status
   const renderCard = () => {
     if (loading) {
       return <ActivityIndicator style={styles.spinner} size="large" color="#fff" />;
@@ -109,18 +101,19 @@ const SwipingScreen = ({ meetupId }: { meetupId: string }) => {
       return <Text style={styles.noMore}>No more liked activities</Text>;
     }
     const card = cards[currentCardIndex];
-    const photoRef = card.photoReference || card.photos?.[0]?.photo_reference || null;
+    // use first Firestore-backed URL instead of Google Places API
+    const imageUrl = Array.isArray(card.photos) && card.photos.length
+      ? card.photos[0]
+      : null;
 
     return (
       <Animated.View
         style={[styles.card, { transform: position.getTranslateTransform() }]}
         {...panResponder.panHandlers}
       >
-        {photoRef ? (
+        {imageUrl ? (
           <Image
-            source={{
-              uri: `https://maps.googleapis.com/maps/api/place/photo?maxwidth=800&photoreference=${photoRef}&key=${GOOGLE_PLACES_API_KEY}`,
-            }}
+            source={{ uri: imageUrl }}
             style={styles.image}
             resizeMode="cover"
           />
