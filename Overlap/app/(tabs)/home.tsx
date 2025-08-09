@@ -312,7 +312,7 @@ export default function HomeScreen() {
           name: details.name,
           rating: details.rating,
           userRatingsTotal: details.userRatingsTotal,
-          photos: details.photos,
+          photos: details.photos,   // these are paths; likePlace will convert
           types: details.types,
         });
       }

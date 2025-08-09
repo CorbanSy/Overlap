@@ -87,13 +87,23 @@ export async function likePlace(place) {
   
   const likeDocRef = doc(db, 'users', user.uid, 'likes', place.id);
   
+    // If place.photos are storage paths, resolve to download URLs
+  let photoUrls = [];
+  try {
+    photoUrls = await fetchPlacePhotos(place); // returns [] if no photos / not array
+  } catch (e) {
+    console.warn('Failed to resolve photo URLs for like:', e);
+  }
+
   // Save full place details in Firestore
   await setDoc(likeDocRef, {
     name: place.name,
     rating: place.rating || 0,
     userRatingsTotal: place.userRatingsTotal || 0,
-    photoReference: place.photoReference || null,
-    photos: place.photos ?? [],
+    // Keep the original paths in case you want them later
+    photoPaths: place.photos ?? [],
+    // Save the renderable URLs for UI
+    photos: photoUrls,
     types: place.types || [],
     formatted_address: place.formatted_address || '',
     phoneNumber: place.phoneNumber || '',
