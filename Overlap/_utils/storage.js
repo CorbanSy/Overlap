@@ -80,30 +80,40 @@ export async function getProfileData() {
    3) Firestore: Likes Subcollection
       /users/{uid}/likes/{placeId}
    ------------------------------------------------------------------ */
+async function toUrlsFromPlace(place) {
+  if (!Array.isArray(place.photos)) return [];
+  // place.photos can be ["places/...jpg"] or [{photoUri:"..."}]
+  const paths = typeof place.photos[0] === 'string'
+    ? place.photos
+    : place.photos.map(p => p.photoUri).filter(Boolean);
+  return Promise.all(paths.map(p => getDownloadURL(ref(storage, p))));
+}
+
 export async function likePlace(place) {
   const auth = getAuth();
   const user = auth.currentUser;
   if (!user) throw new Error("No user is signed in");
-  
+
   const likeDocRef = doc(db, 'users', user.uid, 'likes', place.id);
-  
-    // If place.photos are storage paths, resolve to download URLs
+
   let photoUrls = [];
   try {
-    photoUrls = await fetchPlacePhotos(place); // returns [] if no photos / not array
+    photoUrls = await toUrlsFromPlace(place);
   } catch (e) {
-    console.warn('Failed to resolve photo URLs for like:', e);
+    console.warn('Failed resolving photo URLs:', e);
   }
 
-  // Save full place details in Firestore
   await setDoc(likeDocRef, {
     name: place.name,
     rating: place.rating || 0,
     userRatingsTotal: place.userRatingsTotal || 0,
-    // Keep the original paths in case you want them later
-    photoPaths: place.photos ?? [],
-    // Save the renderable URLs for UI
-    photos: photoUrls,
+    // keep both for safety
+    photoPaths: Array.isArray(place.photos)
+      ? (typeof place.photos[0] === 'string'
+          ? place.photos
+          : place.photos.map(p => p.photoUri).filter(Boolean))
+      : [],
+    photoUrls,                // ✅ what ActivityCard prefers
     types: place.types || [],
     formatted_address: place.formatted_address || '',
     phoneNumber: place.phoneNumber || '',
