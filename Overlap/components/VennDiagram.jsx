@@ -1,40 +1,29 @@
 import React, { useEffect } from 'react';
 import { View } from 'react-native';
-import Svg, { Circle, Path, G } from 'react-native-svg';
+import Svg, { Circle, Path } from 'react-native-svg';
 import Animated, {
   useSharedValue,
   useAnimatedProps,
-  useAnimatedStyle,
   withSpring,
-  withRepeat,
   withTiming,
   interpolate,
   Extrapolate,
   runOnJS,
 } from 'react-native-reanimated';
 
-// Wrap Circle and Path in Reanimated for prop animations
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
 const AnimatedPath = Animated.createAnimatedComponent(Path);
-// We'll animate transform on a <G> (group) to show a star pulsing
-const AnimatedG = Animated.createAnimatedComponent(G);
 
 export default function VennDiagram({ startAnimation, onAnimationComplete }) {
-  // Circle radius & vertical center
   const r = 80;
   const cy = 150;
 
-  // Where circles finally meet
   const finalLeftX = 120;
   const finalRightX = 180;
 
-  // 1) progress: controls circle separation (0 = far apart, 1 = overlapped)
+  // 0 = far apart, 1 = overlapped
   const progress = useSharedValue(0);
 
-  // 2) sparkle: controls the pulsing scale of the star (1 = normal size, >1 = bigger star)
-  const sparkle = useSharedValue(1);
-
-  // Animate left circle’s centerX from finalLeftX - 120 => finalLeftX
   const leftCircleProps = useAnimatedProps(() => {
     const cx = interpolate(
       progress.value,
@@ -45,7 +34,6 @@ export default function VennDiagram({ startAnimation, onAnimationComplete }) {
     return { cx };
   });
 
-  // Animate right circle’s centerX from finalRightX + 120 => finalRightX
   const rightCircleProps = useAnimatedProps(() => {
     const cx = interpolate(
       progress.value,
@@ -56,27 +44,12 @@ export default function VennDiagram({ startAnimation, onAnimationComplete }) {
     return { cx };
   });
 
-  // Overlap path
   const intersectionPathProps = useAnimatedProps(() => {
-    // Current X positions
-    const cxLeft = interpolate(
-      progress.value,
-      [0, 1],
-      [finalLeftX - 120, finalLeftX],
-      Extrapolate.CLAMP
-    );
-    const cxRight = interpolate(
-      progress.value,
-      [0, 1],
-      [finalRightX + 120, finalRightX],
-      Extrapolate.CLAMP
-    );
+    const cxLeft = interpolate(progress.value, [0, 1], [finalLeftX - 120, finalLeftX], Extrapolate.CLAMP);
+    const cxRight = interpolate(progress.value, [0, 1], [finalRightX + 120, finalRightX], Extrapolate.CLAMP);
 
     const dist = cxRight - cxLeft;
-    if (dist >= 2 * r) {
-      // No overlap
-      return { d: '' };
-    }
+    if (dist >= 2 * r) return { d: '' };
 
     const midX = (cxLeft + cxRight) / 2;
     const h = Math.sqrt(r * r - (dist / 2) ** 2);
@@ -89,53 +62,20 @@ export default function VennDiagram({ startAnimation, onAnimationComplete }) {
       A ${r},${r} 0 0,0 ${midX},${topY}
       Z
     `;
-    return {
-      d,
-      fill: '#1a4cb2', // Overlap color
-    };
-  });
-
-  // Star path is centered at (0,0), we'll animate it via a <G transform="...">
-  const starPath =
-    'M 0 -30 L 9 -9 L 29 -9 L 14 3 L 18 23 L 0 12 L -18 23 L -14 3 L -29 -9 L -9 -9 Z';
-
-  // We'll animate the scale of <G> so the star pulses
-  const animatedStarProps = useAnimatedStyle(() => {
-    const scale = sparkle.value;
-    return {
-      transform: [
-        { translateX: 150 },
-        { translateY: 150 },
-        { scale: scale },
-        { translateX: -150 },
-        { translateY: -150 },
-      ],
-    };
+    return { d, fill: '#1a4cb2' };
   });
 
   useEffect(() => {
     if (startAnimation) {
-      // Single spring from progress=0 -> 1
       progress.value = withSpring(
         1,
-        {
-          damping: 9,
-          stiffness: 120,
-        },
-        // Inline worklet callback
+        { damping: 9, stiffness: 120 },
         (finished) => {
           'worklet';
-          if (finished) {
-            // Start the star pulsing
-            sparkle.value = withRepeat(
-              withTiming(1.5, { duration: 700 }),
-              -1, // infinite repeats
-              true // reverse
-            );
-            // Let parent know the animation is done, on the JS thread
-            if (onAnimationComplete) {
-              runOnJS(onAnimationComplete)();
-            }
+          if (finished && onAnimationComplete) {
+            // small delay feels nicer; optional
+            progress.value = withTiming(1, { duration: 50 });
+            runOnJS(onAnimationComplete)(); // ✅ bounce back to JS thread
           }
         }
       );
@@ -145,7 +85,6 @@ export default function VennDiagram({ startAnimation, onAnimationComplete }) {
   return (
     <View>
       <Svg width={300} height={300} viewBox="0 0 300 300">
-        {/* Left Circle */}
         <AnimatedCircle
           animatedProps={leftCircleProps}
           cy={cy}
@@ -154,8 +93,6 @@ export default function VennDiagram({ startAnimation, onAnimationComplete }) {
           stroke="black"
           strokeWidth={2}
         />
-
-        {/* Right Circle */}
         <AnimatedCircle
           animatedProps={rightCircleProps}
           cy={cy}
@@ -164,18 +101,7 @@ export default function VennDiagram({ startAnimation, onAnimationComplete }) {
           stroke="black"
           strokeWidth={2}
         />
-
-        {/* Overlap Path */}
-        <AnimatedPath
-          animatedProps={intersectionPathProps}
-          stroke="black"
-          strokeWidth={2}
-        />
-
-        {/* Sparkly Star (in a group with a pulsing scale) */}
-        <AnimatedG style={animatedStarProps}>
-          <Path d={starPath} fill="gold" stroke="orange" strokeWidth={1} />
-        </AnimatedG>
+        <AnimatedPath animatedProps={intersectionPathProps} stroke="black" strokeWidth={2} />
       </Svg>
     </View>
   );

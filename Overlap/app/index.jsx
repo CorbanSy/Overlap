@@ -1,81 +1,119 @@
+// app/index.jsx
 import React, { useRef, useState } from 'react';
-import { View, Image, Animated, Easing as RNEasing } from 'react-native';
+import { View, Image, Animated, Easing as RNEasing, StyleSheet, TouchableOpacity, Text } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import CustomButton from '../components/CustomButton';
 import VennDiagram from '../components/VennDiagram';
-// Import Reanimated so it's available, but don't import Easing from here
 import 'react-native-reanimated';
 
 export default function App() {
-  // Controls if the VennDiagram animation should start
   const [startVennAnimation, setStartVennAnimation] = useState(false);
 
-  // React Native Animated values for the example image
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const slideAnim = useRef(new Animated.Value(0)).current;
 
-  // When the "Start" button is pressed, trigger both the Venn animation + the RN Animations
   const handleStart = () => {
     setStartVennAnimation(true);
     Animated.sequence([
       Animated.timing(scaleAnim, {
-        toValue: 0.5,
-        duration: 500,
+        toValue: 0.92,
+        duration: 400,
         easing: RNEasing.out(RNEasing.ease),
         useNativeDriver: true,
       }),
       Animated.timing(slideAnim, {
-        toValue: -100,
-        duration: 500,
+        toValue: -20,
+        duration: 400,
         easing: RNEasing.inOut(RNEasing.ease),
         useNativeDriver: true,
       }),
     ]).start();
   };
 
-  // Called when the VennDiagram’s complex animation finishes
   const handleVennAnimationComplete = () => {
     router.push('/sign-in');
   };
 
   return (
-    <SafeAreaView className="bg-primary h-full">
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-        {/* VennDiagram with advanced Reanimated transitions */}
-        <VennDiagram
-          startAnimation={startVennAnimation}
-          onAnimationComplete={handleVennAnimationComplete}
-        />
+    <SafeAreaView style={styles.safe}>
+      <StatusBar style="light" />
+      <View style={styles.container}>
+        <View style={styles.hero}>
+          {/* Give the wrapper explicit size + overflow hidden */}
+          <View style={styles.vennWrap}>
+            <VennDiagram
+              startAnimation={startVennAnimation}
+              onAnimationComplete={handleVennAnimationComplete}
+            />
+          </View>
 
-        {/* Example: React Native Animated image (optional) */}
-        <Animated.View
-          style={{
-            transform: [
-              { scale: scaleAnim },
-              { translateY: slideAnim },
-            ],
-            marginTop: 40,
-          }}
-        >
-          <Image
-            source={{ uri: 'https://via.placeholder.com/150' }}
-            style={{ width: 100, height: 100, borderRadius: 50 }}
-          />
-        </Animated.View>
+          <Animated.View
+            style={[
+              styles.badgeWrap,
+              { transform: [{ scale: scaleAnim }, { translateY: slideAnim }] },
+            ]}
+          >
+            <Image
+              source={{ uri: 'https://via.placeholder.com/150' }}
+              style={styles.badge}
+            />
+          </Animated.View>
+        </View>
+
+        {/* Big white rounded CTA */}
+        <View style={styles.footer}>
+          <TouchableOpacity onPress={handleStart} activeOpacity={0.85} style={styles.startBtn}>
+            <Text style={styles.startText}>Start</Text>
+          </TouchableOpacity>
+        </View>
       </View>
-
-      {/* Footer with Start button */}
-      <View style={{ alignItems: 'center', paddingBottom: 20 }}>
-        <CustomButton
-          title="Start"
-          handlePress={handleStart}
-          containerStyles="w-[279px] mt-7"
-        />
-      </View>
-
-      <StatusBar backgroundColor="#161622" style="light" />
     </SafeAreaView>
   );
 }
+
+const BG = '#161622';
+
+const styles = StyleSheet.create({
+  safe: { flex: 1, backgroundColor: BG },
+  container: { flex: 1, backgroundColor: BG, paddingHorizontal: 20 },
+  hero: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+
+  // Tweak these dims to match your VennDiagram's natural size
+  vennWrap: {
+    width: 280,
+    height: 200,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',               // ⬅ hides stray corners
+    transform: [{ scale: 1.15 }],
+    marginBottom: 24,
+  },
+
+  badgeWrap: { marginTop: 8 },
+  badge: { width: 96, height: 96, borderRadius: 48 },
+
+  footer: { paddingBottom: 28, alignItems: 'center' },
+
+  // Big white rounded button
+  startBtn: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    paddingVertical: 16,
+    paddingHorizontal: 28,
+    minWidth: 280,
+    alignItems: 'center',
+    // subtle shadow
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 5,
+  },
+  startText: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#111',
+    letterSpacing: 0.3,
+  },
+});
