@@ -1,76 +1,79 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { 
-  View, 
-  Text, 
-  TextInput, 
-  TouchableOpacity, 
-  StyleSheet, 
-  Alert, 
-  ActivityIndicator, 
-  Keyboard 
+// app/profile/editProfile.tsx
+import React, { useEffect, useState } from 'react';
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  StyleSheet,
+  Alert,
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { getProfileData, saveProfileData } from '../../_utils/storage';
-import { getAuth } from 'firebase/auth';
 import { useRouter } from 'expo-router';
+import { getProfileData, saveProfileData } from '../../_utils/storage';
 
-export const options = {
-  headerShown: false,
-};
-// Hide the default Expo Router header
-export const unstable_settings = {
-  headerShown: false,
-};
+export const options = { headerShown: false };
+export const unstable_settings = { headerShown: false };
 
-const EditProfile = () => {
-  const [profile, setProfile] = useState<any>(null);
+const BG = '#0D1117';
+const CARD = '#1B1F24';
+const INPUT_BG = '#222';
+const ACCENT = '#FFA500'; // matches Create button in your modals
+
+export default function EditProfile() {
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
   const [name, setName] = useState('');
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [bio, setBio] = useState('');
-  const [saving, setSaving] = useState(false);
+  const [topCategories, setTopCategories] = useState<string[]>([]);
+  const [avatarUrl, setAvatarUrl] = useState('');
 
   const router = useRouter();
-  const auth = getAuth();
 
   useEffect(() => {
-    async function fetchProfile() {
+    (async () => {
       try {
         const data = await getProfileData();
         if (data) {
-          setProfile(data);
           setName(data.name || '');
           setUsername(data.username || '');
           setEmail(data.email || '');
           setBio(data.bio || '');
+          setAvatarUrl(data.avatarUrl || '');
+          setTopCategories(Array.isArray(data.topCategories) ? data.topCategories : []);
         }
-      } catch (error) {
-        console.error("Error fetching profile data", error);
+      } catch (e) {
+        console.error('Error fetching profile data', e);
       } finally {
         setLoading(false);
       }
-    }
-    fetchProfile();
+    })();
   }, []);
 
   const handleSave = async () => {
-    setSaving(true);
     try {
-      const updatedProfile = {
-        topCategories: profile?.topCategories || [],
+      setSaving(true);
+      await saveProfileData({
         name,
         username,
         email,
         bio,
-        avatarUrl: profile?.avatarUrl || '',
-      };
-      await saveProfileData(updatedProfile);
-      Alert.alert("Success", "Profile updated successfully.");
+        avatarUrl,
+        topCategories,
+      });
+      Alert.alert('Success', 'Profile updated successfully.');
       router.back();
-    } catch (error) {
-      console.error("Error saving profile data", error);
-      Alert.alert("Error", "There was an error updating your profile. Please try again.");
+    } catch (e) {
+      console.error('Error saving profile data', e);
+      Alert.alert('Error', 'There was an error updating your profile.');
     } finally {
       setSaving(false);
     }
@@ -78,110 +81,168 @@ const EditProfile = () => {
 
   if (loading) {
     return (
-      <View style={styles.loadingContainer}>
+      <View style={styles.loading}>
         <ActivityIndicator size="large" color="#FFF" />
       </View>
     );
   }
 
   return (
-    <View style={styles.container}>
-      {/* Custom Back Button in top-right corner */}
-      <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
-        <Ionicons name="arrow-back" size={24} color="#FFF" />
-      </TouchableOpacity>
+    <SafeAreaView style={styles.safe}>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      >
+        <ScrollView
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={styles.scroll}
+          showsVerticalScrollIndicator={false}
+        >
+          {/* Header */}
+          <View style={styles.headerRow}>
+            <TouchableOpacity style={styles.iconBtn} onPress={() => router.back()}>
+              <Ionicons name="arrow-back" size={22} color="#FFF" />
+            </TouchableOpacity>
+            <Text style={styles.headerTitle}>Edit Profile</Text>
+            <View style={{ width: 40 }} />
+          </View>
 
-      <TextInput
-        style={styles.input}
-        placeholder="Name"
-        placeholderTextColor="#888"
-        value={name}
-        onChangeText={setName}
-        blurOnSubmit={true}
-        returnKeyType="done"
-        onSubmitEditing={() => Keyboard.dismiss()}
-      />
-      <TextInput
-        style={styles.input}
-        placeholder="Username"
-        placeholderTextColor="#888"
-        value={username}
-        onChangeText={setUsername}
-        blurOnSubmit={true}
-        returnKeyType="done"
-        onSubmitEditing={() => Keyboard.dismiss()}
-      />
-      <TextInput
-        style={styles.input}
-        placeholder="Email"
-        placeholderTextColor="#888"
-        value={email}
-        onChangeText={setEmail}
-        keyboardType="email-address"
-        blurOnSubmit={true}
-        returnKeyType="done"
-        onSubmitEditing={() => Keyboard.dismiss()}
-      />
-      <TextInput
-        style={[styles.input, { height: 80 }]}
-        placeholder="Bio"
-        placeholderTextColor="#888"
-        value={bio}
-        onChangeText={setBio}
-        multiline
-        blurOnSubmit={true}
-        returnKeyType="done"
-        onSubmitEditing={() => Keyboard.dismiss()}
-      />
-      <TouchableOpacity style={styles.saveButton} onPress={handleSave} disabled={saving}>
-        {saving ? (
-          <ActivityIndicator color="#FFF" />
-        ) : (
-          <Text style={styles.saveButtonText}>Save</Text>
-        )}
-      </TouchableOpacity>
-    </View>
+          {/* Card */}
+          <View style={styles.card}>
+            <Text style={styles.label}>Name</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Your full name"
+              placeholderTextColor="#888"
+              value={name}
+              onChangeText={setName}
+              returnKeyType="done"
+            />
+
+            <Text style={styles.label}>Username</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="@username"
+              placeholderTextColor="#888"
+              value={username}
+              onChangeText={setUsername}
+              autoCapitalize="none"
+              returnKeyType="done"
+            />
+
+            <Text style={styles.label}>Email</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="you@example.com"
+              placeholderTextColor="#888"
+              value={email}
+              onChangeText={setEmail}
+              keyboardType="email-address"
+              autoCapitalize="none"
+              returnKeyType="done"
+            />
+
+            <Text style={styles.label}>Bio</Text>
+            <TextInput
+              style={[styles.input, styles.bio]}
+              placeholder="Tell people a little about you…"
+              placeholderTextColor="#888"
+              value={bio}
+              onChangeText={setBio}
+              multiline
+              textAlignVertical="top"
+            />
+
+            {/* Save */}
+            <TouchableOpacity
+              style={[styles.primaryBtn, saving && { opacity: 0.6 }]}
+              onPress={handleSave}
+              disabled={saving}
+              activeOpacity={0.85}
+            >
+              {saving ? (
+                <ActivityIndicator color="#000" />
+              ) : (
+                <Text style={styles.primaryBtnText}>Save</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
-};
+}
 
 const styles = StyleSheet.create({
-  loadingContainer: { 
-    flex: 1, 
-    justifyContent: 'center', 
-    alignItems: 'center', 
-    backgroundColor: '#0D1117' 
+  safe: { flex: 1, backgroundColor: BG },
+  loading: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: BG },
+  scroll: { paddingHorizontal: 16, paddingBottom: 24 },
+
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingTop: 8,
+    paddingBottom: 12,
+    justifyContent: 'space-between',
   },
-  container: { 
-    flex: 1, 
-    backgroundColor: '#0D1117', 
-    padding: 20, 
-    justifyContent: 'center' 
+  iconBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  backButton: {
-    position: 'absolute',
-    top: 40,    // Adjust as needed for your layout
-    right: 20,
-    zIndex: 10,
+  headerTitle: {
+    color: '#FFF',
+    fontSize: 20,
+    fontWeight: '800',
+    letterSpacing: 0.3,
+  },
+
+  card: {
+    backgroundColor: CARD,
+    borderRadius: 12,
+    padding: 16,
+    shadowColor: '#000',
+    shadowOpacity: 0.25,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 5,
+  },
+
+  label: {
+    color: '#FFF',
+    fontSize: 14,
+    fontWeight: '600',
+    marginTop: 8,
+    marginBottom: 6,
   },
   input: {
-    backgroundColor: '#222',
+    backgroundColor: INPUT_BG,
     color: '#FFF',
-    padding: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
     borderRadius: 8,
-    marginBottom: 15,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: '#2a2a2a',
   },
-  saveButton: {
-    backgroundColor: '#FFA500',
+  bio: {
+    minHeight: 110,
+    lineHeight: 20,
+  },
+
+  primaryBtn: {
+    backgroundColor: ACCENT,
     paddingVertical: 12,
     borderRadius: 8,
     alignItems: 'center',
-    marginTop: 10,
+    marginTop: 14,
   },
-  saveButtonText: { 
-    color: '#000', 
-    fontWeight: 'bold', 
-    fontSize: 16 
+  primaryBtnText: {
+    color: '#0D1117',
+    fontWeight: 'bold',
+    fontSize: 16,
   },
 });
-
-export default EditProfile;
