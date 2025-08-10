@@ -1,118 +1,170 @@
-import { View, Text, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
+// app/(auth)/sign-up.jsx
 import React, { useState } from 'react';
+import {
+  View,
+  Text,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  StyleSheet,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Link, router } from 'expo-router';
 
 import FormField from '../../components/FormField';
 import CustomButton from '../../components/CustomButton';
-import VennDiagram from '../../components/VennDiagram'; // ✅ Import VennDiagram
+import VennDiagram from '../../components/VennDiagram';
 import { signUp } from '../../_utils/auth';
 import { saveProfileData } from '../../_utils/storage';
+
+const BG = '#161622';
 
 const SignUp = () => {
   const [form, setForm] = useState({
     username: '',
     email: '',
-    password: ''
+    password: '',
   });
 
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [startVennAnimation, setStartVennAnimation] = useState(false); // ✅ Venn animation
+  const [startVennAnimation, setStartVennAnimation] = useState(false);
 
   const handleSignUp = async () => {
     try {
       setIsSubmitting(true);
 
-      // 1) create the user with Firebase Auth
+      // 1) Create the user
       const userCredential = await signUp(form.email, form.password);
-      console.log("User successfully signed up:", userCredential);
-      setStartVennAnimation(true); // ✅ Trigger animation
+      console.log('User successfully signed up:', userCredential);
 
-      // 2) immediately write email + username into Firestore
-      //    saveProfileData does a merge, so it won't wipe out any other prefs
+      // 2) Save profile info
       await saveProfileData({
-        email:    form.email,
-        username: form.username
+        email: form.email,
+        username: form.username,
       });
 
-      // 3) Delay navigation slightly to let animation breathe
+      // 3) Kick off the venn animation
+      setStartVennAnimation(true);
+
+      // 4) Let the animation breathe, then navigate
       setTimeout(() => {
         router.replace('/(auth)/preferences');
       }, 500);
     } catch (error) {
-      console.error("Sign-Up Error:", error);
+      console.error('Sign-Up Error:', error);
     } finally {
       setIsSubmitting(false);
     }
   };
 
   return (
-    <SafeAreaView className="bg-primary h-full">
+    <SafeAreaView style={styles.safe}>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        className="flex-1"
+        style={styles.flex}
         keyboardVerticalOffset={100}
       >
         <ScrollView
-          contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 40 }}
+          contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
         >
-          {/* ✅ VennDiagram scrolls with page */}
-          <View className="mt-20 mb-10 items-center">
+          {/* Venn Diagram */}
+          <View style={styles.vennWrap}>
             <VennDiagram
               startAnimation={startVennAnimation}
               onAnimationComplete={() => setStartVennAnimation(false)}
             />
           </View>
 
-          <View className="justify-center">
-            <Text className="text-4xl text-white font-psemibold text-center">
-              Sign up to Overlap
-            </Text>
+          {/* Title */}
+          <Text style={styles.title}>Sign up to Overlap</Text>
 
-            <FormField
-              title="Username"
-              value={form.username}
-              handleChangeText={(e) => setForm({ ...form, username: e })}
-              otherStyles="mt-10"
-            />
+          {/* Username */}
+          <FormField
+            title="Username"
+            value={form.username}
+            handleChangeText={(v) => setForm({ ...form, username: v })}
+            otherStyles={{ marginTop: 28 }}
+          />
 
-            <FormField
-              title="Email"
-              value={form.email}
-              handleChangeText={(e) => setForm({ ...form, email: e })}
-              otherStyles="mt-7"
-              keyboardType="email-address"
-            />
+          {/* Email */}
+          <FormField
+            title="Email"
+            value={form.email}
+            handleChangeText={(v) => setForm({ ...form, email: v })}
+            keyboardType="email-address"
+            otherStyles={{ marginTop: 28 }}
+          />
 
-            <FormField
-              title="Password"
-              value={form.password}
-              handleChangeText={(e) => setForm({ ...form, password: e })}
-              otherStyles="mt-7"
-              secureTextEntry
-            />
+          {/* Password */}
+          <FormField
+            title="Password"
+            value={form.password}
+            handleChangeText={(v) => setForm({ ...form, password: v })}
+            secureTextEntry
+            otherStyles={{ marginTop: 28 }}
+          />
 
-            <CustomButton
-              title="Sign Up"
-              handlePress={handleSignUp}
-              containerStyles="mt-7"
-              isLoading={isSubmitting}
-            />
+          {/* Big white rounded button */}
+          <CustomButton
+            title="Sign Up"
+            handlePress={handleSignUp}
+            containerStyles={styles.ctaBtn}
+            isLoading={isSubmitting}
+          />
 
-            <View className="justify-center pt-5 flex-row gap-2">
-              <Text className="text-lg text-gray-100 font-pregular">
-                Have an account already?
-              </Text>
-              <Link href="/sign-in" className="text-lg font-psemibold text-secondary">
-                Sign In
-              </Link>
-            </View>
+          {/* Already have account */}
+          <View style={styles.bottomRow}>
+            <Text style={styles.bottomText}>Have an account already?</Text>
+            <Link href="/sign-in" style={styles.bottomLink}>
+              Sign In
+            </Link>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
 };
+
+const styles = StyleSheet.create({
+  flex: { flex: 1 },
+  safe: { flex: 1, backgroundColor: BG },
+  scrollContent: { paddingHorizontal: 20, paddingBottom: 40 },
+  vennWrap: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 40,
+    marginBottom: 20,
+  },
+  title: {
+    fontSize: 28,
+    color: '#fff',
+    fontWeight: '700',
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  ctaBtn: {
+    marginTop: 28,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    paddingVertical: 16,
+    minWidth: 280,
+    alignSelf: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 5,
+  },
+  bottomRow: {
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 6,
+    marginTop: 20,
+  },
+  bottomText: { fontSize: 16, color: '#f0f0f0' },
+  bottomLink: { fontSize: 16, fontWeight: '600', color: '#4dabf7' },
+});
 
 export default SignUp;

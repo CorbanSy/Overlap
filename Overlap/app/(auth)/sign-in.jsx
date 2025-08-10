@@ -1,5 +1,13 @@
+// app/sign-in.jsx
 import React, { useState } from 'react';
-import { View, Text, KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
+import {
+  View,
+  Text,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  StyleSheet,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Link, router } from 'expo-router';
 import VennDiagram from '../../components/VennDiagram';
@@ -7,8 +15,10 @@ import FormField from '../../components/FormField';
 import CustomButton from '../../components/CustomButton';
 import { signIn } from '../../_utils/auth';
 
+const BG = '#161622';
+
 const SignIn = () => {
-  const [form, setform] = useState({ email: '', password: '' });
+  const [form, setForm] = useState({ email: '', password: '' });
   const [failedAttempts, setFailedAttempts] = useState(0);
   const [errorMessage, setErrorMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -50,79 +60,129 @@ const SignIn = () => {
   };
 
   return (
-    <SafeAreaView className="bg-primary h-full">
+    <SafeAreaView style={styles.safe}>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        className="flex-1"
+        style={styles.flex}
         keyboardVerticalOffset={100}
       >
         <ScrollView
-          contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 40 }}
+          contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
         >
-          {/* VennDiagram now scrolls with the rest of the content */}
-          <View className="mt-20 mb-10 items-center">
+          {/* Venn Diagram */}
+          <View style={styles.vennWrap}>
             <VennDiagram
               startAnimation={startVennAnimation}
               onAnimationComplete={handleVennAnimationComplete}
             />
           </View>
 
-          <View className="justify-center">
-            <Text className="text-4xl text-white font-psemibold text-center">
-              Overlap
-            </Text>
-            <Text className="text-2xl text-white font-psemibold text-center mt-2">
-              Log In
-            </Text>
+          {/* Title */}
+          <Text style={styles.title}>Overlap</Text>
+          <Text style={styles.subtitle}>Log In</Text>
 
-            <FormField
-              title="Email"
-              value={form.email}
-              handleChangeText={(e) => setform({ ...form, email: e })}
-              otherStyles="mt-7"
-              keyboardType="email-address"
-            />
+          {/* Email */}
+          <FormField
+            title="Email"
+            value={form.email}
+            handleChangeText={(e) => setForm({ ...form, email: e })}
+            keyboardType="email-address"
+            otherStyles={{ marginTop: 28 }}
+          />
 
-            <FormField
-              title="Password"
-              value={form.password}
-              handleChangeText={(e) => setform({ ...form, password: e })}
-              otherStyles="mt-7"
-              secureTextEntry
-            />
+          {/* Password */}
+          <FormField
+            title="Password"
+            value={form.password}
+            handleChangeText={(e) => setForm({ ...form, password: e })}
+            secureTextEntry
+            otherStyles={{ marginTop: 28 }}
+          />
 
-            <View className="flex-row justify-end mt-2">
-              <Link href="/forgot-password" className="text-sm font-pregular text-secondary">
-                Forgot Password?
-              </Link>
-            </View>
+          {/* Forgot password */}
+          <View style={styles.forgotWrap}>
+            <Link href="/forgot-password" style={styles.forgotLink}>
+              Forgot Password?
+            </Link>
+          </View>
 
-            {errorMessage ? (
-              <Text className="text-red-500 text-sm mt-2">{errorMessage}</Text>
-            ) : null}
+          {/* Error */}
+          {errorMessage ? (
+            <Text style={styles.errorText}>{errorMessage}</Text>
+          ) : null}
 
-            <CustomButton
-              title="Sign In"
-              handlePress={handleSignIn}
-              containerStyles="mt-7"
-              disabled={failedAttempts >= 5}
-              isLoading={isSubmitting}
-            />
+          {/* Sign in button */}
+          <CustomButton
+            title="Sign In"
+            handlePress={handleSignIn}
+            containerStyles={styles.signInBtn}
+            disabled={failedAttempts >= 5}
+            isLoading={isSubmitting}
+          />
 
-            <View className="justify-center pt-5 flex-row gap-2">
-              <Text className="text-lg text-gray-100 font-pregular">
-                Don't have an account yet?
-              </Text>
-              <Link href="/sign-up" className="text-lg font-psemibold text-secondary">
-                Sign Up
-              </Link>
-            </View>
+          {/* Sign up link */}
+          <View style={styles.signupWrap}>
+            <Text style={styles.signupText}>Don't have an account yet?</Text>
+            <Link href="/sign-up" style={styles.signupLink}>
+              Sign Up
+            </Link>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
 };
+
+const styles = StyleSheet.create({
+  flex: { flex: 1 },
+  safe: { flex: 1, backgroundColor: BG },
+  scrollContent: { paddingHorizontal: 20, paddingBottom: 40 },
+  vennWrap: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 40,
+    marginBottom: 20,
+  },
+  title: {
+    fontSize: 32,
+    color: '#fff',
+    fontWeight: '700',
+    textAlign: 'center',
+  },
+  subtitle: {
+    fontSize: 20,
+    color: '#fff',
+    fontWeight: '600',
+    textAlign: 'center',
+    marginTop: 8,
+    marginBottom: 16,
+  },
+  forgotWrap: { flexDirection: 'row', justifyContent: 'flex-end', marginTop: 8 },
+  forgotLink: { fontSize: 14, color: '#4dabf7' },
+  errorText: { color: '#ff4d4f', fontSize: 14, marginTop: 8 },
+  signInBtn: {
+    marginTop: 28,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    paddingVertical: 16,
+    minWidth: 280,
+    alignSelf: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 5,
+  },
+  signupWrap: {
+    justifyContent: 'center',
+    flexDirection: 'row',
+    gap: 4,
+    marginTop: 20,
+  },
+  signupText: { fontSize: 16, color: '#f0f0f0' },
+  signupLink: { fontSize: 16, fontWeight: '600', color: '#4dabf7' },
+});
 
 export default SignIn;
