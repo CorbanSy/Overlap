@@ -1,55 +1,153 @@
-import React, { useState, useEffect } from 'react';
-import { 
-  SafeAreaView, 
-  FlatList, 
-  Text, 
-  TouchableOpacity, 
-  StyleSheet, 
-  View, 
+// app/profile/friends.tsx
+import React, { useState, useEffect, useCallback } from 'react';
+import {
+  SafeAreaView,
+  FlatList,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  View,
   TextInput,
-  Alert 
+  Alert,
+  RefreshControl,
+  ActivityIndicator,
 } from 'react-native';
-import { getAuth } from 'firebase/auth';
-import { 
-  getFirestore, 
-  collection, 
-  query, 
-  where, 
-  getDocs, 
-  updateDoc, 
-  doc
-} from 'firebase/firestore';
+import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { sendFriendRequest, removeFriend, acceptFriendRequest, ensureDirectoryForCurrentUser } from '../../_utils/storage';
+
+import { getAuth } from 'firebase/auth';
+import {
+  getFirestore,
+  collection,
+  query,
+  where,
+  getDocs,
+  updateDoc,
+  doc,
+  getDoc, // ✅ Needed for directory enrichment
+} from 'firebase/firestore';
+
+import {
+  sendFriendRequest,
+  removeFriend,
+  acceptFriendRequest,
+  ensureDirectoryForCurrentUser,
+} from '../../_utils/storage';
 import FriendCard from '../../components/FriendCard';
 
-export const options = {
-  headerShown: false,
-};
+export const options = { headerShown: false };
+
+const BG = '#0D1117';
+const CARD = '#1B1F24';
+const BORDER = 'rgba(255,255,255,0.08)';
+const INPUT_BG = '#1f1f24';
+const ACCENT = '#FFA500';
+const LINK = '#4dabf7';
 
 function FriendsScreen() {
-  const [friendships, setFriendships] = useState([]);
-  const [sentRequests, setSentRequests] = useState([]);
-  const [receivedRequests, setReceivedRequests] = useState([]);
+  const [friendships, setFriendships] = useState<any[]>([]);
+  const [sentRequests, setSentRequests] = useState<any[]>([]);
+  const [receivedRequests, setReceivedRequests] = useState<any[]>([]);
   const [searchEmail, setSearchEmail] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+
   const auth = getAuth();
   const firestore = getFirestore();
   const router = useRouter();
 
-  // Search for a user by email and send a friend request
-    const handleSearchAndSendFriendRequest = async () => {
+  const fetchFriendships = useCallback(async () => {
+    const currentUser = auth.currentUser;
+    if (!currentUser) return;
+    const friendshipsRef = collection(firestore, 'friendships');
+    const qf = query(friendshipsRef, where('users', 'array-contains', currentUser.uid));
+    const snap = await getDocs(qf);
+    const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    setFriendships(list);
+  }, [auth.currentUser, firestore]);
+
+  const fetchSentRequests = useCallback(async () => {
+    const currentUser = auth.currentUser;
+    if (!currentUser) return;
+    const requestsRef = collection(firestore, 'friendRequests');
+    const qs = query(
+      requestsRef,
+      where('from', '==', currentUser.uid),
+      where('status', '==', 'pending')
+    );
+    const snap = await getDocs(qs);
+    const raw = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+
+    // Enrich with directory (email / display name)
+    const enriched = await Promise.all(
+      raw.map(async (r) => {
+        if (!r.toEmail || !r.toDisplayName) {
+          const ds = await getDoc(doc(firestore, 'userDirectory', r.to));
+          if (ds.exists()) {
+            const dir = ds.data() || {};
+            return {
+              ...r,
+              toEmail: dir.emailLower || r.toEmail,
+              toDisplayName: dir.displayName || r.toDisplayName,
+            };
+          }
+        }
+        return r;
+      })
+    );
+    setSentRequests(enriched);
+  }, [auth.currentUser, firestore]);
+
+  const fetchReceivedRequests = useCallback(async () => {
+    const currentUser = auth.currentUser;
+    if (!currentUser) return;
+    const requestsRef = collection(firestore, 'friendRequests');
+    const qr = query(
+      requestsRef,
+      where('to', '==', currentUser.uid),
+      where('status', '==', 'pending')
+    );
+    const snap = await getDocs(qr);
+    const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    setReceivedRequests(list);
+  }, [auth.currentUser, firestore]);
+
+  const loadAll = useCallback(async () => {
+    try {
+      setLoading(true);
+      await Promise.all([
+        fetchFriendships(),
+        fetchSentRequests(),
+        fetchReceivedRequests(),
+        ensureDirectoryForCurrentUser().catch(() => {}),
+      ]);
+    } catch (e) {
+      console.warn('Friends load error:', e);
+    } finally {
+      setLoading(false);
+    }
+  }, [fetchFriendships, fetchSentRequests, fetchReceivedRequests]);
+
+  useEffect(() => {
+    loadAll();
+  }, [loadAll]);
+
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await loadAll();
+    setRefreshing(false);
+  }, [loadAll]);
+
+  // Search & send request
+  const handleSearchAndSendFriendRequest = async () => {
     if (!searchEmail.trim()) {
       Alert.alert('Please enter an email address.');
       return;
     }
     try {
       const currentUser = auth.currentUser;
-      const needle = searchEmail
-        .trim()
-        .toLowerCase()
-        .replace(/^'+|'+$/g, ''); // strip accidental quotes
+      const needle = searchEmail.trim().toLowerCase().replace(/^'+|'+$/g, '');
 
-      // ✅ Search the public directory (allowed by rules)
       const directoryRef = collection(firestore, 'userDirectory');
       const qDir = query(directoryRef, where('emailLower', '==', needle));
       const snap = await getDocs(qDir);
@@ -60,366 +158,329 @@ function FriendsScreen() {
       }
 
       const targetUserId = snap.docs[0].id;
-
-      if (targetUserId === currentUser.uid) {
+      if (currentUser && targetUserId === currentUser.uid) {
         Alert.alert('You cannot add yourself as a friend.');
         return;
       }
 
       await sendFriendRequest(targetUserId);
-      Alert.alert('Friend request sent successfully!');
+      Alert.alert('Friend request sent!');
       setSearchEmail('');
       fetchSentRequests();
     } catch (error) {
-      console.error('Error searching for user and sending friend request:', error);
+      console.error('Error searching/sending:', error);
       Alert.alert('Error sending friend request.');
     }
   };
-  
 
-  // Fetch accepted friendships
-  const fetchFriendships = async () => {
-    const currentUser = auth.currentUser;
-    if (!currentUser) return;
-    try {
-      const friendshipsRef = collection(firestore, 'friendships');
-      const q = query(friendshipsRef, where('users', 'array-contains', currentUser.uid));
-      const querySnapshot = await getDocs(q);
-      const friendsList = querySnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-      setFriendships(friendsList);
-    } catch (error) {
-      console.error("Error fetching friendships:", error);
-    }
-  };
-
-  // Fetch pending friend requests sent by the current user
-  const fetchSentRequests = async () => {
-    const currentUser = auth.currentUser;
-    if (!currentUser) return;
-
-    const requestsRef = collection(firestore, 'friendRequests');
-    const q = query(requestsRef,
-      where('from', '==', currentUser.uid),
-      where('status', '==', 'pending')
-    );
-    const qs = await getDocs(q);
-    const raw = qs.docs.map(d => ({ id: d.id, ...d.data() }));
-
-    // enrich with directory
-    const enriched = await Promise.all(raw.map(async (r) => {
-      if (!r.toEmail) {
-        const ds = await getDoc(doc(firestore, 'userDirectory', r.to));
-        if (ds.exists()) {
-          const d = ds.data();
-          return { ...r, toEmail: d.emailLower || '', toDisplayName: d.displayName || '' };
-        }
-      }
-      return r;
-    }));
-
-    setSentRequests(enriched);
-  };
-
-  // Fetch incoming friend requests (received requests)
-  const fetchReceivedRequests = async () => {
-    const currentUser = auth.currentUser;
-    if (!currentUser) return;
-    try {
-      const requestsRef = collection(firestore, 'friendRequests');
-      const q = query(
-        requestsRef,
-        where('to', '==', currentUser.uid),
-        where('status', '==', 'pending')
-      );
-      const querySnapshot = await getDocs(q);
-      const requestsList = querySnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-      setReceivedRequests(requestsList);
-    } catch (error) {
-      console.error("Error fetching received friend requests:", error);
-    }
-  };
-
-  useEffect(() => {
-    fetchFriendships();
-    fetchSentRequests();
-    fetchReceivedRequests();
-    ensureDirectoryForCurrentUser().catch(console.warn);
-  }, []);
-
-  // Accept a friend request using the storage function
-  const handleAccept = async (requestId, fromUserId) => {
+  const handleAccept = async (requestId: string, fromUserId: string) => {
     try {
       await acceptFriendRequest(requestId, fromUserId);
       Alert.alert('Friend request accepted!');
-      fetchReceivedRequests();
-      fetchFriendships();
+      await Promise.all([fetchReceivedRequests(), fetchFriendships()]);
     } catch (error) {
-      console.error("Error accepting friend request:", error);
+      console.error('Accept error:', error);
     }
   };
 
-  // Reject a received friend request
-  const handleReject = async (requestId) => {
+  const handleReject = async (requestId: string) => {
     try {
       const requestRef = doc(firestore, 'friendRequests', requestId);
       await updateDoc(requestRef, { status: 'rejected' });
       Alert.alert('Friend request rejected.');
       fetchReceivedRequests();
     } catch (error) {
-      console.error("Error rejecting friend request:", error);
+      console.error('Reject error:', error);
     }
   };
 
-  // Remove a friend
-  const handleRemoveFriend = async (friendUid) => {
-    try {
-      Alert.alert(
-        'Remove Friend',
-        'Are you sure you want to remove this friend?',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          {
-            text: 'Remove',
-            style: 'destructive',
-            onPress: async () => {
-              await removeFriend(friendUid);
-              Alert.alert('Friend removed successfully.');
-              fetchFriendships();
-            }
+  const handleRemoveFriend = async (friendUid: string) => {
+    Alert.alert('Remove Friend', 'Are you sure you want to remove this friend?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Remove',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await removeFriend(friendUid);
+            Alert.alert('Friend removed.');
+            fetchFriendships();
+          } catch (error) {
+            console.error('Remove error:', error);
+            Alert.alert('Error removing friend.');
           }
-        ]
-      );
-    } catch (error) {
-      console.error('Error removing friend:', error);
-      Alert.alert('Error removing friend.');
-    }
+        },
+      },
+    ]);
   };
 
-  // Render accepted friend item using FriendCard.
-  const renderFriend = ({ item }) => {
+  // UI renderers
+  const renderFriend = ({ item }: any) => {
     const currentUser = auth.currentUser;
-    const friendUid = item.users.find(uid => uid !== currentUser.uid);
-    // Get friend details from the friendship document's userDetails object.
+    const friendUid = item.users.find((uid: string) => uid !== currentUser?.uid);
     const friendData = (item.userDetails && item.userDetails[friendUid]) || {};
     return (
-      <View style={styles.friendItem}>
+      <View style={styles.cardRow}>
         <TouchableOpacity
-          onPress={() => 
-            router.push({ 
-              pathname: '/profile/friendProfile', 
-              params: { uid: friendUid } 
-            })
+          onPress={() =>
+            router.push({ pathname: '/profile/friendProfile', params: { uid: friendUid } })
           }
           style={{ flex: 1 }}
+          activeOpacity={0.85}
         >
           <FriendCard
             item={{
               name: friendData.name || friendUid,
-              profilePicUrl: friendData.avatarUrl || friendData.profilePicUrl
+              profilePicUrl: friendData.avatarUrl || friendData.profilePicUrl,
             }}
           />
         </TouchableOpacity>
-        <TouchableOpacity 
-          style={styles.removeButton} 
+
+        <TouchableOpacity
+          style={[styles.smallBtn, { backgroundColor: '#F44336' }]}
           onPress={() => handleRemoveFriend(friendUid)}
+          activeOpacity={0.85}
         >
-          <Text style={styles.removeButtonText}>Remove</Text>
+          <Text style={styles.smallBtnText}>Remove</Text>
         </TouchableOpacity>
       </View>
     );
   };
 
-  // Render a pending sent friend request using FriendCard.
-  const renderSentRequest = ({ item }) => (
-    <View style={styles.requestItem}>
+  const renderSentRequest = ({ item }: any) => (
+    <View style={styles.cardRow}>
       <FriendCard
         item={{
-          name: item.toEmail || item.toDisplayName || item.to, // email → display → uid
-          profilePicUrl: item.profilePicUrl
+          name: item.toDisplayName || item.toEmail || item.to,
+          profilePicUrl: item.profilePicUrl,
         }}
       />
-      <Text style={styles.requestStatusText}>Pending request</Text>
+      <View style={styles.pill}>
+        <Text style={styles.pillText}>Pending</Text>
+      </View>
     </View>
   );
 
-  // Render a received friend request with FriendCard and accept/reject buttons.
-  // For received requests, show the sender's info.
-  const renderReceivedRequest = ({ item }) => (
-    <View style={styles.requestItem}>
+  const renderReceivedRequest = ({ item }: any) => (
+    <View style={styles.cardRow}>
       <FriendCard
         item={{
           name: item.fromEmail || item.from,
-          profilePicUrl: item.profilePicUrl
+          profilePicUrl: item.profilePicUrl,
         }}
       />
-      <View style={styles.buttonRow}>
+      <View style={styles.rowActions}>
         <TouchableOpacity
-          style={styles.acceptButton}
+          style={[styles.smallBtn, { backgroundColor: '#4CAF50' }]}
           onPress={() => handleAccept(item.id, item.from)}
+          activeOpacity={0.85}
         >
-          <Text style={styles.buttonText}>Accept</Text>
+          <Text style={styles.smallBtnText}>Accept</Text>
         </TouchableOpacity>
         <TouchableOpacity
-          style={styles.rejectButton}
+          style={[styles.smallBtn, { backgroundColor: '#F44336' }]}
           onPress={() => handleReject(item.id)}
+          activeOpacity={0.85}
         >
-          <Text style={styles.buttonText}>Reject</Text>
+          <Text style={styles.smallBtnText}>Reject</Text>
         </TouchableOpacity>
       </View>
     </View>
   );
 
   return (
-    <SafeAreaView style={styles.container}>
-      {/* Search and Send Friend Request */}
-      <View style={styles.searchContainer}>
-        <TextInput
-          style={styles.input}
-          placeholder="Enter email address"
-          placeholderTextColor="#888"
-          value={searchEmail}
-          onChangeText={setSearchEmail}
-          autoCapitalize="none"
-          keyboardType="email-address"
-        />
-        <TouchableOpacity 
-          style={styles.searchButton} 
-          onPress={handleSearchAndSendFriendRequest}
-        >
-          <Text style={styles.searchButtonText}>Send Friend Request</Text>
-        </TouchableOpacity>
-      </View>
-  
+    <SafeAreaView style={styles.safe}>
       {/* Header */}
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
-          <Text style={styles.backButtonText}>Back</Text>
+        <TouchableOpacity style={styles.iconBtn} onPress={() => router.back()}>
+          <Ionicons name="arrow-back" size={20} color="#fff" />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>My Friends</Text>
+        <Text style={styles.headerTitle}>Friends</Text>
+        <View style={{ width: 40 }} />
       </View>
-  
-      {/* Accepted Friendships */}
-      <FlatList
-        data={friendships}
-        keyExtractor={(item) => item.id}
-        renderItem={renderFriend}
-        contentContainerStyle={styles.listContainer}
-        ListEmptyComponent={<Text style={styles.emptyText}>No friends yet.</Text>}
-      />
-  
-      {/* Pending Sent Friend Requests */}
-      <View style={styles.sectionHeader}>
-        <Text style={styles.sectionHeaderText}>Pending Sent Requests</Text>
+
+      {/* Search */}
+      <View style={styles.card}>
+        <Text style={styles.cardTitle}>Find a Friend</Text>
+        <View style={styles.searchRow}>
+          <TextInput
+            style={styles.input}
+            placeholder="Enter email address"
+            placeholderTextColor="#888"
+            value={searchEmail}
+            onChangeText={setSearchEmail}
+            autoCapitalize="none"
+            keyboardType="email-address"
+            returnKeyType="search"
+            onSubmitEditing={handleSearchAndSendFriendRequest}
+          />
+          <TouchableOpacity style={styles.primaryBtn} onPress={handleSearchAndSendFriendRequest}>
+            <Text style={styles.primaryBtnText}>Send</Text>
+          </TouchableOpacity>
+        </View>
+        <Text style={styles.hint}>
+          Tip: your friends must have added their email to the directory.
+        </Text>
       </View>
-      <FlatList
-        data={sentRequests}
-        keyExtractor={(item) => item.id}
-        renderItem={renderSentRequest}
-        contentContainerStyle={styles.listContainer}
-        ListEmptyComponent={<Text style={styles.emptyText}>No pending sent requests.</Text>}
-      />
-  
-      {/* Received Friend Requests */}
-      <View style={styles.sectionHeader}>
-        <Text style={styles.sectionHeaderText}>Received Friend Requests</Text>
-      </View>
-      <FlatList
-        data={receivedRequests}
-        keyExtractor={(item) => item.id}
-        renderItem={renderReceivedRequest}
-        contentContainerStyle={styles.listContainer}
-        ListEmptyComponent={<Text style={styles.emptyText}>No received friend requests.</Text>}
-      />
+
+      {loading ? (
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+          <ActivityIndicator color="#fff" />
+        </View>
+      ) : (
+        <FlatList
+          ListHeaderComponent={
+            <>
+              {/* Accepted */}
+              <Text style={styles.sectionTitle}>Your Friends</Text>
+              {friendships.length === 0 && (
+                <Text style={styles.emptyText}>No friends yet.</Text>
+              )}
+            </>
+          }
+          data={friendships}
+          keyExtractor={(item) => item.id}
+          renderItem={renderFriend}
+          contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}
+          refreshControl={
+            <RefreshControl tintColor="#fff" refreshing={refreshing} onRefresh={onRefresh} />
+          }
+          ListFooterComponent={
+            <>
+              {/* Sent */}
+              <Text style={[styles.sectionTitle, { marginTop: 20 }]}>Pending (Sent)</Text>
+              {sentRequests.length === 0 ? (
+                <Text style={styles.emptyText}>No pending sent requests.</Text>
+              ) : (
+                <FlatList
+                  scrollEnabled={false}
+                  data={sentRequests}
+                  keyExtractor={(item) => item.id}
+                  renderItem={renderSentRequest}
+                  contentContainerStyle={{ paddingTop: 6 }}
+                />
+              )}
+
+              {/* Received */}
+              <Text style={[styles.sectionTitle, { marginTop: 20 }]}>Pending (Received)</Text>
+              {receivedRequests.length === 0 ? (
+                <Text style={styles.emptyText}>No received friend requests.</Text>
+              ) : (
+                <FlatList
+                  scrollEnabled={false}
+                  data={receivedRequests}
+                  keyExtractor={(item) => item.id}
+                  renderItem={renderReceivedRequest}
+                  contentContainerStyle={{ paddingTop: 6 }}
+                />
+              )}
+            </>
+          }
+        />
+      )}
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#0D1117' },
-  searchContainer: { 
-    flexDirection: 'row', 
-    padding: 16, 
-    alignItems: 'center', 
-    backgroundColor: '#1B1F24' 
+  safe: { flex: 1, backgroundColor: BG },
+
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingTop: 8,
+    paddingBottom: 12,
+    justifyContent: 'space-between',
   },
-  input: { 
-    flex: 1, 
-    backgroundColor: '#272B30', 
-    color: '#FFF', 
-    padding: 10, 
-    borderRadius: 6, 
-    marginRight: 10 
+  iconBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  searchButton: { 
-    backgroundColor: '#FFA500', 
-    padding: 10, 
-    borderRadius: 6 
+  headerTitle: { color: '#fff', fontSize: 20, fontWeight: '800', letterSpacing: 0.3 },
+
+  card: {
+    backgroundColor: CARD,
+    borderRadius: 12,
+    marginHorizontal: 16,
+    marginBottom: 12,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: BORDER,
   },
-  searchButtonText: { 
-    color: '#000', 
-    fontWeight: 'bold' 
+  cardTitle: { color: '#fff', fontWeight: '800', fontSize: 16, marginBottom: 10 },
+
+  searchRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  input: {
+    flex: 1,
+    backgroundColor: INPUT_BG,
+    color: '#fff',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#2a2a2a',
   },
-  header: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    padding: 16, 
-    backgroundColor: '#1B1F24' 
+  primaryBtn: {
+    backgroundColor: ACCENT,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 10,
+    alignItems: 'center',
   },
-  backButton: { marginRight: 16 },
-  backButtonText: { color: '#FFF', fontSize: 16 },
-  headerTitle: { color: '#FFF', fontSize: 20, fontWeight: 'bold' },
-  listContainer: { padding: 16 },
-  friendItem: { 
-    backgroundColor: '#272B30', 
-    padding: 12, 
-    borderRadius: 8, 
+  primaryBtnText: { color: '#0D1117', fontWeight: '800' },
+  hint: { color: '#9aa0a6', marginTop: 8, fontSize: 12 },
+
+  sectionTitle: {
+    color: '#fff',
+    fontWeight: '800',
+    fontSize: 16,
+    marginHorizontal: 16,
+    marginTop: 6,
+    marginBottom: 6,
+  },
+  emptyText: {
+    color: '#9aa0a6',
+    fontSize: 14,
+    marginHorizontal: 16,
+    marginBottom: 8,
+  },
+
+  cardRow: {
+    backgroundColor: CARD,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: BORDER,
+    padding: 12,
+    marginHorizontal: 16,
     marginBottom: 10,
     flexDirection: 'row',
-    alignItems: 'center'
+    alignItems: 'center',
+    gap: 10,
   },
-  removeButton: {
-    backgroundColor: '#F44336',
-    paddingHorizontal: 10,
+
+  smallBtn: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  smallBtnText: { color: '#fff', fontWeight: '700' },
+
+  pill: {
     paddingVertical: 6,
-    borderRadius: 6,
-    marginLeft: 10
+    paddingHorizontal: 10,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.08)',
   },
-  removeButtonText: { color: '#FFF', fontWeight: 'bold' },
-  emptyText: { color: '#AAA', fontSize: 16, textAlign: 'center', marginTop: 20 },
-  sectionHeader: { 
-    paddingHorizontal: 16, 
-    paddingVertical: 8, 
-    backgroundColor: '#1B1F24' 
-  },
-  sectionHeaderText: { 
-    color: '#FFF', 
-    fontSize: 18, 
-    fontWeight: 'bold' 
-  },
-  requestItem: {
-    backgroundColor: '#333', 
-    padding: 10, 
-    borderRadius: 6, 
-    marginHorizontal: 16, 
-    marginBottom: 8,
-    alignItems: 'center'
-  },
-  requestStatusText: {
-    color: '#FFF',
-    fontSize: 14,
-    marginTop: 5,
-    textAlign: 'center'
-  },
-  buttonRow: { flexDirection: 'row', justifyContent: 'space-around', marginTop: 10 },
-  acceptButton: { backgroundColor: '#4CAF50', padding: 10, borderRadius: 6 },
-  rejectButton: { backgroundColor: '#F44336', padding: 10, borderRadius: 6 },
-  buttonText: { color: '#FFF', fontWeight: 'bold' },
+  pillText: { color: '#fff', fontWeight: '700', fontSize: 12 },
+
+  rowActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
 });
 
 export default FriendsScreen;

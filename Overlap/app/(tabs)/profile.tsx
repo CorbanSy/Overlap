@@ -326,6 +326,8 @@ function ProfileScreen() {
       router.push('/profile/editProfile');
     } else if (option === 'Privacy') {
       router.push('/profile/privacy');
+    } else if (option === 'Help') {
+      router.push('/profile/help');
     }
     setIsSettingsMenuVisible(false);
   };
