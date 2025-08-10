@@ -1,4 +1,4 @@
-// screens/startMeetUp.tsx
+// app/meetupFolder/startMeetUp.tsx
 import React, { useState, useRef, useMemo } from 'react';
 import {
   SafeAreaView,
@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   Modal,
 } from 'react-native';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { BottomSheetModal } from '@gorhom/bottom-sheet';
 import SwipingScreen from '../../components/swiping';
@@ -15,37 +16,37 @@ import ExploreMoreCard from '../../components/ExploreMoreCard';
 import Leader from '../../components/leader';
 import { PLACE_CATEGORIES } from '../../_utils/placeCategories';
 
-interface StartMeetupScreenProps {
-  meetupId: string;
-  onLeave: () => void;
-}
-
 const BUTTON_SIZE = 60;
 
-export default function StartMeetupScreen({ meetupId, onLeave }: StartMeetupScreenProps) {
+export default function StartMeetupScreen() {
+  const { meetupId } = useLocalSearchParams<{ meetupId?: string }>();
+  const router = useRouter();
   const [showDirectionModal, setShowDirectionModal] = useState(false);
 
-  // ref to control the sheet modal
   const sheetModalRef = useRef<BottomSheetModal>(null);
   const snapPoints = useMemo(() => ['75%'], []);
 
-  const openLeaderboard = () => {
-    console.log('🔔 Presenting BottomSheetModal…');
-    sheetModalRef.current?.present();
-  };
+  const openLeaderboard = () => sheetModalRef.current?.present();
 
-  // compute categories for your modal
   const currentCatKey = PLACE_CATEGORIES[0]?.key;
   const currentCat =
     PLACE_CATEGORIES.find(c => c.key === currentCatKey) || { subCategories: [] };
   const otherCats = PLACE_CATEGORIES.filter(c => c.key !== currentCat.key);
+
+  if (!meetupId) {
+    return (
+      <SafeAreaView style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <Text style={{ color: '#fff' }}>Missing meetupId</Text>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaView style={styles.container}>
         {/* HEADER */}
         <View style={styles.header}>
-          <TouchableOpacity onPress={onLeave}>
+          <TouchableOpacity onPress={() => router.back()}>
             <Text style={styles.headerButton}>‹ Leave Meetup</Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={openLeaderboard}>
@@ -54,7 +55,7 @@ export default function StartMeetupScreen({ meetupId, onLeave }: StartMeetupScre
         </View>
 
         {/* SWIPE DECK */}
-        <SwipingScreen meetupId={meetupId} />
+        <SwipingScreen meetupId={String(meetupId)} />
 
         {/* CONTROLS */}
         <View style={styles.controlBar}>
@@ -72,7 +73,7 @@ export default function StartMeetupScreen({ meetupId, onLeave }: StartMeetupScre
           </TouchableOpacity>
         </View>
 
-        {/* CHANGE‑DIRECTION MODAL */}
+        {/* CHANGE-DIRECTION MODAL */}
         <Modal
           animationType="slide"
           transparent
@@ -84,12 +85,8 @@ export default function StartMeetupScreen({ meetupId, onLeave }: StartMeetupScre
               <ExploreMoreCard
                 currentSubCategories={currentCat.subCategories}
                 otherBroadCategories={otherCats}
-                onSubCategoryPress={subKey => {
-                  setShowDirectionModal(false);
-                }}
-                onBroadCategoryPress={catKey => {
-                  setShowDirectionModal(false);
-                }}
+                onSubCategoryPress={() => setShowDirectionModal(false)}
+                onBroadCategoryPress={() => setShowDirectionModal(false)}
               />
               <TouchableOpacity
                 style={styles.closeButton}
@@ -102,7 +99,7 @@ export default function StartMeetupScreen({ meetupId, onLeave }: StartMeetupScre
         </Modal>
       </SafeAreaView>
 
-      {/* ——— BOTTOM SHEET MODAL ——— */}
+      {/* BOTTOM SHEET */}
       <BottomSheetModal
         ref={sheetModalRef}
         index={0}
@@ -111,7 +108,7 @@ export default function StartMeetupScreen({ meetupId, onLeave }: StartMeetupScre
         backgroundStyle={styles.sheetBackground}
         handleIndicatorStyle={{ backgroundColor: '#888', width: 40 }}
       >
-        <Leader meetupId={meetupId} />
+        <Leader meetupId={String(meetupId)} />
       </BottomSheetModal>
     </GestureHandlerRootView>
   );

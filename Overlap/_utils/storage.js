@@ -602,18 +602,19 @@ export async function removeFriend(friendUid) {
 
 // Function to join a meetup using an invite (direct invitation)
 export async function joinMeetup(inviteId) {
-  // Retrieve the invite document to get the associated meetupId.
   const inviteRef = doc(db, "meetupInvites", inviteId);
   const inviteSnap = await getDoc(inviteRef);
-  if (!inviteSnap.exists()) {
-    throw new Error("Invite not found");
-  }
+  if (!inviteSnap.exists()) throw new Error("Invite not found");
   const inviteData = inviteSnap.data();
-  if (!inviteData.meetupId) {
-    throw new Error("Meetup ID missing in invite");
-  }
+  if (!inviteData.meetupId) throw new Error("Meetup ID missing in invite");
+
+  // mark accepted + add participant if needed
   await acceptMeetupInvite(inviteId, inviteData.meetupId);
-  return inviteData.meetupId;
+
+  // immediately mirror my likes into the meetup
+  await exportMyLikesToMeetup(inviteData.meetupId);
+
+  return inviteData.meetupId; // <— return plain string
 }
 
 // Function to join a meetup by using an invite code.
@@ -621,27 +622,22 @@ export async function joinMeetupByCode(inviteCode) {
   const meetupsColRef = collection(db, "meetups");
   const q = query(meetupsColRef, where("code", "==", inviteCode));
   const snap = await getDocs(q);
-  
-  if (snap.empty) {
-    throw new Error("No meetup found with the provided code.");
-  }
-  
-  // For simplicity, take the first matching meetup.
+  if (snap.empty) throw new Error("No meetup found with the provided code.");
+
   const meetupDoc = snap.docs[0];
   const meetupData = meetupDoc.data();
-  
+
   const auth = getAuth();
   const user = auth.currentUser;
   if (!user) throw new Error("No user is signed in");
-  
-  // Check if the user is already a participant; if not, add them.
+
   if (!meetupData.participants.includes(user.uid)) {
     await updateDoc(doc(db, "meetups", meetupDoc.id), {
       participants: [...meetupData.participants, user.uid],
     });
   }
-  
-  return { success: true, meetupId: meetupDoc.id };
+  await exportMyLikesToMeetup(meetupDoc.id); // so they have cards right away
+  return meetupDoc.id; // return a string
 }
 
 // Alias for declining a meetup invite.

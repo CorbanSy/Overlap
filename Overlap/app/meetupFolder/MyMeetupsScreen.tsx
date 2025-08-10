@@ -3,8 +3,10 @@ import { View, Text, TouchableOpacity, StyleSheet, FlatList, ActivityIndicator }
 import { getUserMeetups, removeMeetup, updateMeetup, getPendingMeetupInvites, exportMyLikesToMeetup } from '../../_utils/storage';
 import MeetupCard from '../../components/MeetupCard';
 import StartMeetupScreen from './startMeetUp'; // ✅ Use your new component!
+import { useRouter } from 'expo-router';
 
 const MyMeetupsScreen = ({ onBack }: { onBack: () => void }) => {
+  const router = useRouter();
   const [meetups, setMeetups] = useState<any[]>([]);
   const [pendingInvites, setPendingInvites] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -45,13 +47,13 @@ const MyMeetupsScreen = ({ onBack }: { onBack: () => void }) => {
     }
   };
 
-  const handleStartMeetup = async (meetupId: string) => {
+   const handleStartMeetup = async (meetupId: string) => {
     try {
       await updateMeetup({ id: meetupId, ongoing: true });
-      await exportMyLikesToMeetup(meetupId);          // ← add this
+      await exportMyLikesToMeetup(meetupId);
       setMeetups(prev => prev.map(m => (m.id === meetupId ? { ...m, ongoing: true } : m)));
-      setCurrentMeetupId(meetupId);
-      setShowStart(true);
+
+      router.push({ pathname: '/meetupFolder/startMeetUp', params: { meetupId } });
     } catch (error) {
       console.error('Error starting meetup:', error);
     }
