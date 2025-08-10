@@ -10,6 +10,7 @@ import {
   SafeAreaView,
   ActivityIndicator,
   Image,
+  TouchableOpacity,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { getMeetupLikes, recordSwipe } from '../_utils/storage';
@@ -101,10 +102,11 @@ const SwipingScreen = ({ meetupId }: { meetupId: string }) => {
       return <Text style={styles.noMore}>No more liked activities</Text>;
     }
     const card = cards[currentCardIndex];
-    // use first Firestore-backed URL instead of Google Places API
-    const imageUrl = Array.isArray(card.photos) && card.photos.length
-      ? card.photos[0]
-      : null;
+    // use first URL we stored in meetup likes
+    const imageUrl =
+      Array.isArray(card.photoUrls) && card.photoUrls.length
+        ? card.photoUrls[0]
+        : null;
 
     return (
       <Animated.View

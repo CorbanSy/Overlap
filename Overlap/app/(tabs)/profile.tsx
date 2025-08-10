@@ -328,6 +328,8 @@ function ProfileScreen() {
       router.push('/profile/privacy');
     } else if (option === 'Help') {
       router.push('/profile/help');
+    } else if (option === 'Notifications') {
+      router.push('/profile/notifications');
     }
     setIsSettingsMenuVisible(false);
   };

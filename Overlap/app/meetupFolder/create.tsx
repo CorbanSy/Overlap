@@ -1,33 +1,93 @@
-import React, { useState, useEffect } from 'react';
-import { Ionicons } from '@expo/vector-icons';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
   ScrollView,
   TextInput,
   TouchableOpacity,
-  Alert,
   StyleSheet,
   Modal,
   Image,
   Share,
+  Alert,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import Slider from '@react-native-community/slider';
-import { createMeetup, getFriendships } from '../../_utils/storage';
-import { doc, getDoc, getDocs, addDoc, collection } from 'firebase/firestore';
 import { getAuth, onAuthStateChanged } from 'firebase/auth';
+import { collection, doc, getDoc, getDocs, addDoc } from 'firebase/firestore';
+
 import { db } from '../../FirebaseConfig';
+import { createMeetup, getFriendships } from '../../_utils/storage';
 import CollectionCard from '../../components/CollectionCard';
 
+type Friend = { uid: string; email?: string; name?: string; avatarUrl?: string };
+type CollectionType = { id: string; title?: string; activities?: any[] };
+
+// ------------------------------------------------------------------
+// Theme
+// ------------------------------------------------------------------
+const BG = '#0D1117';
+const CARD = '#1B1F24';
+const SURFACE = '#232A33';
+const TEXT = '#FFFFFF';
+const SUBTLE = '#9AA0A6';
+const BORDER = 'rgba(255,255,255,0.08)';
+const ACCENT = '#FFA500';
+
+// ------------------------------------------------------------------
 // Static list of activity labels
+// ------------------------------------------------------------------
 const activityLabels = [
   'Dining', 'Fitness', 'Outdoors', 'Movies', 'Gaming',
   'Social', 'Music', 'Shopping', 'Travel', 'Art',
   'Relaxing', 'Learning', 'Cooking', 'Nightlife',
 ];
 
-// Modal Component for inviting friends
+// ------------------------------------------------------------------
+// Helpers
+// ------------------------------------------------------------------
+const createMeetupInvite = async (friendId: string, meetupId: string) => {
+  try {
+    const meetupRef = doc(db, 'meetups', meetupId);
+    const meetupSnap = await getDoc(meetupRef);
+    const meetupData = meetupSnap.exists() ? meetupSnap.data() : {};
+    await addDoc(collection(db, 'meetupInvites'), {
+      invitedFriendId: friendId,
+      meetupId,
+      status: 'pending',
+      title: (meetupData?.eventName as string) || 'Meetup Invitation',
+      createdAt: new Date().toISOString(),
+    });
+  } catch (e) {
+    console.error('Error creating meetup invite:', e);
+  }
+};
+
+// Read public profile from userDirectory (rules allow)
+const getFriendProfile = async (friendId: string): Promise<Friend> => {
+  try {
+    const dirRef = doc(db, 'userDirectory', friendId);
+    const dirSnap = await getDoc(dirRef);
+    if (dirSnap.exists()) {
+      const d = dirSnap.data() as any;
+      return {
+        uid: friendId,
+        email: d.emailLower || '',
+        name: d.displayName || d.usernamePublic || d.emailLower || friendId,
+        avatarUrl: d.avatarUrl || '',
+      };
+    }
+    return { uid: friendId };
+  } catch (e) {
+    console.error('Error fetching friend profile (directory):', e);
+    return { uid: friendId };
+  }
+};
+
+// ------------------------------------------------------------------
+// Invite Friends Modal
+// ------------------------------------------------------------------
 const InviteFriendsModal = ({
   visible,
   friendsList,
@@ -35,514 +95,468 @@ const InviteFriendsModal = ({
   toggleFriend,
   onConfirm,
   onClose,
+}: {
+  visible: boolean;
+  friendsList: Friend[];
+  selectedFriends: Friend[];
+  toggleFriend: (f: Friend) => void;
+  onConfirm: () => void;
+  onClose: () => void;
 }) => (
   <Modal animationType="slide" transparent visible={visible} onRequestClose={onClose}>
-    <View style={modalStyles.centeredView}>
-      <View style={modalStyles.modalView}>
-        <ScrollView contentContainerStyle={modalStyles.cardsContainer}>
-          {friendsList.map(friend => (
-            <TouchableOpacity key={friend.uid} onPress={() => toggleFriend(friend)}>
-              <View style={modalStyles.friendCard}>
-                <Image
-                  source={
-                    friend.avatarUrl
-                      ? { uri: friend.avatarUrl }
-                      : require('../../assets/images/profile.png')
-                  }
-                  style={modalStyles.friendAvatar}
-                />
-                <Text style={modalStyles.friendEmail}>{friend.email}</Text>
-              </View>
-            </TouchableOpacity>
-          ))}
+    <View style={m.centered}>
+      <View style={m.sheet}>
+        <Text style={m.title}>Invite Friends</Text>
+
+        <ScrollView
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={m.grid}
+        >
+          {friendsList.map((friend) => {
+            const isSelected = selectedFriends.some((f) => f.uid === friend.uid);
+            return (
+              <TouchableOpacity key={friend.uid} onPress={() => toggleFriend(friend)} activeOpacity={0.9}>
+                <View style={[m.card, isSelected && m.cardSelected]}>
+                  <Image
+                    source={
+                      friend.avatarUrl
+                        ? { uri: friend.avatarUrl }
+                        : require('../../assets/images/profile.png')
+                    }
+                    style={m.avatar}
+                  />
+                  <Text style={m.name} numberOfLines={1}>
+                    {friend.name || friend.email || friend.uid}
+                  </Text>
+                  <View style={[m.check, isSelected ? m.checkOn : m.checkOff]}>
+                    {isSelected && <Ionicons name="checkmark" size={16} color="#0D1117" />}
+                  </View>
+                </View>
+              </TouchableOpacity>
+            );
+          })}
         </ScrollView>
-        <TouchableOpacity style={modalStyles.confirmButton} onPress={onConfirm}>
-          <Text style={modalStyles.confirmButtonText}>Confirm</Text>
-        </TouchableOpacity>
+
+        <View style={m.row}>
+          <TouchableOpacity style={[m.btn, m.btnGhost]} onPress={onClose}>
+            <Text style={[m.btnText, m.btnGhostText]}>Cancel</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[m.btn, m.btnPrimary]} onPress={onConfirm}>
+            <Text style={m.btnText}>Done</Text>
+          </TouchableOpacity>
+        </View>
       </View>
     </View>
   </Modal>
 );
 
-const createMeetupInvite = async (friendId, meetupId) => {
-  try {
-    const meetupRef = doc(db, 'meetups', meetupId);
-    const meetupSnap = await getDoc(meetupRef);
-    const meetupData = meetupSnap.exists() ? meetupSnap.data() : {};
-    const inviteData = {
-      invitedFriendId: friendId,
-      meetupId: meetupId,
-      status: 'pending',
-      title: meetupData.eventName || 'Meetup Invitation',
-      createdAt: new Date().toISOString(),
-    };
-    await addDoc(collection(db, 'meetupInvites'), inviteData);
-  } catch (error) {
-    console.error('Error creating meetup invite:', error);
-  }
-};
-
-const CreateMeetupScreen = ({ onBack }) => {
-  // Required field states
+// ------------------------------------------------------------------
+// Screen
+// ------------------------------------------------------------------
+const CreateMeetupScreen = ({ onBack }: { onBack: () => void }) => {
+  // Required
   const [eventName, setEventName] = useState('');
   const [description, setDescription] = useState('');
 
-  // Date & time states
+  // Date / time
   const [date, setDate] = useState(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [time, setTime] = useState(new Date());
   const [showTimePicker, setShowTimePicker] = useState(false);
 
-  // Group size & price range states
+  // Other fields
   const [groupSize, setGroupSize] = useState(1);
   const [priceRange, setPriceRange] = useState(0);
-
-  // Category state and dropdown visibility
   const [selectedCategory, setSelectedCategory] = useState(activityLabels[0]);
   const [showCategoryDropdown, setShowCategoryDropdown] = useState(false);
 
-  // Friend invites state variables
+  // Friends & collections
   const [showInviteModal, setShowInviteModal] = useState(false);
-  const [selectedFriends, setSelectedFriends] = useState([]);
-  const [friendsList, setFriendsList] = useState([]);
-
-  // Location field state variables
-  const [locationOption, setLocationOption] = useState('own'); // 'own' or 'specific'
-  const [specificLocation, setSpecificLocation] = useState('');
-
-  // Activity Collections state variables
-  const [selectedCollections, setSelectedCollections] = useState([]);
-  const [collectionsList, setCollectionsList] = useState([]);
+  const [selectedFriends, setSelectedFriends] = useState<Friend[]>([]);
+  const [friendsList, setFriendsList] = useState<Friend[]>([]);
+  const [selectedCollections, setSelectedCollections] = useState<CollectionType[]>([]);
+  const [collectionsList, setCollectionsList] = useState<CollectionType[]>([]);
   const [showCollectionsRow, setShowCollectionsRow] = useState(false);
 
-  const auth = getAuth();
-  const [user, setUser] = useState(null);
+  // Location
+  const [locationOption, setLocationOption] = useState<'own' | 'specific'>('own');
+  const [specificLocation, setSpecificLocation] = useState('');
+
+  // Code
   const [meetupCode, setMeetupCode] = useState('');
 
-  // Generate a 6-digit code and set it in state
-  const handleGenerateCode = () => {
-    const code = Math.floor(100000 + Math.random() * 900000).toString();
-    setMeetupCode(code);
-  };
+  const auth = getAuth();
+  const [user, setUser] = useState<any>(null);
 
-  // Share the generated code using the native share dialog
-  const handleShareCode = async () => {
-    try {
-      await Share.share({
-        message: `Join my meetup using this code: ${meetupCode}`,
-      });
-    } catch (error) {
-      console.error('Error sharing code:', error);
-    }
-  };
-
-  const getFriendProfile = async (friendId) => {
-    try {
-      const userDocRef = doc(db, 'users', friendId);
-      const userDoc = await getDoc(userDocRef);
-      if (userDoc.exists()) {
-        const userData = userDoc.data();
-        return {
-          uid: friendId,
-          email: userData.email,
-          name: userData.email,
-          avatarUrl: userData.avatarUrl,
-        };
-      }
-      return { uid: friendId, email: friendId, name: friendId };
-    } catch (error) {
-      console.error('Error fetching friend profile:', error);
-      return { uid: friendId, email: friendId, name: friendId };
-    }
-  };
-  
-  // Listen for auth state changes so we can get the current user
+  // Auth listener
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      setUser(currentUser);
-    });
-    return unsubscribe;
+    const unsub = onAuthStateChanged(auth, (u) => setUser(u));
+    return unsub;
   }, [auth]);
 
-  // Fetch friends on mount (or when user changes)
+  // Load friends
   useEffect(() => {
     if (!user) return;
-    const fetchFriends = async () => {
+    (async () => {
       try {
         const friendships = await getFriendships();
-        const currentUserId = user.uid;
-        const friendIds = friendships.map(f =>
-          f.users.find(id => id !== currentUserId)
-        );
-        const friendProfiles = await Promise.all(friendIds.map(friendId => getFriendProfile(friendId)));
-        setFriendsList(friendProfiles);
-      } catch (error) {
-        console.error('Error fetching friends:', error);
+        const currentId = user.uid;
+        const friendIds = friendships.map((f: any) => f.users.find((id: string) => id !== currentId));
+        const profiles = await Promise.all(friendIds.map((id: string) => getFriendProfile(id)));
+        setFriendsList(profiles);
+      } catch (e) {
+        console.error('Error fetching friends:', e);
       }
-    };
-    fetchFriends();
+    })();
   }, [user]);
 
-  // Fetch collections on mount (or when user changes)
+  // Load collections
   useEffect(() => {
     if (!user) return;
-    const fetchCollections = async () => {
+    (async () => {
       try {
-        const collectionsRef = collection(db, 'users', user.uid, 'collections');
-        const querySnapshot = await getDocs(collectionsRef);
-        const userCollections = querySnapshot.docs.map(docSnap => ({
-          id: docSnap.id,
-          ...docSnap.data(),
-          activities: docSnap.data().activities || [],
-        }));
-        setCollectionsList(userCollections);
-      } catch (error) {
-        console.error('Error fetching user collections:', error);
+        const ref = collection(db, 'users', user.uid, 'collections');
+        const qs = await getDocs(ref);
+        const cols = qs.docs.map((d) => ({
+          id: d.id,
+          ...d.data(),
+          activities: d.data().activities || [],
+        })) as CollectionType[];
+        setCollectionsList(cols);
+      } catch (e) {
+        console.error('Error fetching collections:', e);
       }
-    };
-    fetchCollections();
+    })();
   }, [user]);
 
-  // Handlers for date and time pickers
-  const onChangeDate = (event, selectedDate) => {
+  // Handlers
+  const onChangeDate = (_: any, selected?: Date) => {
     setShowDatePicker(false);
-    if (selectedDate) setDate(selectedDate);
+    if (selected) setDate(selected);
   };
-
-  const onChangeTime = (event, selectedTime) => {
+  const onChangeTime = (_: any, selected?: Date) => {
     setShowTimePicker(false);
-    if (selectedTime) setTime(selectedTime);
+    if (selected) setTime(selected);
   };
 
-  // Toggle friend selection
-  const toggleFriend = (friend) => {
-    if (selectedFriends.some(f => f.uid === friend.uid)) {
-      setSelectedFriends(selectedFriends.filter(f => f.uid !== friend.uid));
-    } else {
-      setSelectedFriends([...selectedFriends, friend]);
+  const toggleFriend = (friend: Friend) => {
+    setSelectedFriends((prev) =>
+      prev.some((f) => f.uid === friend.uid) ? prev.filter((f) => f.uid !== friend.uid) : [...prev, friend]
+    );
+  };
+
+  const toggleCollection = (collection: CollectionType) => {
+    setSelectedCollections((prev) =>
+      prev.some((c) => c.id === collection.id)
+        ? prev.filter((c) => c.id !== collection.id)
+        : [...prev, collection]
+    );
+  };
+
+  const handleGenerateCode = () => {
+    setMeetupCode(Math.floor(100000 + Math.random() * 900000).toString());
+  };
+
+  const handleShareCode = async () => {
+    try {
+      await Share.share({ message: `Join my meetup using this code: ${meetupCode}` });
+    } catch (e) {
+      console.error('Error sharing code:', e);
     }
   };
 
-  // Toggle collection selection
-  const toggleCollection = (collection) => {
-    if (selectedCollections.some(c => c.id === collection.id)) {
-      setSelectedCollections(selectedCollections.filter(c => c.id !== collection.id));
-    } else {
-      setSelectedCollections([...selectedCollections, collection]);
-    }
-  };
-
-  // Handle meetup creation
   const handleCreate = async () => {
     if (!eventName.trim()) {
       Alert.alert('Missing Required Field', 'Please enter an Event Name.');
       return;
     }
 
-    // Verify every friend in selectedFriends has a uid
-    const missingUid = selectedFriends.filter(friend => !friend.uid);
+    const missingUid = selectedFriends.filter((f) => !f.uid);
     if (missingUid.length > 0) {
-      console.error('One or more selected friends are missing uid:', missingUid);
       Alert.alert('Error', 'One or more invited friends is missing required data.');
       return;
     }
 
     const meetupData = {
-      eventName: eventName,
+      eventName,
       category: selectedCategory,
-      groupSize: groupSize,
+      groupSize,
       date: date.toISOString(),
       time: time.toISOString(),
-      priceRange: priceRange,
-      description: description,
+      priceRange,
+      description,
       friends: selectedFriends,
       location: locationOption === 'own' ? 'my location' : specificLocation,
       collections: selectedCollections,
       code: meetupCode,
     };
 
-    console.log('Meetup data before creation:', meetupData);
-
     try {
-      const meetupId = await createMeetup(meetupData);
-      console.log('Meetup created successfully with id:', meetupId);
-      await Promise.all(
-        selectedFriends.map(friend => createMeetupInvite(friend.uid, meetupId))
-      );
-      Alert.alert('Success', `Meetup created successfully! (ID: ${meetupId})`);
+      const meetupId = await createMeetup(meetupData as any);
+      await Promise.all(selectedFriends.map((f) => createMeetupInvite(f.uid, meetupId)));
+      Alert.alert('Success', `Meetup created successfully!`);
       onBack();
-    } catch (error) {
-      console.error('Error creating meetup:', error);
+    } catch (e) {
+      console.error('Error creating meetup:', e);
       Alert.alert('Error', 'There was an error creating the meetup.');
     }
   };
 
+  // ----------------------------------------------------------------
+  // UI
+  // ----------------------------------------------------------------
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text style={styles.title}>Create Meet Up</Text>
+    <ScrollView style={s.container} contentContainerStyle={s.content}>
+      <Text style={s.title}>Create Meet Up</Text>
 
-      {/* Event Name */}
-      <View style={styles.row}>
+      {/* Details */}
+      <View style={s.card}>
+        <Text style={s.label}>Event Name *</Text>
         <TextInput
-          style={styles.input}
-          placeholder="Event Name *"
-          placeholderTextColor="#888"
+          style={s.input}
+          placeholder="e.g., Sushi & Trivia Night"
+          placeholderTextColor={SUBTLE}
           value={eventName}
           onChangeText={setEventName}
         />
-      </View>
 
-      {/* Category */}
-      <View style={styles.row}>
-        <View style={[styles.inputHalf, styles.dropdownContainer]}>
-          <TouchableOpacity
-            style={styles.pickerContainer}
-            onPress={() => setShowCategoryDropdown(true)}
-          >
-            <Text style={styles.pickerText}>{selectedCategory}</Text>
+        <Text style={s.label}>Category</Text>
+        <View style={s.dropdownWrap}>
+          <TouchableOpacity style={s.dropdownBtn} onPress={() => setShowCategoryDropdown((v) => !v)}>
+            <Text style={s.dropdownText}>{selectedCategory}</Text>
+            <Ionicons name={showCategoryDropdown ? 'chevron-up' : 'chevron-down'} size={18} color={TEXT} />
           </TouchableOpacity>
           {showCategoryDropdown && (
-            <View style={styles.dropdown}>
-              {activityLabels.map(label => (
+            <View style={s.dropdownMenu}>
+              {activityLabels.map((label) => (
                 <TouchableOpacity
                   key={label}
-                  style={styles.dropdownItem}
+                  style={s.dropdownItem}
                   onPress={() => {
                     setSelectedCategory(label);
                     setShowCategoryDropdown(false);
                   }}
                 >
-                  <Text style={styles.dropdownItemText}>{label}</Text>
+                  <Text style={s.dropdownItemText}>{label}</Text>
                 </TouchableOpacity>
               ))}
             </View>
           )}
         </View>
+
+        <Text style={s.label}>Description</Text>
+        <TextInput
+          style={[s.input, s.textArea]}
+          placeholder="Add a short description…"
+          placeholderTextColor={SUBTLE}
+          multiline
+          value={description}
+          onChangeText={setDescription}
+        />
       </View>
 
-      {/* Group Size */}
-      <View style={styles.row}>
-        <View style={[styles.counterWrapper, { flex: 1 }]}>
-          <Text style={styles.label}>Group Size *</Text>
-          <View style={styles.counterRow}>
-            <TouchableOpacity
-              style={styles.counterButton}
-              onPress={() => setGroupSize(Math.max(1, groupSize - 1))}
-            >
-              <Text style={styles.counterText}>-</Text>
+      {/* Size / Date / Time */}
+      <View style={s.row2}>
+        <View style={[s.card, s.col]}>
+          <Text style={s.label}>Group Size *</Text>
+          <View style={s.counterRow}>
+            <TouchableOpacity style={s.counterBtn} onPress={() => setGroupSize(Math.max(1, groupSize - 1))}>
+              <Ionicons name="remove" size={18} color={TEXT} />
             </TouchableOpacity>
-            <Text style={styles.counterValue}>{groupSize}</Text>
-            <TouchableOpacity
-              style={styles.counterButton}
-              onPress={() => setGroupSize(groupSize + 1)}
-            >
-              <Text style={styles.counterText}>+</Text>
+            <Text style={s.counterValue}>{groupSize}</Text>
+            <TouchableOpacity style={s.counterBtn} onPress={() => setGroupSize(groupSize + 1)}>
+              <Ionicons name="add" size={18} color={TEXT} />
             </TouchableOpacity>
           </View>
         </View>
+
+        <View style={[s.card, s.col]}>
+          <Text style={s.label}>Price Range</Text>
+          <Text style={s.sliderLabel}>
+            {priceRange === 0 ? 'Free' : '$'.repeat(Math.ceil(priceRange / 20))}
+          </Text>
+          <Slider
+            style={s.slider}
+            minimumValue={0}
+            maximumValue={100}
+            step={5}
+            value={priceRange}
+            onValueChange={setPriceRange}
+            minimumTrackTintColor={TEXT}
+            maximumTrackTintColor="#6B7280"
+          />
+        </View>
       </View>
 
-      {/* Date & Time */}
-      <View style={styles.row}>
-        <View style={[styles.inputHalf, styles.dateTimeBox]}>
-          <Text style={styles.label}>Date *</Text>
+      <View style={s.row2}>
+        <View style={[s.card, s.col]}>
+          <Text style={s.label}>Date *</Text>
           <TouchableOpacity onPress={() => setShowDatePicker(true)}>
-            <Text style={styles.dateText}>{date.toLocaleDateString()}</Text>
+            <Text style={s.pickText}>{date.toLocaleDateString()}</Text>
           </TouchableOpacity>
           {showDatePicker && (
-            <DateTimePicker
-              value={date}
-              mode="date"
-              display="default"
-              onChange={onChangeDate}
-            />
+            <DateTimePicker value={date} mode="date" display="default" onChange={onChangeDate} />
           )}
         </View>
-        <View style={[styles.inputHalf, styles.dateTimeBox]}>
-          <Text style={styles.label}>Time *</Text>
+
+        <View style={[s.card, s.col]}>
+          <Text style={s.label}>Time *</Text>
           <TouchableOpacity onPress={() => setShowTimePicker(true)}>
-            <Text style={styles.dateText}>
+            <Text style={s.pickText}>
               {time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
             </Text>
           </TouchableOpacity>
           {showTimePicker && (
-            <DateTimePicker
-              value={time}
-              mode="time"
-              display="default"
-              onChange={onChangeTime}
-            />
+            <DateTimePicker value={time} mode="time" display="default" onChange={onChangeTime} />
           )}
         </View>
       </View>
 
-      {/* Price Range */}
-      <View style={styles.priceRangeContainer}>
-        <Text style={styles.sliderLabel}>
-          Price Range: {priceRange}{' '}
-          {priceRange === 0 ? '- Free' : `- ${'$'.repeat(Math.ceil(priceRange / 20))}`}
-        </Text>
-        <Slider
-          style={styles.slider}
-          minimumValue={0}
-          maximumValue={100}
-          step={5}
-          value={priceRange}
-          onValueChange={setPriceRange}
-          minimumTrackTintColor="#FFFFFF"
-          maximumTrackTintColor="#888888"
-        />
-      </View>
-
-      {/* Description */}
-      <TextInput
-        style={styles.input}
-        placeholder="Description"
-        placeholderTextColor="#888"
-        multiline
-        value={description}
-        onChangeText={setDescription}
-      />
-
-      {/* Location Selection */}
-      <View style={styles.row}>
-        <Text style={styles.label}>Location</Text>
-      </View>
-      <View style={styles.radioContainer}>
-        <TouchableOpacity style={styles.radioButton} onPress={() => setLocationOption('own')}>
-          <View style={locationOption === 'own' ? styles.radioSelected : styles.radioUnselected} />
-          <Text style={styles.radioLabel}>Use My Location</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.radioButton} onPress={() => setLocationOption('specific')}>
-          <View style={locationOption === 'specific' ? styles.radioSelected : styles.radioUnselected} />
-          <Text style={styles.radioLabel}>Enter Specific Location</Text>
-        </TouchableOpacity>
-      </View>
-      {locationOption === 'specific' && (
-        <TextInput
-          style={styles.input}
-          placeholder="Enter location"
-          placeholderTextColor="#888"
-          value={specificLocation}
-          onChangeText={setSpecificLocation}
-        />
-      )}
-
-      {/* Collections Selection */}
-      <TouchableOpacity style={styles.inviteButton} onPress={() => setShowCollectionsRow(true)}>
-        <Text style={styles.buttonText}>Select Activity Collections</Text>
-      </TouchableOpacity>
-      <Text style={styles.infoText}>Collections can be added later as well</Text>
-
-      {/* Collections Row */}
-      {showCollectionsRow && (
-        <View style={styles.collectionsRowContainer}>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.collectionsScrollContainer}
-          >
-            {collectionsList.map(collection => (
-              <TouchableOpacity
-                key={collection.id}
-                onPress={() => toggleCollection(collection)}
-                style={styles.collectionCardWrapper}
-              >
-                <CollectionCard collection={collection} previewOnly />
-                {selectedCollections.some(c => c.id === collection.id) && (
-                  <View style={styles.selectedOverlay}>
-                    <Ionicons name="checkmark-circle" size={24} color="#00FF00" />
-                  </View>
-                )}
-              </TouchableOpacity>
-            ))}
-          </ScrollView>
-          <TouchableOpacity style={styles.doneButton} onPress={() => setShowCollectionsRow(false)}>
-            <Text style={styles.doneButtonText}>Done</Text>
+      {/* Location */}
+      <View style={s.card}>
+        <Text style={s.label}>Location</Text>
+        <View style={s.radioRow}>
+          <TouchableOpacity style={s.radioBtn} onPress={() => setLocationOption('own')}>
+            <View style={locationOption === 'own' ? s.radioOn : s.radioOff} />
+            <Text style={s.radioText}>Use My Location</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={s.radioBtn} onPress={() => setLocationOption('specific')}>
+            <View style={locationOption === 'specific' ? s.radioOn : s.radioOff} />
+            <Text style={s.radioText}>Enter Specific Location</Text>
           </TouchableOpacity>
         </View>
-      )}
 
-      {/* Selected Collections Preview */}
-      {selectedCollections.length > 0 && (
-        <View style={styles.selectedCollectionsContainer}>
-          <Text style={styles.selectedCollectionsTitle}>Selected Activity Collections:</Text>
-          <View style={styles.selectedCollectionsCardsContainer}>
-            {selectedCollections.map(collection => (
-              <CollectionCard
-                key={collection.id}
-                collection={collection}
-                previewOnly
-                onDelete={() =>
-                  setSelectedCollections(selectedCollections.filter(c => c.id !== collection.id))
-                }
-              />
-            ))}
-          </View>
-        </View>
-      )}
-
-      {/* Invite Friends */}
-      <TouchableOpacity style={styles.inviteButton} onPress={() => setShowInviteModal(true)}>
-        <Text style={styles.buttonText}>Invite Friends</Text>
-      </TouchableOpacity>
-      <Text style={styles.infoText}>Friends can also be invited after creation</Text>
-
-      {/* Selected Friends as Cards */}
-      {selectedFriends.length > 0 && (
-        <View style={styles.selectedFriendsContainer}>
-          <Text style={styles.selectedFriendsTitle}>Invited Friends:</Text>
-          <View style={styles.selectedFriendsCardsContainer}>
-            {selectedFriends.map(friend => (
-              <View key={friend.uid} style={styles.invitedFriendCard}>
-                <TouchableOpacity
-                  style={styles.removeIconContainer}
-                  onPress={() => setSelectedFriends(selectedFriends.filter(f => f.uid !== friend.uid))}
-                >
-                  <Ionicons name="close" size={16} color="#FF0000" />
-                </TouchableOpacity>
-                <Image
-                  source={
-                    friend.avatarUrl
-                      ? { uri: friend.avatarUrl }
-                      : require('../../assets/images/profile.png')
-                  }
-                  style={styles.invitedFriendAvatar}
-                />
-                <Text style={styles.invitedFriendEmail}>{friend.email}</Text>
-              </View>
-            ))}
-          </View>
-        </View>
-      )}
-
-      {/* Code Generation Section */}
-      <View style={styles.codeSection}>
-        <TouchableOpacity style={styles.getCodeButton} onPress={handleGenerateCode}>
-          <Text style={styles.buttonText}>Get Code</Text>
-        </TouchableOpacity>
-        {meetupCode !== '' && (
-          <>
-            <Text style={styles.codeDisplay}>Your Meetup Code: {meetupCode}</Text>
-            <TouchableOpacity style={styles.shareCodeButton} onPress={handleShareCode}>
-              <Text style={styles.shareCodeText}>Share Code</Text>
-            </TouchableOpacity>
-          </>
+        {locationOption === 'specific' && (
+          <TextInput
+            style={s.input}
+            placeholder="Address or place name"
+            placeholderTextColor={SUBTLE}
+            value={specificLocation}
+            onChangeText={setSpecificLocation}
+          />
         )}
       </View>
 
-      {/* Create & Back Buttons */}
-      <View style={styles.bottomButtons}>
-        <TouchableOpacity style={[styles.button, { marginRight: 10 }]} onPress={handleCreate}>
-          <Text style={styles.buttonText}>Create</Text>
+      {/* Collections */}
+      <View style={s.card}>
+        <TouchableOpacity style={s.pillBtn} onPress={() => setShowCollectionsRow(true)}>
+          <Text style={s.pillText}>Select Activity Collections</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.button} onPress={onBack}>
-          <Text style={styles.buttonText}>Back</Text>
+        <Text style={s.hint}>Collections can be added later as well</Text>
+
+        {showCollectionsRow && (
+          <>
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={s.collectionsRow}
+            >
+              {collectionsList.map((c) => {
+                const isPicked = selectedCollections.some((x) => x.id === c.id);
+                return (
+                  <TouchableOpacity key={c.id} onPress={() => toggleCollection(c)} style={s.collectionWrap}>
+                    <CollectionCard collection={c as any} previewOnly />
+                    {isPicked && (
+                      <View style={s.badge}>
+                        <Ionicons name="checkmark-circle" size={22} color="#22C55E" />
+                      </View>
+                    )}
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+            <TouchableOpacity style={s.smallGhostBtn} onPress={() => setShowCollectionsRow(false)}>
+              <Text style={s.ghostText}>Done</Text>
+            </TouchableOpacity>
+          </>
+        )}
+
+        {selectedCollections.length > 0 && (
+          <View style={{ marginTop: 12 }}>
+            <Text style={s.subheading}>Selected Collections</Text>
+            <View style={s.selectedGrid}>
+              {selectedCollections.map((c) => (
+                <CollectionCard
+                  key={c.id}
+                  collection={c as any}
+                  previewOnly
+                  onDelete={() =>
+                    setSelectedCollections((prev) => prev.filter((x) => x.id !== c.id))
+                  }
+                />
+              ))}
+            </View>
+          </View>
+        )}
+      </View>
+
+      {/* Friends */}
+      <View style={s.card}>
+        <TouchableOpacity style={s.pillBtn} onPress={() => setShowInviteModal(true)}>
+          <Text style={s.pillText}>Invite Friends</Text>
+        </TouchableOpacity>
+        <Text style={s.hint}>Friends can also be invited after creation</Text>
+
+        {selectedFriends.length > 0 && (
+          <View style={{ marginTop: 12 }}>
+            <Text style={s.subheading}>Invited Friends</Text>
+            <View style={s.invitedGrid}>
+              {selectedFriends.map((f) => (
+                <View key={f.uid} style={s.friendChip}>
+                  <TouchableOpacity
+                    onPress={() =>
+                      setSelectedFriends((prev) => prev.filter((x) => x.uid !== f.uid))
+                    }
+                    style={s.closeChip}
+                  >
+                    <Ionicons name="close" size={14} color="#FF3B30" />
+                  </TouchableOpacity>
+                  <Image
+                    source={
+                      f.avatarUrl ? { uri: f.avatarUrl } : require('../../assets/images/profile.png')
+                    }
+                    style={s.friendAvatar}
+                  />
+                  <Text numberOfLines={1} style={s.friendLabel}>
+                    {f.name || f.email || f.uid}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          </View>
+        )}
+      </View>
+
+      {/* Code */}
+      <View style={s.card}>
+        <Text style={s.subheading}>Invite Code</Text>
+        <View style={s.codeRow}>
+          <TouchableOpacity style={s.smallBtn} onPress={handleGenerateCode}>
+            <Text style={s.smallBtnText}>Get Code</Text>
+          </TouchableOpacity>
+          {!!meetupCode && (
+            <>
+              <Text style={s.codeText}>{meetupCode}</Text>
+              <TouchableOpacity style={s.smallGhostBtn} onPress={handleShareCode}>
+                <Text style={s.ghostText}>Share</Text>
+              </TouchableOpacity>
+            </>
+          )}
+        </View>
+      </View>
+
+      {/* Actions */}
+      <View style={s.actions}>
+        <TouchableOpacity style={[s.primary, { marginRight: 10 }]} onPress={handleCreate}>
+          <Text style={s.primaryText}>Create</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={s.secondary} onPress={onBack}>
+          <Text style={s.secondaryText}>Back</Text>
         </TouchableOpacity>
       </View>
-      <Text style={styles.note}>Note: All fields can be changed in the future.</Text>
 
-      {/* Modals */}
+      <Text style={s.note}>Note: All fields can be changed in the future.</Text>
+
       <InviteFriendsModal
         visible={showInviteModal}
         friendsList={friendsList}
@@ -555,107 +569,172 @@ const CreateMeetupScreen = ({ onBack }) => {
   );
 };
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#0D1117' },
-  content: { padding: 20, paddingBottom: 40, paddingTop: 50 },
-  title: { fontSize: 32, fontWeight: 'bold', color: '#FFFFFF', marginBottom: 20, textAlign: 'center' },
-  row: { flexDirection: 'row', marginBottom: 15 },
+// ------------------------------------------------------------------
+// Styles
+// ------------------------------------------------------------------
+const s = StyleSheet.create({
+  container: { flex: 1, backgroundColor: BG },
+  content: { padding: 16, paddingBottom: 40, paddingTop: 28 },
+  title: { fontSize: 32, fontWeight: '800', color: TEXT, textAlign: 'center', marginBottom: 14 },
+
+  card: {
+    backgroundColor: CARD,
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: BORDER,
+  },
+
+  label: { color: TEXT, fontSize: 14, fontWeight: '700', marginBottom: 6 },
   input: {
-    backgroundColor: '#1B1F24',
-    color: '#FFFFFF',
-    padding: 15,
-    borderRadius: 8,
-    marginBottom: 15,
+    backgroundColor: SURFACE,
+    color: TEXT,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: BORDER,
     fontSize: 16,
+    marginBottom: 8,
   },
-  inputHalf: { flex: 1, marginHorizontal: 5 },
-  dropdownContainer: { position: 'relative', flex: 1 },
-  pickerContainer: { backgroundColor: '#1B1F24', borderRadius: 8, justifyContent: 'center', padding: 10 },
-  pickerText: { color: '#FFFFFF', fontSize: 16 },
-  dropdown: {
-    position: 'absolute',
-    top: 55,
-    left: 0,
-    right: 0,
-    backgroundColor: '#1B1F24',
-    borderRadius: 8,
-    zIndex: 1000,
-    elevation: 10,
-  },
-  dropdownItem: { paddingVertical: 10, paddingHorizontal: 15 },
-  dropdownItemText: { color: '#FFFFFF', fontSize: 16 },
-  counterWrapper: { backgroundColor: '#1B1F24', borderRadius: 8, padding: 10, justifyContent: 'center' },
-  label: { color: '#FFFFFF', fontSize: 16, marginBottom: 5 },
-  counterRow: { flexDirection: 'row', alignItems: 'center' },
-  counterButton: {
-    backgroundColor: '#24292F',
-    borderRadius: 25,
-    width: 36,
-    height: 36,
-    justifyContent: 'center',
+  textArea: { minHeight: 90, textAlignVertical: 'top' },
+
+  // dropdown
+  dropdownWrap: { position: 'relative' },
+  dropdownBtn: {
+    backgroundColor: SURFACE,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: BORDER,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
   },
-  counterText: { color: '#FFFFFF', fontSize: 20, fontWeight: 'bold' },
-  counterValue: { color: '#FFFFFF', fontSize: 18, marginHorizontal: 10 },
-  dateTimeBox: { backgroundColor: '#1B1F24', borderRadius: 8, padding: 10, justifyContent: 'center', flex: 1, marginHorizontal: 5 },
-  dateText: { color: '#FFFFFF', fontSize: 16 },
-  priceRangeContainer: { marginBottom: 15 },
-  sliderLabel: { color: '#FFFFFF', fontSize: 16, marginBottom: 5 },
-  slider: { width: '100%', height: 40 },
-  radioContainer: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 15 },
-  radioButton: { flexDirection: 'row', alignItems: 'center' },
-  radioSelected: { width: 20, height: 20, borderRadius: 10, backgroundColor: '#1B1F24', borderWidth: 2, borderColor: '#FFFFFF', marginRight: 8 },
-  radioUnselected: { width: 20, height: 20, borderRadius: 10, borderWidth: 2, borderColor: '#FFFFFF', marginRight: 8 },
-  radioLabel: { color: '#FFFFFF', fontSize: 16 },
-  inviteButton: { width: '100%', height: 60, backgroundColor: '#1B1F24', justifyContent: 'center', alignItems: 'center', borderRadius: 30, marginVertical: 10 },
-  buttonText: { fontSize: 20, fontWeight: 'bold', color: '#FFFFFF' },
-  infoText: { fontSize: 16, color: '#AAAAAA', textAlign: 'center', marginTop: 10 },
-  note: { fontSize: 14, color: '#AAAAAA', textAlign: 'center', marginTop: 20 },
-  bottomButtons: { flexDirection: 'row', marginTop: 30, justifyContent: 'center' },
-  button: { width: 140, height: 60, backgroundColor: '#1B1F24', justifyContent: 'center', alignItems: 'center', borderRadius: 30 },
-  selectedFriendsContainer: { marginVertical: 10, padding: 10, backgroundColor: '#1B1F24', borderRadius: 8 },
-  selectedFriendsTitle: { color: '#FFFFFF', fontSize: 16, marginBottom: 5 },
-  selectedFriendsCardsContainer: { flexDirection: 'row', flexWrap: 'wrap' },
-  selectedCollectionsContainer: { marginVertical: 10, padding: 10, backgroundColor: '#1B1F24', borderRadius: 8 },
-  selectedCollectionsTitle: { color: '#FFFFFF', fontSize: 16, marginBottom: 5 },
-  selectedCollectionsCardsContainer: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
-  invitedFriendCard: { width: 80, height: 100, borderWidth: 1, borderColor: '#FFFFFF', borderStyle: 'dashed', borderRadius: 8, padding: 5, margin: 5, alignItems: 'center', justifyContent: 'center', position: 'relative' },
-  removeIconContainer: { position: 'absolute', top: -5, left: -5, backgroundColor: '#FFFFFF', borderRadius: 10, padding: 2, zIndex: 1 },
-  invitedFriendAvatar: { width: 50, height: 50, borderRadius: 25, marginBottom: 5 },
-  invitedFriendEmail: { color: '#FFFFFF', fontSize: 10, textAlign: 'center' },
-  collectionsRowContainer: { marginVertical: 10 },
-  collectionsScrollContainer: { paddingHorizontal: 0, flexDirection: 'row', alignItems: 'center' },
-  collectionCardWrapper: { marginHorizontal: 0, position: 'relative' },
-  selectedOverlay: { position: 'absolute', top: 2, right: 2, backgroundColor: 'rgba(0,255,0,0.7)', borderRadius: 12, padding: 2 },
-  doneButton: { marginTop: 10, alignSelf: 'center', backgroundColor: '#1B1F24', paddingHorizontal: 20, paddingVertical: 10, borderRadius: 8 },
-  doneButtonText: { color: '#FFFFFF', fontSize: 16 },
-  codeSection: { marginVertical: 10, alignItems: 'center' },
-  getCodeButton: { backgroundColor: '#1B1F24', padding: 10, borderRadius: 30, marginVertical: 5 },
-  codeDisplay: { color: '#FFFFFF', fontSize: 18, marginVertical: 5 },
-  shareCodeButton: { backgroundColor: '#333', padding: 10, borderRadius: 30, marginTop: 5 },
-  shareCodeText: { color: '#FFFFFF', fontSize: 16, fontWeight: 'bold' },
+  dropdownText: { color: TEXT, fontSize: 16 },
+  dropdownMenu: {
+    position: 'absolute',
+    left: 0, right: 0, top: 52,
+    backgroundColor: CARD,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: BORDER,
+    zIndex: 10,
+  },
+  dropdownItem: { paddingHorizontal: 14, paddingVertical: 10 },
+  dropdownItemText: { color: TEXT, fontSize: 16 },
+
+  // size/price/date/time
+  row2: { flexDirection: 'row', gap: 12, marginBottom: 12 },
+  col: { flex: 1 },
+  counterRow: { flexDirection: 'row', alignItems: 'center', marginTop: 2 },
+  counterBtn: {
+    width: 36, height: 36, borderRadius: 18,
+    backgroundColor: SURFACE, borderWidth: 1, borderColor: BORDER,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  counterValue: { color: TEXT, fontSize: 18, fontWeight: '700', paddingHorizontal: 10 },
+  sliderLabel: { color: SUBTLE, fontSize: 12, marginTop: 2, marginBottom: 2 },
+  slider: { width: '100%', height: 36 },
+  pickText: { color: TEXT, fontSize: 16, paddingVertical: 4 },
+
+  // radio/location
+  radioRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8, marginTop: 2 },
+  radioBtn: { flexDirection: 'row', alignItems: 'center' },
+  radioOn: { width: 18, height: 18, borderRadius: 9, backgroundColor: TEXT, marginRight: 8 },
+  radioOff: { width: 18, height: 18, borderRadius: 9, borderWidth: 2, borderColor: TEXT, marginRight: 8 },
+  radioText: { color: TEXT, fontSize: 14 },
+
+  // collections
+  pillBtn: {
+    backgroundColor: SURFACE,
+    borderRadius: 30,
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  pillText: { color: TEXT, fontSize: 16, fontWeight: '800' },
+  hint: { color: SUBTLE, textAlign: 'center', marginTop: 8 },
+  collectionsRow: { paddingVertical: 10, gap: 10, alignItems: 'center' },
+  collectionWrap: { marginRight: 6, position: 'relative' },
+  badge: { position: 'absolute', top: 4, right: 4, backgroundColor: 'transparent' },
+  selectedGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 8 },
+
+  // friends
+  invitedGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginTop: 8 },
+  friendChip: {
+    width: 90, height: 110, borderRadius: 10,
+    borderWidth: 1, borderColor: BORDER, backgroundColor: SURFACE,
+    padding: 8, alignItems: 'center', justifyContent: 'center', position: 'relative',
+  },
+  closeChip: {
+    position: 'absolute', top: 6, left: 6,
+    backgroundColor: 'rgba(255,255,255,0.9)', borderRadius: 10, padding: 2,
+  },
+  friendAvatar: { width: 46, height: 46, borderRadius: 23, marginBottom: 6 },
+  friendLabel: { color: TEXT, fontSize: 10, textAlign: 'center' },
+
+  // code
+  subheading: { color: TEXT, fontSize: 14, fontWeight: '800' },
+  codeRow: { flexDirection: 'row', alignItems: 'center', marginTop: 8, gap: 10 },
+  smallBtn: {
+    backgroundColor: ACCENT, borderRadius: 8, paddingVertical: 8, paddingHorizontal: 12,
+  },
+  smallBtnText: { color: '#0D1117', fontWeight: '800' },
+  smallGhostBtn: {
+    borderRadius: 8, paddingVertical: 8, paddingHorizontal: 12,
+    backgroundColor: SURFACE, borderWidth: 1, borderColor: BORDER,
+  },
+  ghostText: { color: TEXT, fontWeight: '700' },
+  codeText: { color: TEXT, fontSize: 16, fontWeight: '700' },
+
+  // actions
+  actions: { flexDirection: 'row', justifyContent: 'center', marginTop: 10 },
+  primary: {
+    backgroundColor: ACCENT, borderRadius: 12, paddingVertical: 14, paddingHorizontal: 28,
+    shadowColor: '#000', shadowOpacity: 0.25, shadowOffset: { width: 0, height: 6 }, shadowRadius: 10, elevation: 5,
+  },
+  primaryText: { color: '#0D1117', fontSize: 16, fontWeight: '800' },
+  secondary: {
+    backgroundColor: SURFACE, borderRadius: 12, paddingVertical: 14, paddingHorizontal: 28,
+    borderWidth: 1, borderColor: BORDER,
+  },
+  secondaryText: { color: TEXT, fontSize: 16, fontWeight: '800' },
+
+  note: { color: SUBTLE, textAlign: 'center', marginTop: 14, fontSize: 12 },
 });
 
-const modalStyles = StyleSheet.create({
-  centeredView: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.5)' },
-  modalView: { width: '80%', backgroundColor: '#0D1117', borderRadius: 8, padding: 20, alignItems: 'center' },
-  cardsContainer: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center' },
-  friendCard: { width: 80, height: 100, borderWidth: 1, borderColor: '#FFFFFF', borderStyle: 'dashed', borderRadius: 8, padding: 5, margin: 5, alignItems: 'center', justifyContent: 'center' },
-  friendAvatar: { width: 50, height: 50, borderRadius: 25, marginBottom: 5 },
-  friendEmail: { color: '#FFFFFF', fontSize: 10, textAlign: 'center' },
-  friendItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10 },
-  uncheckedCircle: { width: 24, height: 24, borderRadius: 12, borderWidth: 2, borderColor: '#FFFFFF', marginRight: 10 },
-  checkedCircle: { width: 24, height: 24, borderRadius: 12, backgroundColor: '#1B1F24', marginRight: 10 },
-  modalButtons: { flexDirection: 'row', justifyContent: 'space-around', width: '100%', marginTop: 20 },
-  friendName: { color: '#FFFFFF', fontSize: 16 },
-  confirmButton: { marginTop: 20, backgroundColor: '#1B1F24', paddingHorizontal: 20, paddingVertical: 10, borderRadius: 8 },
-  confirmButtonText: { color: '#FFFFFF', fontSize: 16 },
-  cancelButton: { backgroundColor: '#3A3A3A', paddingHorizontal: 20, paddingVertical: 10, borderRadius: 8 },
-  cancelButtonText: { color: '#FFFFFF', fontSize: 16 },
-  selectedOverlay: { position: 'absolute', top: 5, right: 5, backgroundColor: 'rgba(0,255,0,0.7)', borderRadius: 12, padding: 2 },
-  codeSection: { marginVertical: 10, alignItems: 'center' },
-  getCodeButton: { backgroundColor: '#1B1F24', padding: 10, borderRadius: 30, marginVertical: 5 },
-  codeDisplay: { color: '#FFFFFF', fontSize: 18, marginVertical: 5 },
+// Modal styles
+const m = StyleSheet.create({
+  centered: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
+  sheet: {
+    width: '88%', backgroundColor: CARD, borderRadius: 14, padding: 14,
+    borderWidth: 1, borderColor: BORDER,
+  },
+  title: { color: TEXT, fontSize: 18, fontWeight: '800', textAlign: 'center', marginBottom: 10 },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, justifyContent: 'center' },
+  card: {
+    width: 96, paddingVertical: 10, paddingHorizontal: 6,
+    alignItems: 'center', borderRadius: 10,
+    backgroundColor: SURFACE, borderWidth: 1, borderColor: BORDER,
+    position: 'relative',
+  },
+  cardSelected: { borderColor: ACCENT },
+  avatar: { width: 42, height: 42, borderRadius: 21, marginBottom: 6 },
+  name: { color: TEXT, fontSize: 11, textAlign: 'center' },
+  check: {
+    position: 'absolute', top: 6, right: 6, width: 20, height: 20, borderRadius: 10,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  checkOn: { backgroundColor: ACCENT },
+  checkOff: { borderWidth: 1, borderColor: BORDER, backgroundColor: 'transparent' },
+  row: { flexDirection: 'row', gap: 10, marginTop: 12, justifyContent: 'flex-end' },
+  btn: { paddingVertical: 10, paddingHorizontal: 16, borderRadius: 10 },
+  btnPrimary: { backgroundColor: ACCENT },
+  btnGhost: { backgroundColor: SURFACE, borderWidth: 1, borderColor: BORDER },
+  btnText: { fontWeight: '800', color: '#0D1117' },
+  btnGhostText: { color: TEXT },
 });
 
 export default CreateMeetupScreen;

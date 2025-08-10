@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, FlatList, ActivityIndicator } from 'react-native';
-import { getUserMeetups, removeMeetup, updateMeetup, getPendingMeetupInvites } from '../../_utils/storage';
+import { getUserMeetups, removeMeetup, updateMeetup, getPendingMeetupInvites, exportMyLikesToMeetup } from '../../_utils/storage';
 import MeetupCard from '../../components/MeetupCard';
 import StartMeetupScreen from './startMeetUp'; // ✅ Use your new component!
 
@@ -48,11 +48,10 @@ const MyMeetupsScreen = ({ onBack }: { onBack: () => void }) => {
   const handleStartMeetup = async (meetupId: string) => {
     try {
       await updateMeetup({ id: meetupId, ongoing: true });
-      setMeetups(prev =>
-        prev.map(m => (m.id === meetupId ? { ...m, ongoing: true } : m))
-      );
-      setCurrentMeetupId(meetupId); // ✅ Set the ID
-      setShowStart(true); // ✅ Show the swiping screen
+      await exportMyLikesToMeetup(meetupId);          // ← add this
+      setMeetups(prev => prev.map(m => (m.id === meetupId ? { ...m, ongoing: true } : m)));
+      setCurrentMeetupId(meetupId);
+      setShowStart(true);
     } catch (error) {
       console.error('Error starting meetup:', error);
     }
@@ -74,7 +73,7 @@ const MyMeetupsScreen = ({ onBack }: { onBack: () => void }) => {
     return (
       <StartMeetupScreen
         meetupId={currentMeetupId}
-        onBack={() => {
+        onLeave={() => {
           setShowStart(false);
           setCurrentMeetupId(null);
         }}
