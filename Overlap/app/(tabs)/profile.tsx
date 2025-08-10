@@ -324,6 +324,8 @@ function ProfileScreen() {
     } else if (option === 'Edit Profile') {
       // Navigate to the edit profile screen
       router.push('/profile/editProfile');
+    } else if (option === 'Privacy') {
+      router.push('/profile/privacy');
     }
     setIsSettingsMenuVisible(false);
   };

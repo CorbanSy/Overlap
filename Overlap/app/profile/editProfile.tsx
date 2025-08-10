@@ -22,8 +22,9 @@ export const unstable_settings = { headerShown: false };
 
 const BG = '#0D1117';
 const CARD = '#1B1F24';
+const BORDER = 'rgba(255,255,255,0.08)';
 const INPUT_BG = '#222';
-const ACCENT = '#FFA500'; // matches Create button in your modals
+const ACCENT = '#FFA500';
 
 export default function EditProfile() {
   const [loading, setLoading] = useState(true);
@@ -158,15 +159,17 @@ export default function EditProfile() {
               style={[styles.primaryBtn, saving && { opacity: 0.6 }]}
               onPress={handleSave}
               disabled={saving}
-              activeOpacity={0.85}
+              activeOpacity={0.88}
             >
               {saving ? (
                 <ActivityIndicator color="#000" />
               ) : (
-                <Text style={styles.primaryBtnText}>Save</Text>
+                <Text style={styles.primaryBtnText}>Save Changes</Text>
               )}
             </TouchableOpacity>
           </View>
+
+          <View style={{ height: 20 }} />
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -181,34 +184,25 @@ const styles = StyleSheet.create({
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    paddingHorizontal: 16,
     paddingTop: 8,
     paddingBottom: 12,
     justifyContent: 'space-between',
   },
   iconBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 40, height: 40, borderRadius: 20,
     backgroundColor: 'rgba(255,255,255,0.06)',
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: 'center', justifyContent: 'center',
   },
-  headerTitle: {
-    color: '#FFF',
-    fontSize: 20,
-    fontWeight: '800',
-    letterSpacing: 0.3,
-  },
+  headerTitle: { color: '#FFF', fontSize: 20, fontWeight: '800', letterSpacing: 0.3 },
 
   card: {
     backgroundColor: CARD,
     borderRadius: 12,
     padding: 16,
-    shadowColor: '#000',
-    shadowOpacity: 0.25,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 5,
+    marginTop: 6,
+    borderWidth: 1,
+    borderColor: BORDER,
   },
 
   label: {
@@ -235,14 +229,15 @@ const styles = StyleSheet.create({
 
   primaryBtn: {
     backgroundColor: ACCENT,
-    paddingVertical: 12,
-    borderRadius: 8,
+    borderRadius: 10,
+    paddingVertical: 14,
     alignItems: 'center',
     marginTop: 14,
+    shadowColor: '#000',
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 5,
   },
-  primaryBtnText: {
-    color: '#0D1117',
-    fontWeight: 'bold',
-    fontSize: 16,
-  },
+  primaryBtnText: { color: '#0D1117', fontWeight: '800', fontSize: 16 },
 });
