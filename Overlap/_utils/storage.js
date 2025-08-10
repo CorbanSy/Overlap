@@ -34,31 +34,32 @@ export async function checkPreferencesComplete() {
       /users/{uid}/profile/main
    ------------------------------------------------------------------ */
    export async function saveProfileData({ topCategories, name, bio, avatarUrl, email, username }) {
-    // Reassemble the properties into an object called profileData.
-    const profileData = { topCategories, name, bio, avatarUrl, email, username };
-  
     const auth = getAuth();
     const user = auth.currentUser;
     if (!user) throw new Error('No user is signed in');
-  
+
     const profileRef = doc(db, 'users', user.uid, 'profile', 'main');
-    
-    // Filter out properties that are undefined
-    const cleanedData = {};
-    Object.keys(profileData).forEach((key) => {
-      if (profileData[key] !== undefined) {
-        cleanedData[key] = profileData[key];
-      }
-    });
-  
-    // Ensure topCategories is at least an empty array if not provided
-    if (!cleanedData.topCategories) {
-      cleanedData.topCategories = [];
-    }
-    
-    cleanedData.lastUpdated = new Date();
-    
+    const cleanedData: any = { lastUpdated: new Date() };
+    if (topCategories !== undefined) cleanedData.topCategories = topCategories || [];
+    if (name !== undefined) cleanedData.name = name;
+    if (bio !== undefined) cleanedData.bio = bio;
+    if (avatarUrl !== undefined) cleanedData.avatarUrl = avatarUrl;
+    if (email !== undefined) cleanedData.email = email;
+    if (username !== undefined) cleanedData.username = username;
+
     await setDoc(profileRef, cleanedData, { merge: true });
+
+    // 🔎 also maintain a public directory doc
+    const dirRef = doc(db, 'userDirectory', user.uid);
+    await setDoc(dirRef, {
+      emailLower: (email || user.email || '').toLowerCase(),
+      displayName: name || username || user.displayName || '',
+      avatarUrl: avatarUrl || '',
+      usernamePublic: username || '',
+      bioPublic: (bio || '').slice(0, 500),         // optional trimming
+      topCategoriesPublic: Array.isArray(topCategories) ? topCategories : [],
+      updatedAt: new Date(),
+    }, { merge: true });
   }
   
 
@@ -76,17 +77,53 @@ export async function getProfileData() {
   }
 }
 
+export async function ensureDirectoryForCurrentUser() {
+  const auth = getAuth();
+  const user = auth.currentUser;
+  if (!user) return;
+
+  const dirRef = doc(db, 'userDirectory', user.uid);
+  const dirSnap = await getDoc(dirRef);
+  if (dirSnap.exists()) return;
+
+  // Build from whatever we can get without violating rules
+  // Prefer profile.main if it exists (you can read your own /users/*)
+  let displayName = user.displayName || '';
+  let avatarUrl = '';
+  try {
+    const profileRef = doc(db, 'users', user.uid, 'profile', 'main');
+    const profSnap = await getDoc(profileRef);
+    if (profSnap.exists()) {
+      const d = profSnap.data();
+      displayName = d.name || d.username || displayName || '';
+      avatarUrl = d.avatarUrl || '';
+    }
+  } catch (e) {
+    // ignore — rules allow you to read your own; just being defensive
+  }
+
+  await setDoc(dirRef, {
+    emailLower: (user.email || '').trim().toLowerCase(),
+    displayName,
+    avatarUrl,
+    updatedAt: new Date(),
+  }, { merge: true });
+}
+
 /* ------------------------------------------------------------------
    3) Firestore: Likes Subcollection
       /users/{uid}/likes/{placeId}
    ------------------------------------------------------------------ */
-async function toUrlsFromPlace(place) {
-  if (!Array.isArray(place.photos)) return [];
-  // place.photos can be ["places/...jpg"] or [{photoUri:"..."}]
-  const paths = typeof place.photos[0] === 'string'
-    ? place.photos
-    : place.photos.map(p => p.photoUri).filter(Boolean);
-  return Promise.all(paths.map(p => getDownloadURL(ref(storage, p))));
+async function toUrlArray(photos) {
+  if (!Array.isArray(photos) || photos.length === 0) return [];
+  const paths = typeof photos[0] === 'string'
+    ? photos
+    : photos.map(p => p?.photoUri).filter(Boolean);
+  // Optional: resilient version
+  const results = await Promise.allSettled(paths.map(p => getDownloadURL(ref(storage, p))));
+  return results
+    .filter(r => r.status === 'fulfilled')
+    .map(r => r.value);
 }
 
 export async function likePlace(place) {
@@ -97,23 +134,19 @@ export async function likePlace(place) {
   const likeDocRef = doc(db, 'users', user.uid, 'likes', place.id);
 
   let photoUrls = [];
-  try {
-    photoUrls = await toUrlsFromPlace(place);
-  } catch (e) {
-    console.warn('Failed resolving photo URLs:', e);
-  }
+  try { photoUrls = await toUrlArray(place.photos || []); }
+  catch (e) { console.warn('Failed resolving photo URLs:', e); }
 
   await setDoc(likeDocRef, {
     name: place.name,
     rating: place.rating || 0,
     userRatingsTotal: place.userRatingsTotal || 0,
-    // keep both for safety
     photoPaths: Array.isArray(place.photos)
       ? (typeof place.photos[0] === 'string'
           ? place.photos
-          : place.photos.map(p => p.photoUri).filter(Boolean))
+          : place.photos.map(p => p?.photoUri).filter(Boolean))
       : [],
-    photoUrls,                // ✅ what ActivityCard prefers
+    photoUrls,
     types: place.types || [],
     formatted_address: place.formatted_address || '',
     phoneNumber: place.phoneNumber || '',
@@ -165,6 +198,33 @@ export async function storeReviewsForPlace(placeId, reviews) {
   }
 }
 
+// Make sure any incoming "place" becomes a clean activity snapshot
+async function normalizeActivity(place) {
+  // Prefer already-resolved URLs if present
+  let photoUrls = Array.isArray(place.photoUrls) ? place.photoUrls : [];
+  if (!photoUrls.length) {
+    try {
+      photoUrls = await toUrlArray(place.photos || []);
+    } catch (e) {
+      console.warn('normalizeActivity: failed resolving photo URLs', e);
+      photoUrls = [];
+    }
+  }
+  const photoPaths = Array.isArray(place.photos)
+    ? (typeof place.photos[0] === 'string'
+        ? place.photos
+        : place.photos.map(p => p?.photoUri).filter(Boolean))
+    : [];
+
+  return {
+    id: place.id,
+    name: place.name || '',
+    rating: place.rating || 0,
+    types: place.types || [],
+    photoUrls,     // ✅ what UI uses
+    photoPaths,    // optional reference
+  };
+}
 /* ------------------------------------------------------------------
    New: Firestore helper to add a place to a user's collection
       /users/{uid}/collections/{collectionId}
@@ -173,15 +233,21 @@ export async function storeReviewsForPlace(placeId, reviews) {
     const auth = getAuth();
     const user = auth.currentUser;
     if (!user) throw new Error('No user is signed in');
-  
+
     const colDocRef = doc(db, 'users', user.uid, 'collections', collectionId);
     const snap = await getDoc(colDocRef);
-    let activities: any[] = [];
-    if (snap.exists()) {
-      activities = snap.data().activities || [];
+    const norm = await normalizeActivity(place);
+
+    if (!snap.exists()) {
+      await setDoc(colDocRef, { activities: [norm] }, { merge: true });
+      return;
     }
-    activities.push(place);
-    await updateDoc(colDocRef, { activities });
+
+    const activities = snap.data().activities || [];
+    if (!activities.some(a => a.id === norm.id)) {
+      activities.push(norm);
+      await updateDoc(colDocRef, { activities });
+    }
   }
   
 /* ------------------------------------------------------------------
@@ -278,41 +344,32 @@ export async function getUserMeetups() {
  *   sees who is requesting them.
  */
 export async function sendFriendRequest(targetUserId) {
-  const auth = getAuth();
-  const user = auth.currentUser;
-  if (!user) throw new Error("No user is signed in");
+    const auth = getAuth();
+    const user = auth.currentUser;
+    if (!user) throw new Error("No user is signed in");
 
-  // Fetch the sender's (current user's) profile to get avatar
-  const fromProfileRef = doc(db, 'users', user.uid, 'profile', 'main');
-  const fromSnap = await getDoc(fromProfileRef);
+    // sender info
+    const fromProfileRef = doc(db, 'users', user.uid, 'profile', 'main');
+    const fromSnap = await getDoc(fromProfileRef);
+    const fromEmail = user.email || '';
+    const fromAvatarUrl = fromSnap.exists() ? (fromSnap.data().avatarUrl || '') : '';
 
-  let fromEmail = user.email || '';
-  let fromAvatarUrl = '';
-  if (fromSnap.exists()) {
-    const fromData = fromSnap.data();
-    fromAvatarUrl = fromData.avatarUrl || '';
+    // ✅ get target's public directory info
+    const dirSnap = await getDoc(doc(db, 'userDirectory', targetUserId));
+    const toEmail = dirSnap.exists() ? (dirSnap.data().emailLower || '') : '';
+    const toDisplayName = dirSnap.exists() ? (dirSnap.data().displayName || '') : '';
+
+    await addDoc(collection(db, 'friendRequests'), {
+      from: user.uid,
+      fromEmail,
+      to: targetUserId,
+      toEmail,              // <— now set
+      toDisplayName,        // optional
+      profilePicUrl: fromAvatarUrl,
+      status: 'pending',
+      timestamp: new Date(),
+    });
   }
-
-  // Fetch target user's email (optional, if you want to store it)
-  const targetProfileRef = doc(db, 'users', targetUserId, 'profile', 'main');
-  const targetSnap = await getDoc(targetProfileRef);
-  let targetEmail = '';
-  if (targetSnap.exists()) {
-    const targetData = targetSnap.data();
-    targetEmail = targetData.email || '';
-  }
-
-  // Add friend request doc with the **sender's** avatar
-  await addDoc(collection(db, 'friendRequests'), {
-    from: user.uid,
-    fromEmail,
-    to: targetUserId,
-    toEmail: targetEmail,
-    profilePicUrl: targetAvatarUrl, // store the SENDER's avatar here
-    status: 'pending',
-    timestamp: new Date(),
-  });
-}
 
 /**
  * Accept a friend request.
@@ -322,35 +379,25 @@ export async function acceptFriendRequest(requestId, fromUserId) {
   const user = auth.currentUser;
   if (!user) throw new Error("No user is signed in");
 
-  // Update the friend request status to 'accepted'
-  const requestRef = doc(db, "friendRequests", requestId);
-  await updateDoc(requestRef, { status: "accepted" });
+  // mark accepted
+  await updateDoc(doc(db, "friendRequests", requestId), { status: "accepted" });
 
-  // Get current user's details
+  // current user details (you can also include your own directory info if you want)
   const currentUserDetails = {
     uid: user.uid,
-    email: user.email,
+    email: user.email || '',
     username: user.displayName || '',
   };
 
-  // Fetch friend's top-level user doc (if needed)
-  const friendDocRef = doc(db, "users", fromUserId);
-  const friendSnap = await getDoc(friendDocRef);
-  let friendDetails = { uid: fromUserId };
-  if (friendSnap.exists()) {
-    friendDetails = friendSnap.data();
-  }
+  // ✅ read friend’s public directory entry instead of /users/*
+  const dirSnap = await getDoc(doc(db, "userDirectory", fromUserId));
+  const friendPublic = dirSnap.exists() ? dirSnap.data() : {};
+  const friendDetails = {
+    uid: fromUserId,
+    avatarUrl: friendPublic.avatarUrl || '',
+    name: friendPublic.displayName || '',
+  };
 
-  // Also fetch the friend's profile data (including avatarUrl)
-  const friendProfileRef = doc(db, "users", fromUserId, "profile", "main");
-  const friendProfileSnap = await getDoc(friendProfileRef);
-  if (friendProfileSnap.exists()) {
-    const profileData = friendProfileSnap.data();
-    // Merge the profile data (like avatarUrl) into friendDetails
-    friendDetails = { ...friendDetails, ...profileData };
-  }
-
-  // Create a new friendship document
   await addDoc(collection(db, "friendships"), {
     users: [user.uid, fromUserId],
     userDetails: {

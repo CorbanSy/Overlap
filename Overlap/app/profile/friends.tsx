@@ -20,7 +20,7 @@ import {
   doc
 } from 'firebase/firestore';
 import { useRouter } from 'expo-router';
-import { sendFriendRequest, removeFriend, acceptFriendRequest } from '../../_utils/storage';
+import { sendFriendRequest, removeFriend, acceptFriendRequest, ensureDirectoryForCurrentUser } from '../../_utils/storage';
 import FriendCard from '../../components/FriendCard';
 
 export const options = {
@@ -37,29 +37,35 @@ function FriendsScreen() {
   const router = useRouter();
 
   // Search for a user by email and send a friend request
-  const handleSearchAndSendFriendRequest = async () => {
+    const handleSearchAndSendFriendRequest = async () => {
     if (!searchEmail.trim()) {
       Alert.alert('Please enter an email address.');
       return;
     }
     try {
       const currentUser = auth.currentUser;
-      const usersRef = collection(firestore, 'users');
-      const q = query(usersRef, where('email', '==', searchEmail.trim().toLowerCase()));
-      const querySnapshot = await getDocs(q);
-      if (querySnapshot.empty) {
+      const needle = searchEmail
+        .trim()
+        .toLowerCase()
+        .replace(/^'+|'+$/g, ''); // strip accidental quotes
+
+      // ✅ Search the public directory (allowed by rules)
+      const directoryRef = collection(firestore, 'userDirectory');
+      const qDir = query(directoryRef, where('emailLower', '==', needle));
+      const snap = await getDocs(qDir);
+
+      if (snap.empty) {
         Alert.alert('No user found with that email.');
         return;
       }
-      const userDoc = querySnapshot.docs[0];
-      const targetUserId = userDoc.id;
-  
-      // Prevent user from adding themselves
+
+      const targetUserId = snap.docs[0].id;
+
       if (targetUserId === currentUser.uid) {
         Alert.alert('You cannot add yourself as a friend.');
         return;
       }
-  
+
       await sendFriendRequest(targetUserId);
       Alert.alert('Friend request sent successfully!');
       setSearchEmail('');
@@ -93,22 +99,28 @@ function FriendsScreen() {
   const fetchSentRequests = async () => {
     const currentUser = auth.currentUser;
     if (!currentUser) return;
-    try {
-      const requestsRef = collection(firestore, 'friendRequests');
-      const q = query(
-        requestsRef,
-        where('from', '==', currentUser.uid),
-        where('status', '==', 'pending')
-      );
-      const querySnapshot = await getDocs(q);
-      const requestsList = querySnapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-      setSentRequests(requestsList);
-    } catch (error) {
-      console.error("Error fetching sent friend requests:", error);
-    }
+
+    const requestsRef = collection(firestore, 'friendRequests');
+    const q = query(requestsRef,
+      where('from', '==', currentUser.uid),
+      where('status', '==', 'pending')
+    );
+    const qs = await getDocs(q);
+    const raw = qs.docs.map(d => ({ id: d.id, ...d.data() }));
+
+    // enrich with directory
+    const enriched = await Promise.all(raw.map(async (r) => {
+      if (!r.toEmail) {
+        const ds = await getDoc(doc(firestore, 'userDirectory', r.to));
+        if (ds.exists()) {
+          const d = ds.data();
+          return { ...r, toEmail: d.emailLower || '', toDisplayName: d.displayName || '' };
+        }
+      }
+      return r;
+    }));
+
+    setSentRequests(enriched);
   };
 
   // Fetch incoming friend requests (received requests)
@@ -137,6 +149,7 @@ function FriendsScreen() {
     fetchFriendships();
     fetchSentRequests();
     fetchReceivedRequests();
+    ensureDirectoryForCurrentUser().catch(console.warn);
   }, []);
 
   // Accept a friend request using the storage function
@@ -227,7 +240,7 @@ function FriendsScreen() {
     <View style={styles.requestItem}>
       <FriendCard
         item={{
-          name: item.toEmail || item.to,
+          name: item.toEmail || item.toDisplayName || item.to, // email → display → uid
           profilePicUrl: item.profilePicUrl
         }}
       />

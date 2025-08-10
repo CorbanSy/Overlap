@@ -28,10 +28,18 @@ const FriendProfile = () => {
     const fetchProfile = async () => {
       try {
         // Fetch the friend's profile from 'users/{uid}/profile/main'
-        const profileRef = doc(firestore, 'users', uid, 'profile', 'main');
+        const profileRef = doc(firestore, 'userDirectory', String(uid));
         const snap = await getDoc(profileRef);
         if (snap.exists()) {
-          setProfileData(snap.data());
+          const d = snap.data();
+          setProfileData({
+            name: d.displayName || d.emailLower || '',
+            username: d.usernamePublic || '',
+            email: d.emailLower || '',
+            bio: d.bioPublic || '',
+            avatarUrl: d.avatarUrl || '',
+            topCategories: d.topCategoriesPublic || [],
+          });
         } else {
           console.error("No profile data found for this user.");
         }
