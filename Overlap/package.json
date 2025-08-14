@@ -57,7 +57,8 @@
     "react-native-svg-transformer": "^1.5.1",
     "react-native-tab-view": "^4.1.2",
     "react-native-web": "^0.20.0",
-    "react-native-webview": "13.13.5"
+    "react-native-webview": "13.13.5",
+    "expo-linear-gradient": "~14.1.5"
   },
   "devDependencies": {
     "@babel/core": "^7.28.0",

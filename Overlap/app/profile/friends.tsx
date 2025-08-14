@@ -51,10 +51,35 @@ function FriendsScreen() {
   const [searchEmail, setSearchEmail] = useState('');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-
+  const [currentUid, setCurrentUid] = useState<string | null>(null);
+  
   const auth = getAuth();
   const firestore = getFirestore();
   const router = useRouter();
+
+    // ✅ Set UID when component mounts or auth changes
+  useEffect(() => {
+    const u = auth.currentUser?.uid || null;
+    setCurrentUid(u);
+  }, [auth.currentUser]);
+
+  // ✅ Helper to find the "other" user in a friendship
+  function resolveFriendUid(item: any, me: string) {
+    // Prefer userDetails keys (most reliable)
+    if (item?.userDetails && typeof item.userDetails === 'object') {
+      const keys = Object.keys(item.userDetails);
+      const other = keys.find(k => k !== me);
+      if (other) return other;
+    }
+    // Fallback to users array
+    if (Array.isArray(item?.users)) {
+      const other = item.users.find((u: string) => u !== me);
+      if (other) return other;
+    }
+    // Nothing reliable found
+    return '';
+  }
+
 
   const fetchFriendships = useCallback(async () => {
     const currentUser = auth.currentUser;
@@ -216,36 +241,53 @@ function FriendsScreen() {
 
   // UI renderers
   const renderFriend = ({ item }: any) => {
-    const currentUser = auth.currentUser;
-    const friendUid = item.users.find((uid: string) => uid !== currentUser?.uid);
-    const friendData = (item.userDetails && item.userDetails[friendUid]) || {};
+  if (!currentUid) return null;
+
+  const friendUid = resolveFriendUid(item, currentUid);
+  console.log('[Friends] row', {
+    currentUid,
+    users: item?.users,
+    userDetailsKeys: item?.userDetails ? Object.keys(item.userDetails) : null,
+    resolvedFriendUid: friendUid,
+  });
+
+  if (!friendUid) {
+    // Render a disabled row so we see it's bad data
     return (
       <View style={styles.cardRow}>
-        <TouchableOpacity
-          onPress={() =>
-            router.push({ pathname: '/profile/friendProfile', params: { uid: friendUid } })
-          }
-          style={{ flex: 1 }}
-          activeOpacity={0.85}
-        >
-          <FriendCard
-            item={{
-              name: friendData.name || friendUid,
-              profilePicUrl: friendData.avatarUrl || friendData.profilePicUrl,
-            }}
-          />
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.smallBtn, { backgroundColor: '#F44336' }]}
-          onPress={() => handleRemoveFriend(friendUid)}
-          activeOpacity={0.85}
-        >
-          <Text style={styles.smallBtnText}>Remove</Text>
-        </TouchableOpacity>
+        <FriendCard item={{ name: 'Unknown friend (bad doc)', profilePicUrl: undefined }} />
+        <Text style={{ color: '#f88' }}>Fix friendship doc</Text>
       </View>
     );
-  };
+  }
+
+  const friendData = (item.userDetails && item.userDetails[friendUid]) || {};
+
+  return (
+    <View style={styles.cardRow}>
+      <TouchableOpacity
+        onPress={() => router.push({ pathname: '/profile/friendProfile', params: { uid: friendUid } })}
+        style={{ flex: 1 }}
+        activeOpacity={0.85}
+      >
+        <FriendCard
+          item={{
+            name: friendData.name || friendUid,
+            profilePicUrl: friendData.avatarUrl || friendData.profilePicUrl,
+          }}
+        />
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        style={[styles.smallBtn, { backgroundColor: '#F44336' }]}
+        onPress={() => handleRemoveFriend(friendUid)}
+        activeOpacity={0.85}
+      >
+        <Text style={styles.smallBtnText}>Remove</Text>
+      </TouchableOpacity>
+    </View>
+  );
+};
 
   const renderSentRequest = ({ item }: any) => (
     <View style={styles.cardRow}>

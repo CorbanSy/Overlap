@@ -1,14 +1,7 @@
-// friendProfile.tsx (view-only)
 import React, { useEffect, useState } from 'react';
 import {
-  SafeAreaView,
-  View,
-  Text,
-  Image,
-  StyleSheet,
-  ActivityIndicator,
-  ScrollView,
-  TouchableOpacity,
+  SafeAreaView, View, Text, Image, StyleSheet,
+  ActivityIndicator, ScrollView, TouchableOpacity,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { getFirestore, doc, getDoc } from 'firebase/firestore';
@@ -23,10 +16,17 @@ type FriendPublic = {
   bioPublic?: string;
   avatarUrl?: string;
   topCategoriesPublic?: string[];
+  isPublicProfile?: boolean;
+  shareEmailWithFriends?: boolean;
 };
 
 const FriendProfile = () => {
-  const { uid } = useLocalSearchParams<{ uid: string }>();
+  // NOTE: allow string | string[] because Expo Router params can be arrays
+  const params = useLocalSearchParams<{ uid?: string | string[] }>();
+  const targetUid =
+    Array.isArray(params.uid) ? params.uid[0] :
+    typeof params.uid === 'string' ? params.uid : '';
+
   const router = useRouter();
   const [profile, setProfile] = useState<FriendPublic | null>(null);
   const [loading, setLoading] = useState(true);
@@ -34,20 +34,47 @@ const FriendProfile = () => {
 
   useEffect(() => {
     let mounted = true;
+
     const run = async () => {
+      console.log('[FriendProfile] raw params.uid =', params.uid);
+      console.log('[FriendProfile] normalized targetUid =', targetUid);
+
+      if (!targetUid) {
+        console.warn('[FriendProfile] No uid provided in route params.');
+        if (mounted) setProfile(null);
+        setLoading(false);
+        return;
+      }
+
       try {
-        const snap = await getDoc(doc(firestore, 'userDirectory', String(uid)));
-        if (mounted) setProfile(snap.exists() ? (snap.data() as FriendPublic) : null);
-      } catch (e) {
-        console.error('Error fetching friend directory:', e);
+        const ref = doc(firestore, 'userDirectory', targetUid);
+        console.log('[FriendProfile] fetching doc path:', ref.path);
+
+        const snap = await getDoc(ref);
+
+        console.log('[FriendProfile] snap.exists =', snap.exists());
+        if (snap.exists()) {
+          const data = snap.data() as FriendPublic;
+          console.log('[FriendProfile] doc.id =', snap.id);
+          console.log('[FriendProfile] keys =', Object.keys(data));
+          console.log('[FriendProfile] isPublicProfile =', data.isPublicProfile, 'shareEmailWithFriends =', data.shareEmailWithFriends);
+          if (mounted) setProfile(data);
+        } else {
+          console.warn('[FriendProfile] Directory doc not found for uid:', targetUid);
+          if (mounted) setProfile(null);
+        }
+      } catch (e: any) {
+        // Surface Firestore error codes, e.g. PERMISSION_DENIED
+        console.error('[FriendProfile] Error fetching friend directory:', e?.code || e?.name, e?.message || e);
         if (mounted) setProfile(null);
       } finally {
         if (mounted) setLoading(false);
       }
     };
-    if (uid) run();
+
+    run();
     return () => { mounted = false; };
-  }, [uid]);
+  }, [targetUid]);
 
   if (loading) {
     return (
@@ -75,20 +102,20 @@ const FriendProfile = () => {
     profile.usernamePublic ||
     profile.emailLower ||
     'Friend';
+  const isPublic = profile.isPublicProfile !== false;
+  const canShowEmail = profile.shareEmailWithFriends === true;
 
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.content}>
-        {/* Top bar */}
         <View style={styles.topBar}>
           <TouchableOpacity onPress={() => router.back()} style={styles.iconBtn}>
             <Ionicons name="arrow-back" size={22} color="#FFF" />
           </TouchableOpacity>
           <Text style={styles.topTitle}>Profile</Text>
-          <View style={{ width: 44 }} />{/* spacer to balance back button */}
+          <View style={{ width: 44 }} />
         </View>
 
-        {/* Header card (similar vibe to your FullProfileInfo) */}
         <View style={styles.headerCard}>
           <Image
             source={
@@ -99,20 +126,15 @@ const FriendProfile = () => {
             style={styles.avatar}
           />
           <Text style={styles.name}>{name}</Text>
-          {!!profile.usernamePublic && (
-            <Text style={styles.username}>@{profile.usernamePublic}</Text>
-          )}
-          {!!profile.emailLower && (
+          {!!profile.usernamePublic && <Text style={styles.username}>@{profile.usernamePublic}</Text>}
+          {isPublic && canShowEmail && !!profile.emailLower && (
             <Text style={styles.email}>{profile.emailLower}</Text>
           )}
-          {!!profile.bioPublic && (
-            <Text numberOfLines={4} style={styles.bio}>
-              {profile.bioPublic}
-            </Text>
+          {isPublic && !!profile.bioPublic && (
+            <Text numberOfLines={4} style={styles.bio}>{profile.bioPublic}</Text>
           )}
         </View>
 
-        {/* Interests (chips) */}
         {(profile.topCategoriesPublic?.length ?? 0) > 0 && (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Interests</Text>
@@ -126,16 +148,26 @@ const FriendProfile = () => {
           </View>
         )}
 
-        {/* Read-only note */}
-        <View style={[styles.section, { marginTop: 8 }]}>
-          <View style={styles.infoBanner}>
-            <Ionicons name="lock-closed-outline" size={18} color="#F5A623" />
-            <Text style={styles.infoBannerText}>
-              This is a view-only profile. Likes and collections are private unless your
-              friend makes them public.
-            </Text>
+        {!isPublic ? (
+          <View style={[styles.section, { marginTop: 8 }]}>
+            <View style={styles.infoBanner}>
+              <Ionicons name="lock-closed-outline" size={18} color="#F5A623" />
+              <Text style={styles.infoBannerText}>
+                This profile is private. You can see limited info only.
+              </Text>
+            </View>
           </View>
-        </View>
+        ) : (
+          <View style={[styles.section, { marginTop: 8 }]}>
+            <View style={styles.infoBanner}>
+              <Ionicons name="information-circle-outline" size={18} color="#F5A623" />
+              <Text style={styles.infoBannerText}>
+                This is a view-only profile. Likes and collections are private unless your friend
+                makes them public.
+              </Text>
+            </View>
+          </View>
+        )}
       </ScrollView>
     </SafeAreaView>
   );

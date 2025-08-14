@@ -379,17 +379,21 @@ export async function acceptFriendRequest(requestId, fromUserId) {
   const user = auth.currentUser;
   if (!user) throw new Error("No user is signed in");
 
-  // mark accepted
+  // 1) mark accepted (allowed: only 'to' can update)
   await updateDoc(doc(db, "friendRequests", requestId), { status: "accepted" });
 
-  // current user details (you can also include your own directory info if you want)
+  // 2) create MY friend edge only (allowed by rules)
+  await setDoc(doc(db, 'users', user.uid, 'friends', fromUserId), {
+    createdAt: new Date(),
+  });
+
+  // 3) build friendship doc for both (allowed by your friendships rules)
   const currentUserDetails = {
     uid: user.uid,
     email: user.email || '',
     username: user.displayName || '',
   };
 
-  // ✅ read friend’s public directory entry instead of /users/*
   const dirSnap = await getDoc(doc(db, "userDirectory", fromUserId));
   const friendPublic = dirSnap.exists() ? dirSnap.data() : {};
   const friendDetails = {
@@ -584,7 +588,8 @@ export async function removeFriend(friendUid) {
   const auth = getAuth();
   const user = auth.currentUser;
   if (!user) throw new Error("No user is signed in");
-
+  await deleteDoc(doc(db, 'users', user.uid, 'friends', friendUid));
+await deleteDoc(doc(db, 'users', friendUid, 'friends', user.uid));
   // Find all friendship docs that contain the current user
   const friendshipsRef = collection(db, "friendships");
   const q = query(friendshipsRef, where("users", "array-contains", user.uid));
@@ -741,4 +746,53 @@ export async function fetchPlacePhotos(place) {
       getDownloadURL(ref(storage, path))
     )
   )
+}
+
+export async function getPrivacySettings() {
+  const auth = getAuth();
+  const user = auth.currentUser;
+  if (!user) throw new Error('No user is signed in');
+
+  const refDoc = doc(db, 'users', user.uid, 'settings', 'privacy');
+  const snap = await getDoc(refDoc);
+  if (snap.exists()) return snap.data();
+
+  // first-time defaults
+  const defaults = {
+    showProfilePublic: true,
+    showActivityToFriends: true,
+    allowFriendRequests: true,
+    shareEmailWithFriends: false,
+    blockedUsers: [],
+    updatedAt: new Date(),
+  };
+  await setDoc(refDoc, defaults, { merge: true });
+
+  // mirror flags to userDirectory so other screens can read them quickly
+  await setDoc(doc(db, 'userDirectory', user.uid), {
+    isPublicProfile: defaults.showProfilePublic,
+    allowFriendRequests: defaults.allowFriendRequests,
+    shareEmailWithFriends: defaults.shareEmailWithFriends,
+    updatedAt: new Date(),
+  }, { merge: true });
+
+  return defaults;
+}
+
+export async function setPrivacySettings(patch) {
+  const auth = getAuth();
+  const user = auth.currentUser;
+  if (!user) throw new Error('No user is signed in');
+
+  const refDoc = doc(db, 'users', user.uid, 'settings', 'privacy');
+  await setDoc(refDoc, { ...patch, updatedAt: new Date() }, { merge: true });
+
+  // keep public directory in sync with the main flags (so friendProfile can respect them)
+  const dirPatch: any = {};
+  if (patch.showProfilePublic !== undefined) dirPatch.isPublicProfile = !!patch.showProfilePublic;
+  if (patch.allowFriendRequests !== undefined) dirPatch.allowFriendRequests = !!patch.allowFriendRequests;
+  if (patch.shareEmailWithFriends !== undefined) dirPatch.shareEmailWithFriends = !!patch.shareEmailWithFriends;
+  if (Object.keys(dirPatch).length) {
+    await setDoc(doc(db, 'userDirectory', user.uid), { ...dirPatch, updatedAt: new Date() }, { merge: true });
+  }
 }
