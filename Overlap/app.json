@@ -4,7 +4,6 @@
     "slug": "overlap",
     "scheme": "overlap",   
     "userInterfaceStyle": "automatic", 
-    "sdkVersion": "53.0.0",
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
