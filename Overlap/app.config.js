@@ -25,10 +25,6 @@ export default {
           backgroundColor: "#ffffff",
         },
       ],
-      [
-        "expo-build-properties",
-        { android: { kotlinVersion: "1.9.24" } }   // <<— important
-      ],
     ],
   },
 };
