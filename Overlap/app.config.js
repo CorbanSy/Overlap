@@ -11,6 +11,8 @@ export default {
         foregroundImage: "./assets/images/adaptive-icon.png",
         backgroundColor: "#ffffff",
       },
+      // (optional) but safe: request minSdk 24 which RN 0.76 expects
+      // minSdkVersion: 24,
     },
     ios: { supportsTablet: true },
     plugins: [
@@ -25,6 +27,8 @@ export default {
           backgroundColor: "#ffffff",
         },
       ],
+      // >>> ADD THIS <<<
+      ["expo-build-properties", { android: { kotlinVersion: "2.0.20" } }],
     ],
   },
 };
