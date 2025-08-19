@@ -10,13 +10,91 @@ import { Ionicons } from '@expo/vector-icons';
 import 'react-native-reanimated';
 
 const BG = '#161622';
-const ORB_COUNT = 18;     // tweak to taste
-const EDGE_PAD  = 16;     // keep away from the edges
+const ORB_COUNT = 18;
+const EDGE_PAD  = 16;
+const CENTER_BASE = 80; // base px for center ball (we scale this)
+
+// ----- Poisson-disc scatter for natural, even placement -----
+function samplePoisson(width, height, targetCount, edgePad) {
+  const W = Math.max(0, width  - edgePad * 2);
+  const H = Math.max(0, height - edgePad * 2);
+  const area = W * H;
+  const minDist = Math.max(36, 0.75 * Math.sqrt(area / Math.max(1, targetCount)));
+  const k = 25;
+  const cellSize = minDist / Math.SQRT2;
+  const gx = Math.max(1, Math.ceil(W / cellSize));
+  const gy = Math.max(1, Math.ceil(H / cellSize));
+  const grid = Array(gx * gy).fill(-1);
+
+  const pts = [];
+  const active = [];
+
+  const randInBounds = () => ({ x: edgePad + Math.random() * W, y: edgePad + Math.random() * H });
+  const gi = (x, y) => {
+    const cx = Math.floor((x - edgePad) / cellSize);
+    const cy = Math.floor((y - edgePad) / cellSize);
+    return cy * gx + cx;
+  };
+  const valid = (x, y) => {
+    if (x < edgePad || x > width - edgePad || y < edgePad || y > height - edgePad) return false;
+    const cx = Math.floor((x - edgePad) / cellSize);
+    const cy = Math.floor((y - edgePad) / cellSize);
+    for (let yy = Math.max(0, cy - 2); yy <= Math.min(gy - 1, cy + 2); yy++) {
+      for (let xx = Math.max(0, cx - 2); xx <= Math.min(gx - 1, cx + 2); xx++) {
+        const idx = grid[yy * gx + xx];
+        if (idx !== -1) {
+          const p = pts[idx];
+          const dx = p.x - x, dy = p.y - y;
+          if (dx * dx + dy * dy < minDist * minDist) return false;
+        }
+      }
+    }
+    return true;
+  };
+
+  const p0 = randInBounds();
+  pts.push(p0);
+  active.push(0);
+  grid[gi(p0.x, p0.y)] = 0;
+
+  while (active.length && pts.length < targetCount) {
+    const aIndex = active[(Math.random() * active.length) | 0];
+    const a = pts[aIndex];
+    let found = false;
+
+    for (let i = 0; i < k; i++) {
+      const ang = Math.random() * Math.PI * 2;
+      const rad = minDist * (1 + Math.random()); // r..2r
+      const x = a.x + Math.cos(ang) * rad;
+      const y = a.y + Math.sin(ang) * rad;
+      if (!valid(x, y)) continue;
+      pts.push({ x, y });
+      const idx = pts.length - 1;
+      grid[gi(x, y)] = idx;
+      active.push(idx);
+      found = true;
+      break;
+    }
+    if (!found) {
+      const last = active.pop();
+      if (aIndex < active.length) active[aIndex] = last;
+    }
+  }
+
+  while (pts.length < targetCount) {
+    const c = randInBounds();
+    const ok = pts.every(p => {
+      const dx = p.x - c.x, dy = p.y - c.y;
+      return dx * dx + dy * dy >= (minDist * 0.75) ** 2;
+    });
+    if (ok) pts.push(c);
+  }
+  return { points: pts, minDist };
+}
 
 export default function App() {
   // Loops (native)
   const floatAnim = useRef(new Animated.Value(0)).current;
-  const glowAnim  = useRef(new Animated.Value(0)).current;
 
   // Ripple (native)
   const rippleScale   = useRef(new Animated.Value(0)).current;
@@ -32,10 +110,15 @@ export default function App() {
   // Orbs
   const [orbs, setOrbs] = useState([]);
 
-  // Colors
+  // Growing center ball
+  const centerScale = useRef(new Animated.Value(0)).current; // 0 → targetScale
+  const [centerPos, setCenterPos] = useState({ left: 0, top: 0 });
+  const [centerStepScales, setCenterStepScales] = useState([]); // step targets per arriving orb
+
+  // Palette
   const palette = useMemo(() => ['#7C4DFF', '#00E5FF', '#61F3F3', '#8E7CFF', '#43E8E1'], []);
 
-  // Loops
+  // Float loop
   useEffect(() => {
     Animated.loop(
       Animated.sequence([
@@ -43,77 +126,66 @@ export default function App() {
         Animated.timing(floatAnim, { toValue: 0, duration: 3000, easing: RNEasing.inOut(RNEasing.sin), useNativeDriver: true }),
       ])
     ).start();
+  }, [floatAnim]);
 
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(glowAnim, { toValue: 1, duration: 1800, easing: RNEasing.inOut(RNEasing.quad), useNativeDriver: true }),
-        Animated.timing(glowAnim, { toValue: 0, duration: 1800, easing: RNEasing.inOut(RNEasing.quad), useNativeDriver: true }),
-      ])
-    ).start();
-  }, [floatAnim, glowAnim]);
+  const floatUnit = floatAnim.interpolate({ inputRange: [0, 1], outputRange: [-1, 1] }); // -1..1
 
-  const glowScale   = glowAnim.interpolate({ inputRange: [0, 1], outputRange: [0.95, 1.05] });
-  const glowOpacity = glowAnim.interpolate({ inputRange: [0, 1], outputRange: [0.35, 0.7] });
-  const floatUnit   = floatAnim.interpolate({ inputRange: [0, 1], outputRange: [-1, 1] }); // -1..1
-
-  // Utility
-  const clamp = (n, a, b) => Math.max(a, Math.min(n, b));
-
-  // Jittered-grid placement for even spread
+  // Center ball position
   useEffect(() => {
     if (!stage.w || !stage.h) return;
+    setCenterPos({ left: stage.w / 2 - CENTER_BASE / 2, top: stage.h / 2 - CENTER_BASE / 2 });
+  }, [stage]);
 
-    // choose grid dims close to square, adjusted for aspect ratio
-    const aspect = stage.w / Math.max(1, stage.h);
-    const cols   = Math.max(3, Math.round(Math.sqrt(ORB_COUNT * aspect)));
-    const rows   = Math.max(3, Math.ceil(ORB_COUNT / cols));
+  // Poisson scatter + per-orb drift; then compute center growth targets
+  useEffect(() => {
+    if (!stage.w || !stage.h) return;
+    const { points, minDist } = samplePoisson(stage.w, stage.h, ORB_COUNT, EDGE_PAD);
 
-    const cellW  = (stage.w - EDGE_PAD * 2) / cols;
-    const cellH  = (stage.h - EDGE_PAD * 2) / rows;
-    const cellMin = Math.min(cellW, cellH);
+    const sizeMin = Math.max(36, 0.60 * minDist);
+    const sizeMax = Math.min(160, 1.10 * minDist);
 
-    // sizes scale with cell so they don't clump/overwhelm
-    const sizeMin = cellMin * 0.60;
-    const sizeMax = cellMin * 0.95;
-
-    const created = Array.from({ length: ORB_COUNT }).map((_, i) => {
-      const c = i % cols;
-      const r = Math.floor(i / cols);
-
-      // base cell origin
-      const baseX = EDGE_PAD + c * cellW;
-      const baseY = EDGE_PAD + r * cellH;
-
-      // pick a size that fits this cell
-      const size  = clamp(sizeMin + Math.random() * (sizeMax - sizeMin), 28, 200);
-
-      // jitter within cell, away from hard edges
-      const padX = Math.max(0, (cellW - size) * 0.15);
-      const padY = Math.max(0, (cellH - size) * 0.15);
-      const x0   = baseX + padX + Math.random() * Math.max(2, cellW - size - padX * 2);
-      const y0   = baseY + padY + Math.random() * Math.max(2, cellH - size - padY * 2);
-
-      // gentle drift per orb, proportional to cell size
-      const ampX = (cellW * (0.08 + Math.random() * 0.08)) * (Math.random() < 0.5 ? -1 : 1);
-      const ampY = (cellH * (0.08 + Math.random() * 0.08)) * (Math.random() < 0.5 ? -1 : 1);
-
+    const created = points.slice(0, ORB_COUNT).map((p, i) => {
+      const size = sizeMin + Math.random() * (sizeMax - sizeMin);
+      const ampX = (minDist * (0.10 + Math.random() * 0.06)) * (Math.random() < 0.5 ? -1 : 1);
+      const ampY = (minDist * (0.10 + Math.random() * 0.06)) * (Math.random() < 0.5 ? -1 : 1);
       return {
         key: `orb-${i}`,
         color: palette[i % palette.length],
         size,
-        depth: 0.22 + Math.random() * 0.18, // opacity for depth
-        ampX,
-        ampY,
-        pos: { x: new Animated.Value(x0), y: new Animated.Value(y0) }, // native-friendly
+        depth: 0.22 + Math.random() * 0.18,
+        ampX, ampY,
+        pos: { x: new Animated.Value(p.x - size / 2), y: new Animated.Value(p.y - size / 2) }, // native
         scale: new Animated.Value(1),
       };
     });
 
     setOrbs(created);
+
+    // ---------- FINAL TARGET + STEP SCALES (no early plateau) ----------
+    const areas = created.map(o => Math.PI * (o.size / 2) ** 2);
+    const totalArea = areas.reduce((a, b) => a + b, 0);
+
+    const maxDiameter = Math.min(stage.w, stage.h) - EDGE_PAD * 2; // fill more of screen
+    const finalUncapped = 2 * Math.sqrt(totalArea / Math.PI);     // equivalent diameter for all orbs
+    const finalDiameter = Math.max(
+      CENTER_BASE * 0.6,
+      Math.min(finalUncapped, maxDiameter)
+    );
+
+    // Build step scales proportional to cumulative area / total area
+    const stepScales = [];
+    let cum = 0;
+    for (let i = 0; i < areas.length; i++) {
+      cum += areas[i];
+      const d = finalDiameter * (cum / totalArea); // grows every merge
+      stepScales.push(d / CENTER_BASE);
+    }
+    setCenterStepScales(stepScales);
+    centerScale.setValue(0.0001); // tiny dot to start
   }, [stage, palette]);
 
   const handleStart = () => {
-    // ripple
+    // Ripple
     rippleScale.stopAnimation(() => rippleScale.setValue(0));
     rippleOpacity.stopAnimation(() => rippleOpacity.setValue(0.4));
     Animated.parallel([
@@ -121,20 +193,18 @@ export default function App() {
       Animated.timing(rippleOpacity, { toValue: 0, duration: 700, easing: RNEasing.out(RNEasing.quad), useNativeDriver: true }),
     ]).start();
 
-    // button micro motion
+    // Button micro
     Animated.sequence([
       Animated.timing(scaleAnim, { toValue: 0.92, duration: 280, easing: RNEasing.out(RNEasing.ease), useNativeDriver: true }),
       Animated.timing(slideAnim, { toValue: -10,  duration: 260, easing: RNEasing.inOut(RNEasing.ease), useNativeDriver: true }),
     ]).start();
 
-    // collapse to center (native)
+    // Collapse orbs to center (native)
     const cx = stage.w / 2;
     const cy = stage.h / 2;
-
-    const animations = orbs.map((o, idx) => {
+    const orbArrivals = orbs.map((o, idx) => {
       const tx = cx - o.size / 2;
       const ty = cy - o.size / 2;
-
       return Animated.parallel([
         Animated.timing(o.pos.x, { toValue: tx, duration: 650, delay: idx * 30, easing: RNEasing.out(RNEasing.cubic), useNativeDriver: true }),
         Animated.timing(o.pos.y, { toValue: ty, duration: 650, delay: idx * 30, easing: RNEasing.out(RNEasing.cubic), useNativeDriver: true }),
@@ -142,12 +212,27 @@ export default function App() {
       ]);
     });
 
-    Animated.stagger(30, animations).start(() => router.push('/sign-in'));
+    // Center ball growth: sequence, proportional to mass merged
+    const growthSeq = [
+      Animated.delay(120), // slight lag so it “absorbs” after first arrivals
+      ...centerStepScales.flatMap((toVal, idx) => ([
+        Animated.timing(centerScale, {
+          toValue: toVal,
+          duration: 240,
+          easing: RNEasing.out(RNEasing.cubic),
+          useNativeDriver: true,
+        }),
+        ...(idx < centerStepScales.length - 1 ? [Animated.delay(30)] : []),
+      ])),
+    ];
+
+    Animated.parallel([
+      Animated.stagger(30, orbArrivals), // orbs fly in
+      Animated.sequence(growthSeq),      // center grows step-by-step
+    ]).start(() => router.push('/sign-in'));
   };
 
-  // centers for glow/ripple
-  const glowLeft   = stage.w ? stage.w / 2 - 180 : 0;
-  const glowTop    = stage.h ? stage.h / 2 - 180 : 0;
+  // Centers for ripple
   const rippleLeft = stage.w ? stage.w / 2 - 140 : 0;
   const rippleTop  = stage.h ? stage.h / 2 - 140 : 0;
 
@@ -160,7 +245,6 @@ export default function App() {
         end={{ x: 1, y: 1 }}
         style={styles.gradientBg}
       >
-        {/* Stage covers entire screen so orbs can fill it */}
         <View
           style={styles.stage}
           onLayout={(e) => {
@@ -168,14 +252,8 @@ export default function App() {
             setStage({ w: width, h: height });
           }}
         >
-          {/* BACKGROUND: Orbs + glow */}
+          {/* BACKGROUND: scattered orbs (no big center glow) */}
           <View style={styles.orbLayer} pointerEvents="none">
-            <Animated.View
-              style={[
-                styles.glow,
-                { left: glowLeft, top: glowTop, opacity: glowOpacity, transform: [{ scale: glowScale }] },
-              ]}
-            />
             {orbs.map((o) => (
               <Animated.View
                 key={o.key}
@@ -196,10 +274,24 @@ export default function App() {
                 ]}
               />
             ))}
+
+            {/* center ripple */}
             <Animated.View
               style={[
                 styles.ripple,
                 { left: rippleLeft, top: rippleTop, opacity: rippleOpacity, transform: [{ scale: rippleScale }] },
+              ]}
+            />
+
+            {/* growing center ball */}
+            <Animated.View
+              style={[
+                styles.centerBall,
+                {
+                  left: centerPos.left,
+                  top: centerPos.top,
+                  transform: [{ scale: centerScale }],
+                },
               ]}
             />
           </View>
@@ -250,14 +342,6 @@ const styles = StyleSheet.create({
 
   hero: { flex: 1, alignItems: 'center', justifyContent: 'center' },
 
-  glow: {
-    position: 'absolute',
-    width: 360,
-    height: 360,
-    borderRadius: 360,
-    backgroundColor: '#61F3F3',
-  },
-
   orb: { position: 'absolute' },
 
   ripple: {
@@ -266,6 +350,16 @@ const styles = StyleSheet.create({
     height: 280,
     borderRadius: 280,
     backgroundColor: '#61F3F3',
+  },
+
+  // center ball (we scale this; base size constant)
+  centerBall: {
+    position: 'absolute',
+    width: CENTER_BASE,
+    height: CENTER_BASE,
+    borderRadius: CENTER_BASE / 2,
+    backgroundColor: '#57D2F6',
+    opacity: 0.65,
   },
 
   glassCard: {
