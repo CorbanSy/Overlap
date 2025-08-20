@@ -1,4 +1,4 @@
-// app/index.jsx
+// app/index.jsx - COMPLETE CORRECTED VERSION
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { View, Animated, Easing as RNEasing, StyleSheet, TouchableOpacity, Text } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
@@ -136,7 +136,7 @@ export default function App() {
     setCenterPos({ left: stage.w / 2 - CENTER_BASE / 2, top: stage.h / 2 - CENTER_BASE / 2 });
   }, [stage]);
 
-  // Poisson scatter + per-orb drift; then compute center growth targets
+  // Enhanced orb creation with dynamic movement patterns
   useEffect(() => {
     if (!stage.w || !stage.h) return;
     const { points, minDist } = samplePoisson(stage.w, stage.h, ORB_COUNT, EDGE_PAD);
@@ -146,42 +146,81 @@ export default function App() {
 
     const created = points.slice(0, ORB_COUNT).map((p, i) => {
       const size = sizeMin + Math.random() * (sizeMax - sizeMin);
-      const ampX = (minDist * (0.10 + Math.random() * 0.06)) * (Math.random() < 0.5 ? -1 : 1);
-      const ampY = (minDist * (0.10 + Math.random() * 0.06)) * (Math.random() < 0.5 ? -1 : 1);
+      
+      // Enhanced floating patterns
+      const pattern = Math.floor(Math.random() * 4); // 4 different movement patterns
+      
+      let ampX, ampY, rotationRadius, rotationSpeed, phaseOffset;
+      
+      switch(pattern) {
+        case 0: // Linear drift (original)
+          ampX = (minDist * (0.10 + Math.random() * 0.08)) * (Math.random() < 0.5 ? -1 : 1);
+          ampY = (minDist * (0.10 + Math.random() * 0.08)) * (Math.random() < 0.5 ? -1 : 1);
+          rotationRadius = 0;
+          rotationSpeed = 0;
+          break;
+          
+        case 1: // Circular motion
+          ampX = 0;
+          ampY = 0;
+          rotationRadius = minDist * (0.08 + Math.random() * 0.06);
+          rotationSpeed = (Math.random() < 0.5 ? 1 : -1) * (0.5 + Math.random() * 0.3);
+          break;
+          
+        case 2: // Figure-8 / Lissajous
+          ampX = minDist * (0.08 + Math.random() * 0.05);
+          ampY = minDist * (0.06 + Math.random() * 0.04);
+          rotationRadius = 0;
+          rotationSpeed = (Math.random() < 0.5 ? 1 : -1) * (0.7 + Math.random() * 0.4);
+          break;
+          
+        case 3: // Elliptical orbit
+          ampX = minDist * (0.06 + Math.random() * 0.04);
+          ampY = minDist * (0.10 + Math.random() * 0.06);
+          rotationRadius = 0;
+          rotationSpeed = (Math.random() < 0.5 ? 1 : -1) * (0.4 + Math.random() * 0.3);
+          break;
+      }
+      
+      phaseOffset = Math.random() * Math.PI * 2; // Random starting phase
+      
       return {
         key: `orb-${i}`,
         color: palette[i % palette.length],
         size,
         depth: 0.22 + Math.random() * 0.18,
+        pattern,
         ampX, ampY,
-        pos: { x: new Animated.Value(p.x - size / 2), y: new Animated.Value(p.y - size / 2) }, // native
+        rotationRadius,
+        rotationSpeed,
+        phaseOffset,
+        pos: { x: new Animated.Value(p.x - size / 2), y: new Animated.Value(p.y - size / 2) },
         scale: new Animated.Value(1),
       };
     });
 
     setOrbs(created);
 
-    // ---------- FINAL TARGET + STEP SCALES (no early plateau) ----------
+    // Calculate center ball scaling
     const areas = created.map(o => Math.PI * (o.size / 2) ** 2);
     const totalArea = areas.reduce((a, b) => a + b, 0);
 
-    const maxDiameter = Math.min(stage.w, stage.h) - EDGE_PAD * 2; // fill more of screen
-    const finalUncapped = 2 * Math.sqrt(totalArea / Math.PI);     // equivalent diameter for all orbs
+    const maxDiameter = Math.min(stage.w, stage.h) - EDGE_PAD * 2;
+    const finalUncapped = 2 * Math.sqrt(totalArea / Math.PI);
     const finalDiameter = Math.max(
       CENTER_BASE * 0.6,
       Math.min(finalUncapped, maxDiameter)
     );
 
-    // Build step scales proportional to cumulative area / total area
     const stepScales = [];
     let cum = 0;
     for (let i = 0; i < areas.length; i++) {
       cum += areas[i];
-      const d = finalDiameter * (cum / totalArea); // grows every merge
+      const d = finalDiameter * (cum / totalArea);
       stepScales.push(d / CENTER_BASE);
     }
     setCenterStepScales(stepScales);
-    centerScale.setValue(0.0001); // tiny dot to start
+    centerScale.setValue(0.0001);
   }, [stage, palette]);
 
   const handleStart = () => {
@@ -199,36 +238,57 @@ export default function App() {
       Animated.timing(slideAnim, { toValue: -10,  duration: 260, easing: RNEasing.inOut(RNEasing.ease), useNativeDriver: true }),
     ]).start();
 
-    // Collapse orbs to center (native)
+    // Collapse orbs to center (native) - SYNCHRONIZED timing
     const cx = stage.w / 2;
     const cy = stage.h / 2;
+    
     const orbArrivals = orbs.map((o, idx) => {
       const tx = cx - o.size / 2;
       const ty = cy - o.size / 2;
+      const arrivalDelay = 60 + (idx * 135);
+      
       return Animated.parallel([
-        Animated.timing(o.pos.x, { toValue: tx, duration: 650, delay: idx * 30, easing: RNEasing.out(RNEasing.cubic), useNativeDriver: true }),
-        Animated.timing(o.pos.y, { toValue: ty, duration: 650, delay: idx * 30, easing: RNEasing.out(RNEasing.cubic), useNativeDriver: true }),
-        Animated.timing(o.scale, { toValue: 0.6, duration: 650, delay: idx * 30, easing: RNEasing.out(RNEasing.cubic), useNativeDriver: true }),
+        Animated.timing(o.pos.x, { 
+          toValue: tx, 
+          duration: 300, 
+          delay: arrivalDelay, 
+          easing: RNEasing.out(RNEasing.cubic), 
+          useNativeDriver: true 
+        }),
+        Animated.timing(o.pos.y, { 
+          toValue: ty, 
+          duration: 300, 
+          delay: arrivalDelay, 
+          easing: RNEasing.out(RNEasing.cubic), 
+          useNativeDriver: true 
+        }),
+        Animated.timing(o.scale, { 
+          toValue: 0.1,
+          duration: 150,
+          delay: arrivalDelay + 250,
+          easing: RNEasing.out(RNEasing.cubic), 
+          useNativeDriver: true 
+        }),
       ]);
     });
 
-    // Center ball growth: sequence, proportional to mass merged
+    // Center ball growth
     const growthSeq = [
-      Animated.delay(120), // slight lag so it “absorbs” after first arrivals
+      Animated.delay(60),
       ...centerStepScales.flatMap((toVal, idx) => ([
         Animated.timing(centerScale, {
           toValue: toVal,
-          duration: 240,
+          duration: 120,
           easing: RNEasing.out(RNEasing.cubic),
           useNativeDriver: true,
         }),
-        ...(idx < centerStepScales.length - 1 ? [Animated.delay(30)] : []),
+        ...(idx < centerStepScales.length - 1 ? [Animated.delay(15)] : []),
       ])),
     ];
 
     Animated.parallel([
-      Animated.stagger(30, orbArrivals), // orbs fly in
-      Animated.sequence(growthSeq),      // center grows step-by-step
+      ...orbArrivals,
+      Animated.sequence(growthSeq),
     ]).start(() => router.push('/sign-in'));
   };
 
@@ -252,28 +312,80 @@ export default function App() {
             setStage({ w: width, h: height });
           }}
         >
-          {/* BACKGROUND: scattered orbs (no big center glow) */}
+          {/* BACKGROUND: scattered orbs with dynamic movement */}
           <View style={styles.orbLayer} pointerEvents="none">
-            {orbs.map((o) => (
-              <Animated.View
-                key={o.key}
-                style={[
-                  styles.orb,
-                  {
-                    width: o.size,
-                    height: o.size,
-                    borderRadius: o.size / 2,
-                    backgroundColor: o.color,
-                    opacity: o.depth,
-                    transform: [
-                      { translateX: Animated.add(o.pos.x, Animated.multiply(floatUnit, o.ampX)) },
-                      { translateY: Animated.add(o.pos.y, Animated.multiply(floatUnit, o.ampY)) },
-                      { scale: o.scale },
-                    ],
-                  },
-                ]}
-              />
-            ))}
+            {orbs.map((o) => {
+              let translateX, translateY;
+              
+              switch(o.pattern) {
+                case 0: // Linear drift
+                  translateX = Animated.add(o.pos.x, Animated.multiply(floatUnit, o.ampX));
+                  translateY = Animated.add(o.pos.y, Animated.multiply(floatUnit, o.ampY));
+                  break;
+                  
+                case 1: // Circular motion
+                  const circleTime = Animated.add(
+                    Animated.multiply(floatUnit, Math.PI * o.rotationSpeed),
+                    o.phaseOffset
+                  );
+                  translateX = Animated.add(
+                    o.pos.x, 
+                    Animated.multiply(floatUnit, o.rotationRadius * Math.cos(o.phaseOffset))
+                  );
+                  translateY = Animated.add(
+                    o.pos.y,
+                    Animated.multiply(floatUnit, o.rotationRadius * Math.sin(o.phaseOffset))
+                  );
+                  break;
+                  
+                case 2: // Figure-8 / Lissajous
+                  translateX = Animated.add(
+                    o.pos.x,
+                    Animated.multiply(floatUnit, o.ampX * Math.sin(o.phaseOffset))
+                  );
+                  translateY = Animated.add(
+                    o.pos.y,
+                    Animated.multiply(floatUnit, o.ampY * Math.sin(o.phaseOffset * 2))
+                  );
+                  break;
+                  
+                case 3: // Elliptical orbit  
+                  translateX = Animated.add(
+                    o.pos.x,
+                    Animated.multiply(floatUnit, o.ampX * Math.cos(o.phaseOffset))
+                  );
+                  translateY = Animated.add(
+                    o.pos.y,
+                    Animated.multiply(floatUnit, o.ampY * Math.sin(o.phaseOffset))
+                  );
+                  break;
+                  
+                default:
+                  translateX = o.pos.x;
+                  translateY = o.pos.y;
+              }
+
+              return (
+                <Animated.View
+                  key={o.key}
+                  style={[
+                    styles.orb,
+                    {
+                      width: o.size,
+                      height: o.size,
+                      borderRadius: o.size / 2,
+                      backgroundColor: o.color,
+                      opacity: o.depth,
+                      transform: [
+                        { translateX },
+                        { translateY },
+                        { scale: o.scale },
+                      ],
+                    },
+                  ]}
+                />
+              );
+            })}
 
             {/* center ripple */}
             <Animated.View
@@ -352,7 +464,6 @@ const styles = StyleSheet.create({
     backgroundColor: '#61F3F3',
   },
 
-  // center ball (we scale this; base size constant)
   centerBall: {
     position: 'absolute',
     width: CENTER_BASE,
