@@ -7,6 +7,7 @@ import { useEffect } from 'react';
 // If you’re using a separate file for FiltersContext:
 import { FiltersProvider } from '../context/FiltersContext'; 
 import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
+import VennLoader from '../components/vennloader';
 
 SplashScreen.preventAutoHideAsync();
 
