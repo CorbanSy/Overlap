@@ -6,13 +6,12 @@ buildscript {
     mavenCentral()
   }
   dependencies {
-    // Pin versions so we don't depend on any external variables
-    classpath("com.android.tools.build:gradle:8.5.2")
-    classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:2.0.20")
+    classpath('com.android.tools.build:gradle')
+    classpath('com.facebook.react:react-native-gradle-plugin')
+    classpath('org.jetbrains.kotlin:kotlin-gradle-plugin')
   }
 }
 
-// Find RN's android artifacts from node_modules
 def reactNativeAndroidDir = new File(
   providers.exec {
     workingDir(rootDir)
@@ -23,14 +22,16 @@ def reactNativeAndroidDir = new File(
 
 allprojects {
   repositories {
-    // All of React Native (JS, Obj-C, Android binaries) is installed from npm
-    maven { url(reactNativeAndroidDir) }
+    maven {
+      // All of React Native (JS, Obj-C sources, Android binaries) is installed from npm
+      url(reactNativeAndroidDir)
+    }
+
     google()
     mavenCentral()
-    maven { url "https://www.jitpack.io" }
+    maven { url 'https://www.jitpack.io' }
   }
 }
 
-// Apply the root project plugins
 apply plugin: "expo-root-project"
 apply plugin: "com.facebook.react.rootproject"
