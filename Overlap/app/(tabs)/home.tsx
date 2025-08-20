@@ -29,7 +29,7 @@ import {
 } from 'firebase/firestore';
 import { useRouter } from 'expo-router';
 import { useFilters } from '../../context/FiltersContext';
-
+import VennLoader from '../../components/vennloader';
 import {
   getProfileData,
   likePlace,
@@ -96,7 +96,7 @@ export default function HomeScreen() {
   const [userCollections, setUserCollections] = useState<Record<string, any>>({});
   const [collectionModalVisible, setCollectionModalVisible] = useState(false);
   const [selectedPlaceForCollection, setSelectedPlaceForCollection] = useState<any>(null);
-
+  const showHomeLoader = loading && places.length === 0;
   // Load user top category
   useEffect(() => {
     (async () => {
@@ -477,6 +477,13 @@ export default function HomeScreen() {
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#fff" colors={['#F5A623']} />
         }
       />
+      {/* First-load overlay */}
+      {showHomeLoader && (
+        <View style={styles.homeOverlay}>
+          <VennLoader size={120} />
+        </View>
+      )}
+
       {renderCollectionModal()}
     </SafeAreaView>
   );
@@ -612,5 +619,12 @@ const styles = StyleSheet.create({
   modalCancelText: {
     color: '#F44336',
     fontSize: 16,
+  },
+  homeOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: '#0D1117',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 9999,
   },
 });

@@ -1,5 +1,5 @@
 // app/sign-in.jsx
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,27 +7,80 @@ import {
   Platform,
   ScrollView,
   StyleSheet,
+  Animated,
+  Easing as RNEasing,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Link, router } from 'expo-router';
-import VennDiagram from '../../components/VennDiagram';
 import FormField from '../../components/FormField';
 import CustomButton from '../../components/CustomButton';
 import { signIn } from '../../_utils/auth';
 
 const BG = '#161622';
+const CENTER_BALL_SIZE = 200; // Size of the center ball (made bigger)
 
 const SignIn = () => {
   const [form, setForm] = useState({ email: '', password: '' });
   const [failedAttempts, setFailedAttempts] = useState(0);
   const [errorMessage, setErrorMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [startVennAnimation, setStartVennAnimation] = useState(false);
+  
+  // Animation refs for the center ball
+  const ballScale = useRef(new Animated.Value(1)).current;
+  const ballOpacity = useRef(new Animated.Value(0.8)).current;
+  const floatAnim = useRef(new Animated.Value(0)).current;
+  
+  // Explosion particles
+  const [particles, setParticles] = useState([]);
+  const [ballPosition, setBallPosition] = useState({ x: 0, y: 0 });
 
   const insets = useSafeAreaInsets();
 
-  const handleVennAnimationComplete = () => {
-    router.push('/home');
+  // Floating animation for the center ball
+  useEffect(() => {
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(floatAnim, {
+          toValue: 1,
+          duration: 3000,
+          easing: RNEasing.inOut(RNEasing.sin),
+          useNativeDriver: true,
+        }),
+        Animated.timing(floatAnim, {
+          toValue: 0,
+          duration: 3000,
+          easing: RNEasing.inOut(RNEasing.sin),
+          useNativeDriver: true,
+        }),
+      ])
+    ).start();
+  }, []);
+
+  // Create explosion particles
+  const createExplosionParticles = () => {
+    const particleCount = 12;
+    const colors = ['#7C4DFF', '#00E5FF', '#61F3F3', '#8E7CFF', '#43E8E1', '#57D2F6'];
+    
+    const newParticles = Array.from({ length: particleCount }, (_, i) => {
+      const angle = (i / particleCount) * Math.PI * 2;
+      const velocity = 150 + Math.random() * 100; // Random velocity
+      const size = 20 + Math.random() * 30;
+      
+      return {
+        id: i,
+        x: new Animated.Value(0), // Start from center (0,0)
+        y: new Animated.Value(0), // Start from center (0,0)
+        scale: new Animated.Value(1),
+        opacity: new Animated.Value(1),
+        targetX: Math.cos(angle) * velocity,
+        targetY: Math.sin(angle) * velocity,
+        color: colors[i % colors.length],
+        size,
+      };
+    });
+    
+    setParticles(newParticles);
+    return newParticles;
   };
 
   const handleSignIn = async () => {
@@ -36,7 +89,65 @@ const SignIn = () => {
       await signIn(form.email, form.password);
       setFailedAttempts(0);
       setErrorMessage('');
-      setStartVennAnimation(true);
+      
+      // Start explosion animation
+      const particles = createExplosionParticles();
+      
+      // Ball shrinks and fades
+      Animated.parallel([
+        Animated.timing(ballScale, {
+          toValue: 0,
+          duration: 300,
+          easing: RNEasing.out(RNEasing.cubic),
+          useNativeDriver: true,
+        }),
+        Animated.timing(ballOpacity, {
+          toValue: 0,
+          duration: 300,
+          easing: RNEasing.out(RNEasing.cubic),
+          useNativeDriver: true,
+        }),
+      ]).start();
+      
+      // Particles explode outward
+      const particleAnimations = particles.map((particle) => 
+        Animated.parallel([
+          Animated.timing(particle.x, {
+            toValue: particle.targetX,
+            duration: 800,
+            easing: RNEasing.out(RNEasing.cubic),
+            useNativeDriver: true,
+          }),
+          Animated.timing(particle.y, {
+            toValue: particle.targetY,
+            duration: 800,
+            easing: RNEasing.out(RNEasing.cubic),
+            useNativeDriver: true,
+          }),
+          Animated.timing(particle.scale, {
+            toValue: 0,
+            duration: 800,
+            delay: 200,
+            easing: RNEasing.out(RNEasing.cubic),
+            useNativeDriver: true,
+          }),
+          Animated.timing(particle.opacity, {
+            toValue: 0,
+            duration: 600,
+            delay: 400,
+            easing: RNEasing.out(RNEasing.cubic),
+            useNativeDriver: true,
+          }),
+        ])
+      );
+      
+      Animated.parallel(particleAnimations).start(() => {
+        // Navigate after explosion completes
+        setTimeout(() => {
+          router.push('/home');
+        }, 200);
+      });
+      
     } catch (error) {
       const tries = failedAttempts + 1;
       setFailedAttempts(tries);
@@ -48,6 +159,12 @@ const SignIn = () => {
       setIsSubmitting(false);
     }
   };
+
+  // Floating animation interpolation
+  const floatTranslateY = floatAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [-8, 8],
+  });
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
@@ -65,15 +182,48 @@ const SignIn = () => {
           contentInsetAdjustmentBehavior="automatic"
           showsVerticalScrollIndicator={false}
         >
-          {/* Title at very top */}
-          <Text style={styles.title}>Overlap</Text>
+          {/* Title at very top - REMOVED */}
 
-          {/* Venn diagram below title */}
-          <View style={styles.vennWrap}>
-            <VennDiagram
-              startAnimation={startVennAnimation}
-              onAnimationComplete={handleVennAnimationComplete}
-            />
+          {/* Center Ball with Title Inside */}
+          <View 
+            style={styles.ballContainer}
+          >
+            <Animated.View
+              style={[
+                styles.centerBall,
+                {
+                  opacity: ballOpacity,
+                  transform: [
+                    { scale: ballScale },
+                    { translateY: floatTranslateY },
+                  ],
+                },
+              ]}
+            >
+              <Text style={styles.titleInsideBall}>Overlap</Text>
+            </Animated.View>
+            
+            {/* Explosion particles */}
+            {particles.map((particle) => (
+              <Animated.View
+                key={particle.id}
+                style={[
+                  styles.particle,
+                  {
+                    width: particle.size,
+                    height: particle.size,
+                    borderRadius: particle.size / 2,
+                    backgroundColor: particle.color,
+                    opacity: particle.opacity,
+                    transform: [
+                      { translateX: particle.x },
+                      { translateY: particle.y },
+                      { scale: particle.scale },
+                    ],
+                  },
+                ]}
+              />
+            ))}
           </View>
 
           {/* Subtitle */}
@@ -141,12 +291,50 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   safe: { flex: 1, backgroundColor: BG },
   scrollContent: { paddingHorizontal: 20 },
-  vennWrap: {
+  
+  // Ball container (replaces vennWrap)
+  ballContainer: {
     alignItems: 'center',
     justifyContent: 'center',
-    marginTop: 10,
+    marginTop: 40, // Increased margin since no title above
     marginBottom: 20,
+    height: 220, // Increased height for bigger ball
+    position: 'relative',
   },
+  
+  // Center ball styles
+  centerBall: {
+    width: CENTER_BALL_SIZE,
+    height: CENTER_BALL_SIZE,
+    borderRadius: CENTER_BALL_SIZE / 2,
+    backgroundColor: 'rgba(87, 210, 246, 0.4)', // Made more transparent
+    borderWidth: 2,
+    borderColor: 'rgba(87, 210, 246, 0.6)',
+    shadowColor: '#57D2F6',
+    shadowOpacity: 0.3,
+    shadowRadius: 25,
+    shadowOffset: { width: 0, height: 0 },
+    elevation: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  
+  // Title inside the ball
+  titleInsideBall: {
+    fontSize: 32,
+    color: '#fff',
+    fontWeight: '800',
+    textAlign: 'center',
+    textShadowColor: 'rgba(87, 210, 246, 0.8)',
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 10,
+  },
+  
+  // Explosion particles
+  particle: {
+    position: 'absolute',
+  },
+  
   title: {
     fontSize: 40,
     color: '#fff',
