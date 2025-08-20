@@ -12,19 +12,26 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Link } from 'expo-router';
 import FormField from '../../components/FormField';
 import CustomButton from '../../components/CustomButton';
-import VennDiagram from '../../components/VennDiagram';
+import CenterBall from '../../components/CenterBall';
 import { sendPasswordResetEmail } from 'firebase/auth';
 import { FIREBASE_AUTH } from '../../FirebaseConfig';
 
-const BG = '#161622';
+const BG = '#0D1117'; // Updated to match consistent scheme
 
 export default function ForgotPassword() {
   const [email, setEmail] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
-  const [startVennAnimation, setStartVennAnimation] = useState(false);
+  const [startExplosion, setStartExplosion] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const insets = useSafeAreaInsets();
+
+  const handleExplosionComplete = () => {
+    // Reset explosion state after completion
+    setTimeout(() => {
+      setStartExplosion(false);
+    }, 100);
+  };
 
   const handleResetPassword = async () => {
     try {
@@ -32,7 +39,7 @@ export default function ForgotPassword() {
       await sendPasswordResetEmail(FIREBASE_AUTH, email);
       setSuccessMessage('Password reset email sent. Please check your inbox.');
       setErrorMessage('');
-      setStartVennAnimation(true);
+      setStartExplosion(true);
     } catch (error) {
       setErrorMessage('Failed to send reset email. Please check your email address.');
       setSuccessMessage('');
@@ -52,20 +59,23 @@ export default function ForgotPassword() {
           keyboardShouldPersistTaps="handled"
           contentContainerStyle={[
             styles.scrollContent,
-            { paddingBottom: 32 + insets.bottom, flexGrow: 1 },
+            { paddingBottom: 32 + insets.bottom },
           ]}
           showsVerticalScrollIndicator={false}
         >
-          {/* Title */}
-          <Text style={styles.title}>Overlap</Text>
+          {/* Add flex spacer to center content vertically */}
+          <View style={styles.topSpacer} />
 
-          {/* Venn diagram */}
-          <View style={styles.vennWrap}>
-            <VennDiagram
-              startAnimation={startVennAnimation}
-              onAnimationComplete={() => setStartVennAnimation(false)}
-            />
-          </View>
+          {/* Center Ball with Title */}
+          <CenterBall
+            title="Overlap"
+            shouldExplode={startExplosion}
+            onExplosionComplete={handleExplosionComplete}
+            ballColor="rgba(245, 166, 35, 0.4)" // Updated to use orange accent
+            borderColor="rgba(245, 166, 35, 0.6)" // Updated to use orange accent
+            explosionColors={['#F5A623', '#1B1F24', '#AAAAAA', '#FFF', '#333', '#F44336']} // Updated to match our palette
+            containerStyle={styles.centerBallContainer} // Override default margins
+          />
 
           {/* Subtitle */}
           <Text style={styles.subtitle}>Forgot Password</Text>
@@ -78,8 +88,8 @@ export default function ForgotPassword() {
             handleChangeText={setEmail}
             keyboardType="email-address"
             otherStyles="mt-7"
-            inputTextColor="#fff"
-            placeholderTextColor="#aaa"
+            inputTextColor="#FFFFFF" // Updated to match consistent scheme
+            placeholderTextColor="#AAAAAA" // Updated to match consistent scheme
           />
 
           {/* Messages */}
@@ -104,14 +114,15 @@ export default function ForgotPassword() {
               </Link>
             </View>
             <View style={styles.bottomRow}>
-              <Text style={styles.bottomText}>Don’t have an account?</Text>
+              <Text style={styles.bottomText}>Don't have an account?</Text>
               <Link href="/sign-up" style={styles.bottomLink}>
                 Sign Up
               </Link>
             </View>
           </View>
 
-          <View style={{ height: insets.bottom }} />
+          {/* Add flex spacer to center content vertically */}
+          <View style={styles.bottomSpacer} />
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -121,34 +132,40 @@ export default function ForgotPassword() {
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   safe: { flex: 1, backgroundColor: BG },
-  scrollContent: { paddingHorizontal: 20 },
+  scrollContent: { 
+    paddingHorizontal: 20,
+    flexGrow: 1, // Allow content to expand and center
+    justifyContent: 'center', // Center content vertically
+    minHeight: '100%', // Ensure full height is available
+  },
 
-  title: {
-    fontSize: 40,
-    color: '#fff',
-    fontWeight: '800',
-    textAlign: 'center',
-    marginTop: 20,
+  // Spacers for better vertical centering
+  topSpacer: {
+    flex: 0.5, // Takes up less space at the top
   },
-  vennWrap: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 10,
-    marginBottom: 20,
+  bottomSpacer: {
+    flex: 1, // Takes up more space at the bottom
   },
+
+  // Override CenterBall margins for better positioning
+  centerBallContainer: {
+    marginTop: 20, // Reduced from default 80
+    marginBottom: 20, // Reduced from default 40
+  },
+
   subtitle: {
     fontSize: 20,
-    color: '#fff',
+    color: '#FFFFFF', // Updated to match consistent scheme
     fontWeight: '700',
     textAlign: 'center',
     marginTop: 8,
     marginBottom: 16,
   },
 
-  // Blue CTA
+  // Orange CTA button (updated from blue)
   ctaBtn: {
     marginTop: 28,
-    backgroundColor: '#4dabf7',
+    backgroundColor: '#F5A623', // Updated to match orange accent
     borderRadius: 14,
     paddingVertical: 16,
     minWidth: 280,
@@ -161,19 +178,19 @@ const styles = StyleSheet.create({
     elevation: 5,
   },
   ctaBtnText: {
-    color: '#fff',
+    color: '#0D1117', // Updated text color for contrast against orange
     fontSize: 18,
     fontWeight: '700',
   },
 
   error: {
-    color: '#ff6b6b',
+    color: '#F44336', // Updated to more muted red
     fontSize: 14,
     marginTop: 8,
     textAlign: 'center',
   },
   success: {
-    color: '#51cf66',
+    color: '#4CAF50', // Updated to more muted green
     fontSize: 14,
     marginTop: 8,
     textAlign: 'center',
@@ -188,6 +205,6 @@ const styles = StyleSheet.create({
     gap: 6,
     marginBottom: 8,
   },
-  bottomText: { fontSize: 16, color: '#f0f0f0' },
-  bottomLink: { fontSize: 16, fontWeight: '700', color: '#4dabf7' },
+  bottomText: { fontSize: 16, color: '#AAAAAA' }, // Updated to match secondary text color
+  bottomLink: { fontSize: 16, fontWeight: '700', color: '#F5A623' }, // Updated to match accent color
 });

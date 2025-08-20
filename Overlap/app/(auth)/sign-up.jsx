@@ -13,17 +13,21 @@ import { Link, router } from 'expo-router';
 
 import FormField from '../../components/FormField';
 import CustomButton from '../../components/CustomButton';
-import VennDiagram from '../../components/VennDiagram';
+import CenterBall from '../../components/CenterBall';
 import { signUp } from '../../_utils/auth';
 import { saveProfileData } from '../../_utils/storage';
 
-const BG = '#161622';
+const BG = '#0D1117'; // Updated to match home.tsx
 
 const SignUp = () => {
   const [form, setForm] = useState({ username: '', email: '', password: '' });
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [startVennAnimation, setStartVennAnimation] = useState(false);
+  const [startExplosion, setStartExplosion] = useState(false);
   const insets = useSafeAreaInsets();
+
+  const handleExplosionComplete = () => {
+    router.replace('/(auth)/preferences');
+  };
 
   const handleSignUp = async () => {
     try {
@@ -36,14 +40,11 @@ const SignUp = () => {
       // 2) Save initial profile data
       await saveProfileData({ email: form.email, username: form.username });
 
-      // 3) Animate venn + navigate
-      setStartVennAnimation(true);
-      setTimeout(() => {
-        router.replace('/(auth)/preferences');
-      }, 500);
+      // 3) Trigger explosion animation
+      setStartExplosion(true);
+
     } catch (error) {
       console.error('Sign-Up Error:', error);
-    } finally {
       setIsSubmitting(false);
     }
   };
@@ -64,16 +65,15 @@ const SignUp = () => {
           contentInsetAdjustmentBehavior="automatic"
           showsVerticalScrollIndicator={false}
         >
-          {/* Title at the top */}
-          <Text style={styles.title}>Overlap</Text>
-
-          {/* Venn diagram below title */}
-          <View style={styles.vennWrap}>
-            <VennDiagram
-              startAnimation={startVennAnimation}
-              onAnimationComplete={() => setStartVennAnimation(false)}
-            />
-          </View>
+          {/* Center Ball with Title */}
+          <CenterBall
+            title="Overlap"
+            shouldExplode={startExplosion}
+            onExplosionComplete={handleExplosionComplete}
+            ballColor="rgba(245, 166, 35, 0.4)" // Updated to use orange accent
+            borderColor="rgba(245, 166, 35, 0.6)" // Updated to use orange accent
+            explosionColors={['#F5A623', '#1B1F24', '#AAAAAA', '#FFF', '#333', '#F44336']} // Updated to match our palette
+          />
 
           {/* Subtitle */}
           <Text style={styles.subtitle}>Create Account</Text>
@@ -85,8 +85,8 @@ const SignUp = () => {
             handleChangeText={(v) => setForm({ ...form, username: v })}
             placeholder="yourname"
             otherStyles="mt-7"
-            inputTextColor="#fff"
-            placeholderTextColor="#aaa"
+            inputTextColor="#FFFFFF" // Updated to match consistent scheme
+            placeholderTextColor="#AAAAAA" // Updated to match consistent scheme
           />
 
           {/* Email */}
@@ -97,8 +97,8 @@ const SignUp = () => {
             placeholder="you@example.com"
             keyboardType="email-address"
             otherStyles="mt-7"
-            inputTextColor="#fff"
-            placeholderTextColor="#aaa"
+            inputTextColor="#FFFFFF" // Updated to match consistent scheme
+            placeholderTextColor="#AAAAAA" // Updated to match consistent scheme
           />
 
           {/* Password */}
@@ -109,8 +109,8 @@ const SignUp = () => {
             placeholder="••••••••"
             secureTextEntry
             otherStyles="mt-7"
-            inputTextColor="#fff"
-            placeholderTextColor="#aaa"
+            inputTextColor="#FFFFFF" // Updated to match consistent scheme
+            placeholderTextColor="#AAAAAA" // Updated to match consistent scheme
           />
 
           {/* CTA */}
@@ -142,32 +142,19 @@ const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: BG },
   scrollContent: { paddingHorizontal: 20 },
 
-  title: {
-    fontSize: 40,
-    color: '#fff',
-    fontWeight: '800',
-    textAlign: 'center',
-    marginTop: 20,
-  },
-  vennWrap: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 10,
-    marginBottom: 20,
-  },
   subtitle: {
     fontSize: 20,
-    color: '#fff',
+    color: '#FFFFFF', // Updated to match consistent scheme
     fontWeight: '700',
     textAlign: 'center',
     marginTop: 8,
     marginBottom: 16,
   },
 
-  // CTA button (blue, matches Sign In)
+  // CTA button (updated to match orange accent)
   ctaBtn: {
     marginTop: 28,
-    backgroundColor: '#4dabf7',
+    backgroundColor: '#F5A623', // Updated to match orange accent
     borderRadius: 14,
     paddingVertical: 16,
     minWidth: 280,
@@ -180,7 +167,7 @@ const styles = StyleSheet.create({
     elevation: 5,
   },
   ctaBtnText: {
-    color: '#fff',
+    color: '#0D1117', // Updated text color for contrast against orange
     fontSize: 18,
     fontWeight: '700',
   },
@@ -191,8 +178,8 @@ const styles = StyleSheet.create({
     gap: 6,
     marginTop: 20,
   },
-  bottomText: { fontSize: 16, color: '#f0f0f0' },
-  bottomLink: { fontSize: 16, fontWeight: '700', color: '#4dabf7' },
+  bottomText: { fontSize: 16, color: '#AAAAAA' }, // Updated to match secondary text color
+  bottomLink: { fontSize: 16, fontWeight: '700', color: '#F5A623' }, // Updated to match accent color
 });
 
 export default SignUp;

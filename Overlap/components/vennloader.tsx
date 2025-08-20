@@ -22,9 +22,9 @@ type Props = {
 
 export default function VennLoader({
   size = 128,
-  colorA = '#6C5CE7',
-  colorB = '#00D4FF',
-  overlapColor = '#A29BFE',
+  colorA = '#F5A623',        // Primary orange accent
+  colorB = '#AAAAAA',        // Secondary gray
+  overlapColor = '#1B1F24',  // Dark gray for overlap
 }: Props) {
   const R = size * 0.27;        // circle radius
   const cy = size * 0.50;
@@ -73,16 +73,21 @@ export default function VennLoader({
     <View style={{ width: size, height: size }}>
       <Svg width={size} height={size}>
         <Defs>
+          {/* Orange gradient for primary circle */}
           <RadialGradient id="gradA" cx="50%" cy="50%" r="60%">
             <Stop offset="0%" stopColor={colorA} stopOpacity={0.9} />
-            <Stop offset="100%" stopColor={colorA} stopOpacity={0.25} />
+            <Stop offset="100%" stopColor={colorA} stopOpacity={0.3} />
           </RadialGradient>
+          
+          {/* Gray gradient for secondary circle */}
           <RadialGradient id="gradB" cx="50%" cy="50%" r="60%">
-            <Stop offset="0%" stopColor={colorB} stopOpacity={0.9} />
-            <Stop offset="100%" stopColor={colorB} stopOpacity={0.25} />
+            <Stop offset="0%" stopColor={colorB} stopOpacity={0.8} />
+            <Stop offset="100%" stopColor={colorB} stopOpacity={0.2} />
           </RadialGradient>
+          
+          {/* Dark overlap gradient */}
           <RadialGradient id="gradOverlap" cx="50%" cy="50%" r="65%">
-            <Stop offset="0%" stopColor={overlapColor} stopOpacity={1} />
+            <Stop offset="0%" stopColor={overlapColor} stopOpacity={0.9} />
             <Stop offset="100%" stopColor={overlapColor} stopOpacity={0.4} />
           </RadialGradient>
 
