@@ -1,5 +1,5 @@
-// components/TabBar.tsx
-import React, { useRef, useEffect } from 'react';
+// components/TabBar.tsx - FIXED VERSION
+import React, { useRef, useEffect, useState } from 'react';
 import { 
   View, 
   Text, 
@@ -29,6 +29,8 @@ interface TabBarProps {
 const TabBar: React.FC<TabBarProps> = ({ activeTab, onTabPress }) => {
   const slideAnim = useRef(new Animated.Value(0)).current;
   const scaleAnim = useRef(new Animated.Value(1)).current;
+  const [containerWidth, setContainerWidth] = useState(0);
+  const [isLayoutReady, setIsLayoutReady] = useState(false);
   
   const tabs = [
     { 
@@ -45,30 +47,36 @@ const TabBar: React.FC<TabBarProps> = ({ activeTab, onTabPress }) => {
     }
   ];
 
-  // Get container width and calculate tab width
-  const [containerWidth, setContainerWidth] = useState(0);
+  // Calculate tab width with proper padding
   const tabWidth = containerWidth > 0 ? (containerWidth - 8) / tabs.length : 0; // Account for container padding
 
   // Animate sliding indicator when active tab changes
   useEffect(() => {
-    if (tabWidth > 0) {
+    if (tabWidth > 0 && isLayoutReady) {
       const activeIndex = tabs.findIndex(tab => tab.key === activeTab);
-      console.log('Animating to:', activeIndex, 'tabWidth:', tabWidth); // Debug log
       
       Animated.spring(slideAnim, {
         toValue: activeIndex * tabWidth + 4, // Add 4px offset for padding
-        tension: 100,
-        friction: 8,
-        useNativeDriver: false, // Changed to false for layout properties
+        tension: 120,
+        friction: 7,
+        useNativeDriver: false, // Layout properties require false
       }).start();
     }
-  }, [activeTab, tabWidth]);
+  }, [activeTab, tabWidth, isLayoutReady]);
+
+  // Initialize animation position when layout is ready
+  useEffect(() => {
+    if (isLayoutReady && tabWidth > 0) {
+      const activeIndex = tabs.findIndex(tab => tab.key === activeTab);
+      slideAnim.setValue(activeIndex * tabWidth + 4);
+    }
+  }, [isLayoutReady, tabWidth]);
 
   const handleTabPress = (tab: string) => {
     // Add subtle scale animation for feedback
     Animated.sequence([
       Animated.timing(scaleAnim, {
-        toValue: 0.98,
+        toValue: 0.97,
         duration: 100,
         useNativeDriver: true,
       }),
@@ -82,25 +90,39 @@ const TabBar: React.FC<TabBarProps> = ({ activeTab, onTabPress }) => {
     onTabPress(tab);
   };
 
+  const handleLayout = (event: any) => {
+    const { width } = event.nativeEvent.layout;
+    setContainerWidth(width);
+    
+    // Small delay to ensure layout is complete
+    setTimeout(() => {
+      setIsLayoutReady(true);
+    }, 50);
+  };
+
+  // Calculate the indicator height dynamically
+  const getIndicatorHeight = () => {
+    // Since container has 4px padding top/bottom, indicator height should be content height
+    return 44; // Approximate height of tab content (12px padding * 2 + text/icon height)
+  };
+
   return (
     <Animated.View 
       style={[
         styles.tabContainer,
         { transform: [{ scale: scaleAnim }] }
       ]}
-      onLayout={(event) => {
-        const { width } = event.nativeEvent.layout;
-        setContainerWidth(width);
-      }}
+      onLayout={handleLayout}
     >
       {/* Sliding Background Indicator */}
-      {tabWidth > 0 && (
+      {tabWidth > 0 && isLayoutReady && (
         <Animated.View
           style={[
             styles.slidingIndicator,
             {
               width: tabWidth - 8, // Slightly smaller than tab for padding
-              left: slideAnim, // Use animated value directly
+              height: getIndicatorHeight(), // Use calculated height instead of calc()
+              transform: [{ translateX: slideAnim }],
             },
           ]}
         />
@@ -167,7 +189,6 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 4,
     left: 4,
-    height: '100%',
     backgroundColor: Colors.primary,
     borderRadius: 8,
     zIndex: 1,
