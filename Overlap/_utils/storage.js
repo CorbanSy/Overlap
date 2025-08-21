@@ -796,3 +796,15 @@ export async function setPrivacySettings(patch) {
     await setDoc(doc(db, 'userDirectory', user.uid), { ...dirPatch, updatedAt: new Date() }, { merge: true });
   }
 }
+
+export async function deleteCollection(collectionId) {
+  const auth = getAuth();
+  const user = auth.currentUser;
+  if (!user) throw new Error('No user is signed in');
+
+  if (!collectionId) throw new Error('Collection ID is required');
+
+  // Delete the collection document from Firestore
+  const collectionRef = doc(db, 'users', user.uid, 'collections', collectionId);
+  await deleteDoc(collectionRef);
+}

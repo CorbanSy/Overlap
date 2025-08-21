@@ -9,6 +9,8 @@ import {
   Modal,
   ScrollView,
   Text,
+  Animated,
+  Dimensions,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { getAuth, signOut, onAuthStateChanged } from 'firebase/auth';
@@ -21,13 +23,39 @@ import SearchBar from '../../components/SearchBar';
 import ActivityCard from '../../components/ActivityCard';
 import CollectionCard from '../../components/CollectionCard';
 import FullProfileInfo from '../profile/FullProfileInfo';
-import { unlikePlace } from '../../_utils/storage';
+import { unlikePlace, deleteCollection } from '../../_utils/storage';
+
+const { width } = Dimensions.get('window');
 
 /* =========================
-   Modal Components
+   Enhanced Color Palette - Updated to match home.tsx
+   ========================= */
+const Colors = {
+  primary: '#F5A623',        // Orange from home.tsx
+  primaryLight: '#FCD34D',   // Lighter orange
+  primaryDark: '#E09612',    // Darker orange
+  secondary: '#6366F1',      // Blue as secondary
+  secondaryLight: '#818CF8', // Light blue
+  background: '#0D1117',     // Dark background from home.tsx
+  surface: '#1B1F24',        // Card background from home.tsx
+  surfaceLight: '#333333',   // Lighter surface
+  card: '#1B1F24',          // Same as surface for consistency
+  border: '#333333',         // Border color
+  text: '#FFFFFF',          // White text from home.tsx
+  textSecondary: '#AAAAAA', // Gray text from home.tsx
+  textMuted: '#888888',     // Muted text
+  success: '#10B981',       // Keep success green
+  warning: '#F5A623',       // Same as primary
+  error: '#F44336',         // Keep error red
+  white: '#FFFFFF',
+  overlay: 'rgba(13, 17, 23, 0.8)', // Dark overlay to match background
+};
+
+/* =========================
+   Professional Modal Components
    ========================= */
 
-// Modal for creating a new collection
+// Enhanced New Collection Modal
 const NewCollectionModal = ({
   visible,
   onClose,
@@ -36,103 +64,247 @@ const NewCollectionModal = ({
   setNewCollectionName,
   newCollectionDescription,
   setNewCollectionDescription,
-}) => (
-  <Modal visible={visible} transparent animationType="fade">
-    <View style={styles.modalOverlay}>
-      <View style={styles.modalContainer}>
-        <TouchableOpacity style={styles.closeButton} onPress={onClose}>
-          <Ionicons name="close-circle-outline" size={30} color="#FFF" />
-        </TouchableOpacity>
-        <Text style={styles.modalTitle}>Create a New Collection</Text>
-        <TextInput
-          style={styles.input}
-          placeholder="Collection Name"
-          placeholderTextColor="#888"
-          value={newCollectionName}
-          onChangeText={setNewCollectionName}
-        />
-        <TextInput
-          style={styles.input}
-          placeholder="Description (Optional)"
-          placeholderTextColor="#888"
-          value={newCollectionDescription}
-          onChangeText={setNewCollectionDescription}
-        />
-        <TouchableOpacity style={styles.modalButton} onPress={onAddCollection}>
-          <Text style={styles.modalButtonText}>Create</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.cancelButton} onPress={onClose}>
-          <Text style={styles.cancelButtonText}>Cancel</Text>
-        </TouchableOpacity>
-      </View>
-    </View>
-  </Modal>
-);
+}) => {
+  const slideAnim = useRef(new Animated.Value(0)).current;
+  const scaleAnim = useRef(new Animated.Value(0.9)).current;
 
-// Modal for selecting a collection when adding an activity
-const CollectionSelectionModal = ({ visible, collections, onSelectCollection, onClose }) => (
-  <Modal visible={visible} transparent animationType="fade">
-    <View style={styles.modalOverlay}>
-      <View style={styles.modalContainer}>
-        <TouchableOpacity style={styles.closeButton} onPress={onClose}>
-          <Ionicons name="close-circle-outline" size={30} color="#FFF" />
-        </TouchableOpacity>
-        <Text style={styles.modalTitle}>Select a Collection</Text>
-        <ScrollView contentContainerStyle={styles.scrollContainer}>
-          {collections.length > 0 ? (
-            collections.map((collection) => (
-              <TouchableOpacity
-                key={collection.id}
-                style={styles.collectionCard}
-                onPress={() => onSelectCollection(collection.id)}
-              >
-                <Text style={styles.collectionText}>{collection.title}</Text>
-              </TouchableOpacity>
-            ))
-          ) : (
-            <Text style={styles.noCollectionsText}>No collections available.</Text>
-          )}
-        </ScrollView>
-        <TouchableOpacity style={styles.cancelButton} onPress={onClose}>
-          <Text style={styles.cancelButtonText}>Cancel</Text>
-        </TouchableOpacity>
-      </View>
-    </View>
-  </Modal>
-);
+  useEffect(() => {
+    if (visible) {
+      Animated.parallel([
+        Animated.timing(slideAnim, {
+          toValue: 1,
+          duration: 300,
+          useNativeDriver: true,
+        }),
+        Animated.spring(scaleAnim, {
+          toValue: 1,
+          tension: 100,
+          friction: 8,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    } else {
+      Animated.parallel([
+        Animated.timing(slideAnim, {
+          toValue: 0,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+        Animated.timing(scaleAnim, {
+          toValue: 0.9,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    }
+  }, [visible]);
 
-// Dropdown for settings options
-const SettingsDropdown = ({ visible, onSelectOption }) => {
-  if (!visible) return null;
   return (
-    <View style={styles.settingsDropdown}>
-      <TouchableOpacity style={styles.settingsItem} onPress={() => onSelectOption('Account')}>
-        <Text style={styles.settingsText}>Account</Text>
-      </TouchableOpacity>
-      <TouchableOpacity style={styles.settingsItem} onPress={() => onSelectOption('Edit Profile')}>
-        <Text style={styles.settingsText}>Edit Profile</Text>
-      </TouchableOpacity>
-      <TouchableOpacity style={styles.settingsItem} onPress={() => onSelectOption('Notifications')}>
-        <Text style={styles.settingsText}>Notifications</Text>
-      </TouchableOpacity>
-      <TouchableOpacity style={styles.settingsItem} onPress={() => onSelectOption('Privacy')}>
-        <Text style={styles.settingsText}>Privacy</Text>
-      </TouchableOpacity>
-      <TouchableOpacity style={styles.settingsItem} onPress={() => onSelectOption('Help')}>
-        <Text style={styles.settingsText}>Help</Text>
-      </TouchableOpacity>
-      <TouchableOpacity style={styles.settingsItem} onPress={() => onSelectOption('Friends')}>
-        <Text style={styles.settingsText}>Friends</Text>
-      </TouchableOpacity>
-      <TouchableOpacity style={styles.settingsItem} onPress={() => onSelectOption('Logout')}>
-        <Text style={[styles.settingsText, { color: '#F44336' }]}>Logout</Text>
-      </TouchableOpacity>
-    </View>
+    <Modal visible={visible} transparent animationType="fade">
+      <View style={styles.modalOverlay}>
+        <Animated.View
+          style={[
+            styles.modalContainer,
+            {
+              opacity: slideAnim,
+              transform: [{ scale: scaleAnim }],
+            },
+          ]}
+        >
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Create Collection</Text>
+            <TouchableOpacity style={styles.closeButton} onPress={onClose}>
+              <Ionicons name="close" size={24} color={Colors.textMuted} />
+            </TouchableOpacity>
+          </View>
+          
+          <View style={styles.modalContent}>
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>Collection Name</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="Enter collection name"
+                placeholderTextColor={Colors.textMuted}
+                value={newCollectionName}
+                onChangeText={setNewCollectionName}
+              />
+            </View>
+            
+            <View style={styles.inputGroup}>
+              <Text style={styles.inputLabel}>Description (Optional)</Text>
+              <TextInput
+                style={[styles.input, styles.textArea]}
+                placeholder="Add a description for your collection"
+                placeholderTextColor={Colors.textMuted}
+                value={newCollectionDescription}
+                onChangeText={setNewCollectionDescription}
+                multiline
+                numberOfLines={3}
+              />
+            </View>
+          </View>
+          
+          <View style={styles.modalActions}>
+            <TouchableOpacity style={styles.secondaryButton} onPress={onClose}>
+              <Text style={styles.secondaryButtonText}>Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity 
+              style={[styles.primaryButton, !newCollectionName.trim() && styles.disabledButton]} 
+              onPress={onAddCollection}
+              disabled={!newCollectionName.trim()}
+            >
+              <Ionicons name="add" size={20} color={Colors.white} style={{ marginRight: 8 }} />
+              <Text style={styles.primaryButtonText}>Create</Text>
+            </TouchableOpacity>
+          </View>
+        </Animated.View>
+      </View>
+    </Modal>
+  );
+};
+
+// Enhanced Collection Selection Modal
+const CollectionSelectionModal = ({ visible, collections, onSelectCollection, onClose }) => {
+  const slideAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (visible) {
+      Animated.spring(slideAnim, {
+        toValue: 1,
+        tension: 100,
+        friction: 8,
+        useNativeDriver: true,
+      }).start();
+    }
+  }, [visible]);
+
+  return (
+    <Modal visible={visible} transparent animationType="fade">
+      <View style={styles.modalOverlay}>
+        <Animated.View
+          style={[
+            styles.selectionModalContainer,
+            {
+              transform: [
+                {
+                  translateY: slideAnim.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [300, 0],
+                  }),
+                },
+              ],
+            },
+          ]}
+        >
+          <View style={styles.modalHandle} />
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>Add to Collection</Text>
+            <TouchableOpacity style={styles.closeButton} onPress={onClose}>
+              <Ionicons name="close" size={24} color={Colors.textMuted} />
+            </TouchableOpacity>
+          </View>
+          
+          <ScrollView style={styles.collectionsList} showsVerticalScrollIndicator={false}>
+            {collections.length > 0 ? (
+              collections.map((collection) => (
+                <TouchableOpacity
+                  key={collection.id}
+                  style={styles.collectionItem}
+                  onPress={() => onSelectCollection(collection.id)}
+                >
+                  <View style={styles.collectionIcon}>
+                    <Ionicons name="folder-outline" size={24} color={Colors.primary} />
+                  </View>
+                  <View style={styles.collectionInfo}>
+                    <Text style={styles.collectionName}>{collection.title}</Text>
+                    <Text style={styles.collectionCount}>
+                      {collection.activities?.length || 0} activities
+                    </Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={20} color={Colors.textMuted} />
+                </TouchableOpacity>
+              ))
+            ) : (
+              <View style={styles.emptyState}>
+                <Ionicons name="folder-open-outline" size={48} color={Colors.textMuted} />
+                <Text style={styles.emptyStateText}>No collections yet</Text>
+                <Text style={styles.emptyStateSubtext}>Create your first collection to get started</Text>
+              </View>
+            )}
+          </ScrollView>
+        </Animated.View>
+      </View>
+    </Modal>
+  );
+};
+
+// Professional Settings Dropdown
+const SettingsDropdown = ({ visible, onSelectOption }) => {
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(-10)).current;
+
+  useEffect(() => {
+    if (visible) {
+      Animated.parallel([
+        Animated.timing(fadeAnim, {
+          toValue: 1,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+        Animated.timing(slideAnim, {
+          toValue: 0,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    } else {
+      fadeAnim.setValue(0);
+      slideAnim.setValue(-10);
+    }
+  }, [visible]);
+
+  if (!visible) return null;
+
+  const menuItems = [
+    { key: 'Account', icon: 'person-outline', label: 'Account', color: Colors.text },
+    { key: 'Edit Profile', icon: 'create-outline', label: 'Edit Profile', color: Colors.text },
+    { key: 'Notifications', icon: 'notifications-outline', label: 'Notifications', color: Colors.text },
+    { key: 'Privacy', icon: 'lock-closed-outline', label: 'Privacy', color: Colors.text },
+    { key: 'Friends', icon: 'people-outline', label: 'Friends', color: Colors.text },
+    { key: 'Help', icon: 'help-circle-outline', label: 'Help', color: Colors.text },
+    { key: 'Logout', icon: 'log-out-outline', label: 'Logout', color: Colors.error },
+  ];
+
+  return (
+    <Animated.View
+      style={[
+        styles.settingsDropdown,
+        {
+          opacity: fadeAnim,
+          transform: [{ translateY: slideAnim }],
+        },
+      ]}
+    >
+      {menuItems.map((item, index) => (
+        <TouchableOpacity
+          key={item.key}
+          style={[
+            styles.settingsItem,
+            index === menuItems.length - 1 && styles.lastSettingsItem,
+          ]}
+          onPress={() => onSelectOption(item.key)}
+        >
+          <Ionicons name={item.icon} size={20} color={item.color} />
+          <Text style={[styles.settingsText, { color: item.color }]}>{item.label}</Text>
+          <Ionicons name="chevron-forward" size={16} color={Colors.textMuted} />
+        </TouchableOpacity>
+      ))}
+    </Animated.View>
   );
 };
 
 /* =========================
-   List Header Component
+   Enhanced List Header Component
    ========================= */
 
 const ListHeader = ({
@@ -146,30 +318,48 @@ const ListHeader = ({
   setSearchQuery,
 }) => (
   <View style={styles.headerContainer}>
-    <FullProfileInfo />
-    <TouchableOpacity style={styles.settingsButton} onPress={toggleSettingsMenu}>
-      <Ionicons name="settings-outline" size={24} color="#FFF" />
-    </TouchableOpacity>
-    <TabBar activeTab={activeTab} onTabPress={setActiveTab} />
-    <SearchBar searchQuery={searchQuery} setSearchQuery={setSearchQuery} />
+    <View style={styles.profileHeader}>
+      <FullProfileInfo />
+      <TouchableOpacity style={styles.settingsButton} onPress={toggleSettingsMenu}>
+        <View style={styles.settingsButtonContent}>
+          <Ionicons name="ellipsis-vertical" size={20} color={Colors.text} />
+        </View>
+      </TouchableOpacity>
+    </View>
+    
+    <View style={styles.tabSection}>
+      <TabBar activeTab={activeTab} onTabPress={setActiveTab} />
+    </View>
+    
+    <View style={styles.searchSection}>
+      <SearchBar searchQuery={searchQuery} setSearchQuery={setSearchQuery} />
+    </View>
+    
     {activeTab === 'Collections' && !selectedCollection && (
       <TouchableOpacity style={styles.addCollectionButton} onPress={() => setIsModalVisible(true)}>
-        <Text style={styles.addCollectionText}>+ Add Collection</Text>
+        <Ionicons name="add" size={20} color={Colors.white} />
+        <Text style={styles.addCollectionText}>New Collection</Text>
       </TouchableOpacity>
     )}
+    
     {selectedCollection && (
       <View style={styles.collectionHeader}>
         <TouchableOpacity onPress={onClearSelectedCollection} style={styles.backButton}>
-          <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
+          <Ionicons name="chevron-back" size={24} color={Colors.primary} />
         </TouchableOpacity>
-        <Text style={styles.collectionTitle}>Activities in {selectedCollection.title}</Text>
+        <View style={styles.collectionHeaderInfo}>
+          <Text style={styles.collectionTitle}>{selectedCollection.title}</Text>
+          <Text style={styles.collectionSubtitle}>
+            {selectedCollection.activities?.length || 0} activities
+          </Text>
+        </View>
       </View>
     )}
   </View>
 );
 
 /* =========================
-   ProfileScreen Component
+   Main ProfileScreen Component
    ========================= */
 
 function ProfileScreen() {
@@ -263,6 +453,7 @@ function ProfileScreen() {
         title: newCollectionName,
         description: newCollectionDescription,
         activities: [],
+        createdAt: new Date(),
       });
       setNewCollectionName('');
       setNewCollectionDescription('');
@@ -307,8 +498,29 @@ function ProfileScreen() {
     }
   };
 
+  // Delete a collection
+  const handleDeleteCollection = async (collection) => {
+    if (!user || !collection.id) return;
+    
+    try {
+      await deleteCollection(collection.id);
+      
+      // If we're currently viewing the deleted collection, go back to collections list
+      if (selectedCollection && selectedCollection.id === collection.id) {
+        setSelectedCollection(null);
+      }
+      
+      console.log('Collection deleted successfully');
+    } catch (error) {
+      console.error('Error deleting collection:', error);
+      // You could show a user-friendly error message here
+    }
+  };
+
   // Handle selection of settings option
   const handleSettingsOptionPress = async (option) => {
+    setIsSettingsMenuVisible(false);
+    
     if (option === 'Logout') {
       // Unsubscribe from listeners before logging out
       unsubscribeLikesRef.current && unsubscribeLikesRef.current();
@@ -322,7 +534,6 @@ function ProfileScreen() {
     } else if (option === 'Friends') {
       router.push('/profile/friends');
     } else if (option === 'Edit Profile') {
-      // Navigate to the edit profile screen
       router.push('/profile/editProfile');
     } else if (option === 'Privacy') {
       router.push('/profile/privacy');
@@ -331,16 +542,21 @@ function ProfileScreen() {
     } else if (option === 'Notifications') {
       router.push('/profile/notifications');
     }
-    setIsSettingsMenuVisible(false);
   };
 
-  // Clear the selected collection (used when returning from a collection view)
+  // Clear the selected collection
   const clearSelectedCollection = () => setSelectedCollection(null);
 
   // Render item based on the active tab and selection state
   const renderItem = ({ item }) => {
     if (activeTab === 'Collections' && !selectedCollection) {
-      return <CollectionCard collection={item} onPress={() => setSelectedCollection(item)} />;
+      return (
+        <CollectionCard 
+          collection={item} 
+          onPress={() => setSelectedCollection(item)}
+          onDelete={handleDeleteCollection}
+        />
+      );
     }
     return (
       <ActivityCard
@@ -389,8 +605,14 @@ function ProfileScreen() {
         }
         contentContainerStyle={styles.listContainer}
         numColumns={activeTab === 'Collections' && !selectedCollection ? 2 : 1}
+        showsVerticalScrollIndicator={false}
       />
-      <SettingsDropdown visible={isSettingsMenuVisible} onSelectOption={handleSettingsOptionPress} />
+      
+      <SettingsDropdown 
+        visible={isSettingsMenuVisible} 
+        onSelectOption={handleSettingsOptionPress} 
+      />
+      
       <NewCollectionModal
         visible={isModalVisible}
         onClose={() => setIsModalVisible(false)}
@@ -400,6 +622,7 @@ function ProfileScreen() {
         newCollectionDescription={newCollectionDescription}
         setNewCollectionDescription={setNewCollectionDescription}
       />
+      
       <CollectionSelectionModal
         visible={isCollectionModalVisible}
         collections={collections}
@@ -410,53 +633,327 @@ function ProfileScreen() {
   );
 }
 
+/* =========================
+   Professional Styles
+   ========================= */
+
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#0D1117' },
-  listContainer: { paddingHorizontal: 8, paddingVertical: 10 },
-  headerContainer: { position: 'relative', paddingBottom: 10 },
-  settingsButton: { position: 'absolute', right: 16, top: 16, zIndex: 10 },
+  container: {
+    flex: 1,
+    backgroundColor: Colors.background,
+  },
+  listContainer: {
+    paddingHorizontal: 16,
+    paddingBottom: 24,
+  },
+  
+  // Header Styles
+  headerContainer: {
+    paddingBottom: 16,
+  },
+  profileHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    paddingTop: 8,
+    marginBottom: 20,
+  },
+  settingsButton: {
+    padding: 8,
+  },
+  settingsButtonContent: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: Colors.surface,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  tabSection: {
+    marginBottom: 16,
+  },
+  searchSection: {
+    marginBottom: 16,
+  },
+  
+  // Collection Header
+  collectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 4,
+    marginBottom: 8,
+  },
+  backButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: Colors.surface,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  collectionHeaderInfo: {
+    flex: 1,
+  },
+  collectionTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: Colors.text,
+    marginBottom: 2,
+  },
+  collectionSubtitle: {
+    fontSize: 14,
+    color: Colors.textSecondary,
+  },
+  
+  // Add Collection Button
+  addCollectionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.primary,      // Now F5A623 orange
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    marginVertical: 8,
+    shadowColor: Colors.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  addCollectionText: {
+    color: Colors.white,
+    fontSize: 16,
+    fontWeight: '600',
+    marginLeft: 8,
+  },
+  
+  // Settings Dropdown
   settingsDropdown: {
     position: 'absolute',
-    top: 50,
+    top: 80,
     right: 16,
-    backgroundColor: '#1B1F24',
-    borderRadius: 6,
-    paddingVertical: 6,
-    width: 150,
-    shadowColor: '#000',
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 5,
-    zIndex: 20,
-  },
-  settingsItem: { paddingVertical: 8, paddingHorizontal: 12 },
-  settingsText: { color: '#FFF', fontSize: 16 },
-  addCollectionButton: { backgroundColor: '#F5A623', padding: 10, borderRadius: 10, margin: 10 },
-  addCollectionText: { color: '#0D1117', fontWeight: 'bold', textAlign: 'center' },
-  collectionHeader: { flexDirection: 'row', alignItems: 'center', marginVertical: 10, paddingHorizontal: 16 },
-  backButton: { marginRight: 10 },
-  collectionTitle: { fontSize: 16, color: '#FFFFFF', fontWeight: 'bold' },
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0, 0, 0, 0.6)', justifyContent: 'center', alignItems: 'center' },
-  modalContainer: {
-    backgroundColor: '#1B1F24',
-    width: '85%',
-    padding: 20,
+    backgroundColor: Colors.surface,
     borderRadius: 12,
-    alignItems: 'center',
+    paddingVertical: 8,
+    width: 180,
     shadowColor: '#000',
-    shadowOpacity: 0.3,
-    shadowRadius: 10,
-    elevation: 10,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.25,
+    shadowRadius: 16,
+    elevation: 16,
+    zIndex: 1000,
+    borderWidth: 1,
+    borderColor: Colors.border,
   },
-  closeButton: { position: 'absolute', top: 10, right: 10 },
-  modalTitle: { fontSize: 20, fontWeight: 'bold', color: '#FFF', marginBottom: 15, textAlign: 'center' },
-  scrollContainer: { width: '100%', alignItems: 'center', paddingVertical: 10 },
-  input: { backgroundColor: '#222', color: '#fff', padding: 10, borderRadius: 6, marginBottom: 10, width: '100%' },
-  modalButton: { backgroundColor: '#FFA500', paddingVertical: 10, borderRadius: 6, alignItems: 'center', width: '100%' },
-  modalButtonText: { color: '#000', fontWeight: 'bold' },
-  noCollectionsText: { fontSize: 16, color: '#AAA', textAlign: 'center', marginTop: 10 },
-  cancelButton: { marginTop: 15, backgroundColor: '#F44336', paddingVertical: 10, paddingHorizontal: 40, borderRadius: 8 },
-  cancelButtonText: { fontSize: 16, color: '#FFF', fontWeight: 'bold' },
+  settingsItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+  },
+  lastSettingsItem: {
+    borderBottomWidth: 0,
+  },
+  settingsText: {
+    flex: 1,
+    fontSize: 15,
+    fontWeight: '500',
+    marginLeft: 12,
+  },
+  
+  // Modal Styles
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: Colors.overlay,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+  },
+  modalContainer: {
+    backgroundColor: Colors.surface,
+    width: '100%',
+    maxWidth: 400,
+    borderRadius: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 20 },
+    shadowOpacity: 0.3,
+    shadowRadius: 30,
+    elevation: 30,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingTop: 20,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+  },
+  modalTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: Colors.text,
+  },
+  closeButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: Colors.surfaceLight,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    padding: 20,
+  },
+  inputGroup: {
+    marginBottom: 16,
+  },
+  inputLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: Colors.textSecondary,
+    marginBottom: 8,
+  },
+  input: {
+    backgroundColor: Colors.surfaceLight,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: 8,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    fontSize: 16,
+    color: Colors.text,
+    fontWeight: '500',
+  },
+  textArea: {
+    height: 80,
+    textAlignVertical: 'top',
+  },
+  modalActions: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 20,
+    gap: 12,
+  },
+  primaryButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.primary,
+    paddingVertical: 14,
+    borderRadius: 10,
+  },
+  primaryButtonText: {
+    color: Colors.white,
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  secondaryButton: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.surfaceLight,
+    paddingVertical: 14,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  secondaryButtonText: {
+    color: Colors.textSecondary,
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  disabledButton: {
+    backgroundColor: Colors.surfaceLight,
+    opacity: 0.6,
+  },
+  
+  // Collection Selection Modal
+  selectionModalContainer: {
+    backgroundColor: Colors.surface,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingBottom: 20,
+    maxHeight: '80%',
+    width: '100%',
+    position: 'absolute',
+    bottom: 0,
+  },
+  modalHandle: {
+    width: 36,
+    height: 4,
+    backgroundColor: Colors.border,
+    borderRadius: 2,
+    alignSelf: 'center',
+    marginTop: 12,
+    marginBottom: 8,
+  },
+  collectionsList: {
+    maxHeight: 300,
+    paddingHorizontal: 20,
+  },
+  collectionItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 16,
+    paddingHorizontal: 16,
+    backgroundColor: Colors.surfaceLight,
+    borderRadius: 12,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  collectionIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: Colors.primary + '20',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+  },
+  collectionInfo: {
+    flex: 1,
+  },
+  collectionName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: Colors.text,
+    marginBottom: 2,
+  },
+  collectionCount: {
+    fontSize: 14,
+    color: Colors.textSecondary,
+  },
+  emptyState: {
+    alignItems: 'center',
+    paddingVertical: 40,
+  },
+  emptyStateText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: Colors.textSecondary,
+    marginTop: 16,
+    marginBottom: 4,
+  },
+  emptyStateSubtext: {
+    fontSize: 14,
+    color: Colors.textMuted,
+    textAlign: 'center',
+  },
 });
 
 export default ProfileScreen;
