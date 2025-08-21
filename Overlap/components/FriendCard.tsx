@@ -4,17 +4,54 @@ import { View, Text, Image, StyleSheet } from 'react-native';
 const FriendCard = ({ item }) => (
   <View style={styles.friendCard}>
     <Image 
-      source={{ uri: item.profilePicUrl || 'https://via.placeholder.com/40' }} 
+      source={
+        item.profilePicUrl 
+          ? { uri: item.profilePicUrl }
+          : require('../assets/images/profile.png') // Use your default profile image
+      }
       style={styles.friendAvatar} 
+      defaultSource={require('../assets/images/profile.png')} // Fallback for network images
     />
-    <Text style={styles.friendName}>{item.name}</Text>
+    <View style={styles.friendInfo}>
+      <Text style={styles.friendName} numberOfLines={1}>
+        {item.name || 'Friend'}
+      </Text>
+      {item.email && (
+        <Text style={styles.friendEmail} numberOfLines={1}>
+          {item.email}
+        </Text>
+      )}
+    </View>
   </View>
 );
 
 const styles = StyleSheet.create({
-  friendCard: { flexDirection: 'row', alignItems: 'center', padding: 10, backgroundColor: '#1B1F24', borderRadius: 8, marginBottom: 8 },
-  friendAvatar: { width: 40, height: 40, borderRadius: 20, marginRight: 10 },
-  friendName: { fontSize: 16, color: '#FFFFFF' },
+  friendCard: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    flex: 1,
+  },
+  friendAvatar: { 
+    width: 40, 
+    height: 40, 
+    borderRadius: 20, 
+    marginRight: 12,
+    backgroundColor: '#2A2A2A', // Placeholder background
+  },
+  friendInfo: {
+    flex: 1,
+    justifyContent: 'center',
+  },
+  friendName: { 
+    fontSize: 16, 
+    color: '#FFFFFF',
+    fontWeight: '600',
+  },
+  friendEmail: {
+    fontSize: 12,
+    color: '#888',
+    marginTop: 2,
+  },
 });
 
 export default FriendCard;

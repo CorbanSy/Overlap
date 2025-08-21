@@ -248,131 +248,132 @@ const SwipingScreen = forwardRef<SwipingHandle, SwipingScreenProps>(
     };
 
     const renderCard = (card: Card, index: number, isNext = false) => {
-      const imageUrl =
-        Array.isArray(card.photoUrls) && card.photoUrls.length > 0 ? card.photoUrls[0] : null;
+  const imageUrl =
+    Array.isArray(card.photoUrls) && card.photoUrls.length > 0 ? card.photoUrls[0] : null;
 
-      const cardStyle = isNext
-        ? [
-            styles.card,
-            styles.nextCard,
-            { transform: [{ scale: nextCardScale }], opacity: nextCardOpacity },
-          ]
-        : [
-            styles.card,
+  const cardStyle = isNext
+    ? [
+        styles.card,
+        styles.nextCard,
+        { transform: [{ scale: nextCardScale }], opacity: nextCardOpacity, zIndex: 1 },
+      ]
+    : [
+        styles.card,
+        {
+          zIndex: 2, // Higher z-index for the current card
+          transform: [
+            ...position.getTranslateTransform(),
             {
-              transform: [
-                ...position.getTranslateTransform(),
-                {
-                  rotate: position.x.interpolate({
-                    inputRange: [-SCREEN_WIDTH, 0, SCREEN_WIDTH],
-                    outputRange: ['-30deg', '0deg', '30deg'],
-                    extrapolate: 'clamp',
-                  }),
-                },
-                { scale },
-              ],
+              rotate: position.x.interpolate({
+                inputRange: [-SCREEN_WIDTH, 0, SCREEN_WIDTH],
+                outputRange: ['-30deg', '0deg', '30deg'],
+                extrapolate: 'clamp',
+              }),
             },
-          ];
+            { scale },
+          ],
+        },
+      ];
 
-      return (
-        <Animated.View
-          key={`${card.id}-${index}`}
-          style={cardStyle}
-          {...(!isNext ? panResponder.panHandlers : {})}
-        >
-          {imageUrl ? (
-            <>
-              <Image source={{ uri: imageUrl }} style={styles.cardImage} resizeMode="cover" />
-              <LinearGradient
-                colors={['transparent', 'rgba(0,0,0,0.4)', 'rgba(0,0,0,0.85)']}
-                locations={[0, 0.55, 1]}
-                style={styles.cardGradient}
-              />
-            </>
-          ) : (
-            <View style={styles.noImageContainer}>
-              <Ionicons name="image-outline" size={64} color={COLORS.textTertiary} />
-              <Text style={styles.noImageText}>No Image Available</Text>
-            </View>
-          )}
+  return (
+    <Animated.View
+      key={`${card.id}-${index}`}
+      style={cardStyle}
+      {...(!isNext ? panResponder.panHandlers : {})}
+    >
+      {imageUrl ? (
+        <>
+          <Image source={{ uri: imageUrl }} style={styles.cardImage} resizeMode="cover" />
+          <LinearGradient
+            colors={['transparent', 'rgba(0,0,0,0.4)', 'rgba(0,0,0,0.85)']}
+            locations={[0, 0.55, 1]}
+            style={styles.cardGradient}
+          />
+        </>
+      ) : (
+        <View style={styles.noImageContainer}>
+          <Ionicons name="image-outline" size={64} color={COLORS.textTertiary} />
+          <Text style={styles.noImageText}>No Image Available</Text>
+        </View>
+      )}
 
-          {/* swipe hints */}
-          {!isNext && (
-            <>
-              <Animated.View
-                style={[
-                  styles.swipeIndicator,
-                  styles.likeIndicator,
-                  {
-                    opacity: position.x.interpolate({
-                      inputRange: [0, SWIPE_THRESHOLD],
-                      outputRange: [0, 1],
-                      extrapolate: 'clamp',
-                    }),
-                  },
-                ]}
-              >
-                <Text style={styles.indicatorText}>LIKE</Text>
-              </Animated.View>
+      {/* swipe hints */}
+      {!isNext && (
+        <>
+          <Animated.View
+            style={[
+              styles.swipeIndicator,
+              styles.likeIndicator,
+              {
+                opacity: position.x.interpolate({
+                  inputRange: [0, SWIPE_THRESHOLD],
+                  outputRange: [0, 1],
+                  extrapolate: 'clamp',
+                }),
+              },
+            ]}
+          >
+            <Text style={styles.indicatorText}>LIKE</Text>
+          </Animated.View>
 
-              <Animated.View
-                style={[
-                  styles.swipeIndicator,
-                  styles.passIndicator,
-                  {
-                    opacity: position.x.interpolate({
-                      inputRange: [-SWIPE_THRESHOLD, 0],
-                      outputRange: [1, 0],
-                      extrapolate: 'clamp',
-                    }),
-                  },
-                ]}
-              >
-                <Text style={styles.indicatorText}>PASS</Text>
-              </Animated.View>
-            </>
-          )}
+          <Animated.View
+            style={[
+              styles.swipeIndicator,
+              styles.passIndicator,
+              {
+                opacity: position.x.interpolate({
+                  inputRange: [-SWIPE_THRESHOLD, 0],
+                  outputRange: [1, 0],
+                  extrapolate: 'clamp',
+                }),
+              },
+            ]}
+          >
+            <Text style={styles.indicatorText}>PASS</Text>
+          </Animated.View>
+        </>
+      )}
 
-          {/* info */}
-          <View style={styles.cardInfo}>
-            <View style={styles.cardHeader}>
-              <Text style={styles.cardTitle} numberOfLines={2}>
-                {card.name}
-              </Text>
-              <View style={styles.cardMeta}>
-                {renderRating(card.rating)}
-                {renderPriceLevel(card.priceLevel)}
-              </View>
-            </View>
-
-            {card.address && (
-              <View style={styles.addressContainer}>
-                <Ionicons name="location-outline" size={16} color={COLORS.textSecondary} />
-                <Text style={styles.address} numberOfLines={1}>
-                  {card.address}
-                </Text>
-              </View>
-            )}
-
-            {card.category && (
-              <View style={styles.categoryContainer}>
-                <Text style={styles.category}>{card.category}</Text>
-              </View>
-            )}
-
-            {!isNext && (
-              <TouchableOpacity
-                style={styles.moreInfoButton}
-                onPress={handleCardTap}
-                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-              >
-                <Ionicons name="information-circle-outline" size={18} color={COLORS.background} />
-                <Text style={styles.moreInfoText}>More Info</Text>
-              </TouchableOpacity>
-            )}
+      {/* info */}
+      <View style={styles.cardInfo}>
+        <View style={styles.cardHeader}>
+          <Text style={styles.cardTitle} numberOfLines={2}>
+            {card.name}
+          </Text>
+          <View style={styles.cardMeta}>
+            {renderRating(card.rating)}
+            {renderPriceLevel(card.priceLevel)}
           </View>
-        </Animated.View>
-      );
+        </View>
+
+        {card.address && (
+          <View style={styles.addressContainer}>
+            <Ionicons name="location-outline" size={16} color={COLORS.textSecondary} />
+            <Text style={styles.address} numberOfLines={1}>
+              {card.address}
+            </Text>
+          </View>
+        )}
+
+        {card.category && (
+          <View style={styles.categoryContainer}>
+            <Text style={styles.category}>{card.category}</Text>
+          </View>
+        )}
+
+        {!isNext && (
+          <TouchableOpacity
+            style={styles.moreInfoButton}
+            onPress={handleCardTap}
+            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+          >
+            <Ionicons name="information-circle-outline" size={18} color={COLORS.background} />
+            <Text style={styles.moreInfoText}>More Info</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+    </Animated.View>
+  );
     };
 
     if (loading) {
@@ -479,6 +480,7 @@ const SwipingScreen = forwardRef<SwipingHandle, SwipingScreenProps>(
   }
 );
 
+
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   centerContainer: {
@@ -516,7 +518,7 @@ const styles = StyleSheet.create({
     shadowRadius: 16,
     elevation: 10,
   },
-  nextCard: { zIndex: 1 },
+  nextCard: {}, // Removed zIndex: 1 from here since it's handled in the component
   cardImage: { width: '100%', height: '100%' },
   cardGradient: { position: 'absolute', left: 0, right: 0, bottom: 0, height: '55%' },
 
@@ -573,6 +575,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.xl,
     paddingBottom: SPACING.xl,
     gap: SPACING.xl,
+    zIndex: 10, // Higher z-index to appear above cards
   },
   actionButton: {
     width: 56,
@@ -584,7 +587,8 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,
-    elevation: 6,
+    elevation: 1000, // Higher elevation for Android
+    zIndex: 1001, // Higher z-index
   },
   passButton: { backgroundColor: COLORS.danger },
   likeButton: { backgroundColor: COLORS.success },

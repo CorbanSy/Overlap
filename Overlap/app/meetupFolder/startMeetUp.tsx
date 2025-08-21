@@ -6,15 +6,19 @@ import {
   Text,
   TouchableOpacity,
   Modal,
+  Animated,
+  Dimensions,
+  PanResponder,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { BottomSheetModal } from '@gorhom/bottom-sheet';
 import SwipingScreen, { SwipingHandle } from '../../components/swiping';
 import ExploreMoreCard from '../../components/ExploreMoreCard';
 import Leader from '../../components/leader';
 import { PLACE_CATEGORIES } from '../../_utils/placeCategories';
 import { Ionicons } from '@expo/vector-icons';
+
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 const BUTTON_SIZE = 60;
 const COLORS = {
@@ -29,12 +33,82 @@ export default function StartMeetupScreen() {
   const { meetupId } = useLocalSearchParams<{ meetupId?: string }>();
   const router = useRouter();
   const [showDirectionModal, setShowDirectionModal] = useState(false);
+  const [showLeaderboardModal, setShowLeaderboardModal] = useState(false);
 
   const deckRef = useRef<SwipingHandle>(null);
-  const sheetModalRef = useRef<BottomSheetModal>(null);
-  const snapPoints = useMemo(() => ['75%'], []);
+  
+  // Animation for slide-in from right
+  const slideAnim = useRef(new Animated.Value(SCREEN_WIDTH)).current;
+  const panX = useRef(new Animated.Value(0)).current;
 
-  const openLeaderboard = () => sheetModalRef.current?.present();
+  const openLeaderboard = () => {
+    console.log('Opening leaderboard...');
+    setShowLeaderboardModal(true);
+    // Reset animations
+    slideAnim.setValue(SCREEN_WIDTH);
+    panX.setValue(0);
+    // Animate slide in from right
+    Animated.spring(slideAnim, {
+      toValue: 0,
+      useNativeDriver: true,
+      tension: 100,
+      friction: 8,
+    }).start();
+  };
+
+  const closeLeaderboard = () => {
+    Animated.timing(slideAnim, {
+      toValue: SCREEN_WIDTH,
+      duration: 300,
+      useNativeDriver: true,
+    }).start(() => {
+      setShowLeaderboardModal(false);
+      panX.setValue(0);
+    });
+  };
+
+  // Pan responder for swipe to dismiss
+  const panResponder = useMemo(
+    () =>
+      PanResponder.create({
+        onMoveShouldSetPanResponder: (_, gestureState) => {
+          return Math.abs(gestureState.dx) > 10 && Math.abs(gestureState.dx) > Math.abs(gestureState.dy);
+        },
+        onPanResponderGrant: () => {
+          panX.setValue(0);
+        },
+        onPanResponderMove: (_, gestureState) => {
+          // Only allow swiping to the right (positive dx)
+          if (gestureState.dx > 0) {
+            panX.setValue(gestureState.dx);
+          }
+        },
+        onPanResponderRelease: (_, gestureState) => {
+          const threshold = SCREEN_WIDTH * 0.3; // 30% of screen width
+          
+          if (gestureState.dx > threshold || gestureState.vx > 0.5) {
+            // Close the modal
+            Animated.timing(panX, {
+              toValue: SCREEN_WIDTH,
+              duration: 200,
+              useNativeDriver: true,
+            }).start(() => {
+              setShowLeaderboardModal(false);
+              panX.setValue(0);
+            });
+          } else {
+            // Snap back to original position
+            Animated.spring(panX, {
+              toValue: 0,
+              useNativeDriver: true,
+              tension: 100,
+              friction: 8,
+            }).start();
+          }
+        },
+      }),
+    []
+  );
 
   const currentCatKey = PLACE_CATEGORIES[0]?.key;
   const currentCat =
@@ -112,19 +186,51 @@ export default function StartMeetupScreen() {
             </View>
           </View>
         </Modal>
+        {/* LEADERBOARD MODAL */}
+        <Modal
+          animationType="none"
+          transparent
+          visible={showLeaderboardModal}
+          onRequestClose={closeLeaderboard}
+        >
+          <View style={styles.slideModalOverlay}>
+            <Animated.View 
+              style={[
+                styles.slideModalContent,
+                {
+                  transform: [
+                    { 
+                      translateX: Animated.add(slideAnim, panX)
+                    }
+                  ]
+                }
+              ]}
+              {...panResponder.panHandlers}
+            >
+              {/* Header with close button and swipe indicator */}
+              <View style={styles.slideModalHeader}>
+                <View style={styles.swipeIndicator} />
+                <View style={styles.headerContent}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <Ionicons name="trophy" size={24} color={COLORS.accent} style={{ marginRight: 8 }} />
+                    <Text style={styles.slideModalTitle}>
+                      Activity Leaderboard
+                    </Text>
+                  </View>
+                  <TouchableOpacity onPress={closeLeaderboard} style={styles.closeButton}>
+                    <Ionicons name="close" size={24} color="#fff" />
+                  </TouchableOpacity>
+                </View>
+              </View>
+              
+              {/* Leaderboard content */}
+              <View style={styles.slideModalBody}>
+                <Leader meetupId={String(meetupId)} />
+              </View>
+            </Animated.View>
+          </View>
+        </Modal>
       </SafeAreaView>
-
-      {/* BOTTOM SHEET */}
-      <BottomSheetModal
-        ref={sheetModalRef}
-        index={0}
-        snapPoints={snapPoints}
-        enablePanDownToClose
-        backgroundStyle={styles.sheetBackground}
-        handleIndicatorStyle={{ backgroundColor: '#888', width: 40 }}
-      >
-        <Leader meetupId={String(meetupId)} />
-      </BottomSheetModal>
     </GestureHandlerRootView>
   );
 }
@@ -164,8 +270,8 @@ const styles = StyleSheet.create({
     elevation: 6,
   },
   centerButton: { backgroundColor: COLORS.accent },
-  sheetBackground: { backgroundColor: COLORS.surface },
 
+  // Original modal styles
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',
@@ -180,12 +286,56 @@ const styles = StyleSheet.create({
     padding: 20,
   },
   closeButton: {
-    marginTop: 16,
-    alignSelf: 'center',
-    backgroundColor: COLORS.accent,
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-    borderRadius: 8,
+    padding: 8,
+    borderRadius: 20,
   },
   closeText: { color: COLORS.bg, fontWeight: 'bold' },
+
+  // Slide-in modal styles
+  slideModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+  },
+  slideModalContent: {
+    position: 'absolute',
+    right: 0,
+    top: 0,
+    bottom: 0,
+    width: SCREEN_WIDTH * 0.9, // 90% of screen width
+    backgroundColor: COLORS.surface,
+    shadowColor: '#000',
+    shadowOffset: { width: -5, height: 0 },
+    shadowOpacity: 0.3,
+    shadowRadius: 10,
+    elevation: 10,
+  },
+  slideModalHeader: {
+    paddingTop: 50, // Account for status bar
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#30363D',
+  },
+  swipeIndicator: {
+    width: 40,
+    height: 4,
+    backgroundColor: '#666',
+    borderRadius: 2,
+    alignSelf: 'center',
+    marginBottom: 16,
+  },
+  headerContent: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+  },
+  slideModalTitle: {
+    color: '#fff',
+    fontSize: 20,
+    fontWeight: '700',
+  },
+  slideModalBody: {
+    flex: 1,
+    paddingTop: 10,
+  },
 });

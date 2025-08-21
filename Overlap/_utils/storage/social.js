@@ -5,6 +5,7 @@ import {
 } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
 import { db } from '../../FirebaseConfig';
+
 export async function sendFriendRequest(targetUserId) {
   const auth = getAuth();
   const user = auth.currentUser;
@@ -46,21 +47,36 @@ export async function acceptFriendRequest(requestId, fromUserId) {
     createdAt: new Date(),
   });
 
-  // 3) build friendship doc for both
+  // 3) Get current user's directory info for better data
+  const currentUserDirSnap = await getDoc(doc(db, "userDirectory", user.uid));
+  const currentUserDir = currentUserDirSnap.exists() ? currentUserDirSnap.data() : {};
+  
+  // 4) Get friend's directory info
+  const friendDirSnap = await getDoc(doc(db, "userDirectory", fromUserId));
+  const friendDir = friendDirSnap.exists() ? friendDirSnap.data() : {};
+
+  // 5) Build comprehensive user details
   const currentUserDetails = {
     uid: user.uid,
-    email: user.email || '',
-    username: user.displayName || '',
+    email: user.email || currentUserDir.emailLower || '',
+    emailLower: currentUserDir.emailLower || user.email?.toLowerCase() || '',
+    name: currentUserDir.displayName || user.displayName || currentUserDir.usernamePublic || '',
+    displayName: currentUserDir.displayName || user.displayName || '',
+    username: currentUserDir.usernamePublic || user.displayName || '',
+    avatarUrl: currentUserDir.avatarUrl || '',
   };
 
-  const dirSnap = await getDoc(doc(db, "userDirectory", fromUserId));
-  const friendPublic = dirSnap.exists() ? dirSnap.data() : {};
   const friendDetails = {
     uid: fromUserId,
-    avatarUrl: friendPublic.avatarUrl || '',
-    name: friendPublic.displayName || '',
+    email: friendDir.emailLower || '',
+    emailLower: friendDir.emailLower || '',
+    name: friendDir.displayName || friendDir.usernamePublic || friendDir.emailLower || '',
+    displayName: friendDir.displayName || '',
+    username: friendDir.usernamePublic || '',
+    avatarUrl: friendDir.avatarUrl || '',
   };
 
+  // 6) Create friendship document with comprehensive data
   await addDoc(collection(db, "friendships"), {
     users: [user.uid, fromUserId],
     userDetails: {

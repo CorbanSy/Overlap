@@ -263,6 +263,21 @@ function FriendsScreen() {
   }
 
   const friendData = (item.userDetails && item.userDetails[friendUid]) || {};
+  
+  // Improved name resolution with better fallbacks
+  const displayName = 
+    friendData.name || 
+    friendData.displayName || 
+    friendData.username || 
+    friendData.email || 
+    friendData.emailLower ||
+    'Friend'; // Better fallback than UID
+  
+  // Improved avatar URL resolution
+  const avatarUrl = 
+    friendData.avatarUrl || 
+    friendData.profilePicUrl || 
+    undefined;
 
   return (
     <View style={styles.cardRow}>
@@ -273,8 +288,8 @@ function FriendsScreen() {
       >
         <FriendCard
           item={{
-            name: friendData.name || friendUid,
-            profilePicUrl: friendData.avatarUrl || friendData.profilePicUrl,
+            name: displayName,
+            profilePicUrl: avatarUrl,
           }}
         />
       </TouchableOpacity>

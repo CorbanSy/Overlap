@@ -5,6 +5,9 @@ export default {
     slug: "overlap",
     scheme: "overlap",
     userInterfaceStyle: "automatic",
+    assetBundlePatterns: [
+      "assets/**/*"
+    ],
     android: {
       package: "com.anonymous.Overlap",
       adaptiveIcon: {
