@@ -1,7 +1,8 @@
 // MeetupInvitesScreen.tsx
 import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, FlatList, ActivityIndicator } from 'react-native';
-import { getPendingMeetupInvites, acceptMeetupInvite, declineMeetupInvite, getMeetupData } from '../../_utils/storage';
+import { getPendingMeetupInvites, acceptMeetupInvite, declineMeetupInvite } from '../../_utils/storage/meetupInvites';
+import { getMeetupData } from '../../_utils/storage/meetups';
 import MeetupCard from '../../components/MeetupCard';
 import { useRouter } from 'expo-router';
 

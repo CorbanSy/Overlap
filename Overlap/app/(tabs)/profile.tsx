@@ -35,7 +35,8 @@ import ActivityCard from '../../components/ActivityCard';
 import CollectionCard from '../../components/CollectionCard';
 
 // Utility imports
-import { unlikePlace, deleteCollection, saveProfileData } from '../../_utils/storage';
+import { unlikePlace, deleteCollection } from '../../_utils/storage/likesCollections';
+import { saveProfileData } from '../../_utils/storage/userProfile';
 import { Colors } from '../../constants/colors';
 
 /* =========================

@@ -15,7 +15,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { getAuth } from 'firebase/auth';
-import { getProfileData, saveProfileData } from '../../_utils/storage';
+import { getProfileData, saveProfileData } from '../../_utils/storage/userProfile';
 import { useIsFocused } from '@react-navigation/native';
 
 export const options = {

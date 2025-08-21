@@ -15,7 +15,7 @@ import FormField from '../../components/FormField';
 import CustomButton from '../../components/CustomButton';
 import CenterBall from '../../components/CenterBall';
 import { signUp } from '../../_utils/auth';
-import { saveProfileData } from '../../_utils/storage';
+import { saveProfileData } from '../../_utils/storage/userProfile';
 
 const BG = '#0D1117'; // Updated to match home.tsx
 

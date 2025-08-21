@@ -5,7 +5,7 @@ import { Tabs, Redirect } from "expo-router";
 import { PortalProvider } from "@gorhom/portal";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
-import { checkPreferencesComplete } from "../../_utils/storage";
+import { checkPreferencesComplete } from "../../_utils/storage/localStorage";
 import VennLoader from "../../components/vennloader"; // <-- path from (tabs)
 
 const TabsLayout = () => {

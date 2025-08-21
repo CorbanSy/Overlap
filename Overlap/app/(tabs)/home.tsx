@@ -30,14 +30,10 @@ import {
 import { useRouter } from 'expo-router';
 import { useFilters } from '../../context/FiltersContext';
 import VennLoader from '../../components/vennloader';
-import {
-  getProfileData,
-  likePlace,
-  storeReviewsForPlace,
-  addToCollection,
-  fetchPlacesNearby,
-  fetchPlaceDetails,
-} from '../../_utils/storage';
+import { getProfileData } from '../../_utils/storage/userProfile';
+import { likePlace, addToCollection } from '../../_utils/storage/likesCollections';
+import { storeReviewsForPlace } from '../../_utils/storage/reviews';
+import { fetchPlacesNearby, fetchPlaceDetails } from '../../_utils/storage/places';
 
 import ExploreMoreCard from '../../components/ExploreMoreCard';
 import { PLACE_CATEGORIES } from '../../_utils/placeCategories';

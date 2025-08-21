@@ -20,7 +20,7 @@ import {
   joinMeetup,
   joinMeetupByCode,
   declineMeetup,
-} from '../../_utils/storage';
+} from '../../_utils/storage/meetupInvites';
 import { useRouter } from 'expo-router';
 
 // Types

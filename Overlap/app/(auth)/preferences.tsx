@@ -12,7 +12,8 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { getAuth } from "firebase/auth";
 import { router } from 'expo-router';
-import { markPreferencesComplete, saveProfileData } from '../../_utils/storage';
+import { markPreferencesComplete } from '../../_utils/storage/localStorage';
+import { saveProfileData } from '../../_utils/storage/userProfile';
 import { PLACE_CATEGORIES } from '../../_utils/placeCategories'; // single source
 
 const { width } = Dimensions.get("window");

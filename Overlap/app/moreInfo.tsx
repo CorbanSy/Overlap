@@ -26,13 +26,9 @@ import {
   getDocs,
 } from 'firebase/firestore';
 
-import {
-  fetchPlaceDetails,
-  fetchPlacePhotos,
-  likePlace,
-  unlikePlace,
-  storeReviewsForPlace,
-} from '../_utils/storage';
+import { fetchPlaceDetails, fetchPlacePhotos } from '../_utils/storage/places';
+import { likePlace, unlikePlace } from '../_utils/storage/likesCollections';
+import { storeReviewsForPlace } from '../_utils/storage/reviews';
 
 const windowWidth = Dimensions.get('window').width;
 

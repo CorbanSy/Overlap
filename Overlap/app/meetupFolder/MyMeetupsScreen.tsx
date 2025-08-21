@@ -13,13 +13,9 @@ import {
   ScrollView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import {
-  getUserMeetups,
-  removeMeetup,
-  updateMeetup,
-  getPendingMeetupInvites,
-  exportMyLikesToMeetup,
-} from '../../_utils/storage';
+import { getUserMeetups, removeMeetup, updateMeetup } from '../../_utils/storage/meetups';
+import { getPendingMeetupInvites } from '../../_utils/storage/meetupInvites';
+import { exportMyLikesToMeetup } from '../../_utils/storage/meetupActivities';
 import MeetupCard from '../../components/MeetupCard';
 import StartMeetupScreen from './startMeetUp';
 import { useRouter } from 'expo-router';

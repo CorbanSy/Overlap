@@ -13,7 +13,8 @@ import { getAuth, onAuthStateChanged } from 'firebase/auth';
 import { collection, doc, getDoc, getDocs, addDoc } from 'firebase/firestore';
 
 import { db } from '../../FirebaseConfig';
-import { createMeetup, getFriendships } from '../../_utils/storage';
+import { createMeetup } from '../../_utils/storage/meetups';
+import { getFriendships } from '../../_utils/storage/social';
 
 // Import meetup components
 import EventDetailsCard from '../../components/meetup_components/EventDetailsCard';

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, FlatList, StyleSheet, ActivityIndicator } from 'react-native';
-import { getMeetupLeaderboard } from '../_utils/storage';
+import { getMeetupLeaderboard } from '../_utils/storage/meetupSwipes';
 
 interface LeaderProps {
   meetupId: string;

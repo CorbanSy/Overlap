@@ -31,8 +31,9 @@ import {
   sendFriendRequest,
   removeFriend,
   acceptFriendRequest,
-  ensureDirectoryForCurrentUser,
-} from '../../_utils/storage';
+} from '../../_utils/storage/social';
+import { ensureDirectoryForCurrentUser } from '../../_utils/storage/userProfile';
+
 import FriendCard from '../../components/FriendCard';
 
 export const options = { headerShown: false };

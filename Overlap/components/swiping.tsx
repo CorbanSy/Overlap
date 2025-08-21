@@ -23,7 +23,8 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
-import { getMeetupLikes, recordSwipe } from '../_utils/storage';
+import { getMeetupLikes } from '../_utils/storage/meetupActivities';
+import { recordSwipe } from '../_utils/storage/meetupSwipes';
 import { getAuth } from 'firebase/auth';
 
 interface Card {

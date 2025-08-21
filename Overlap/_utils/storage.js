@@ -1,4 +1,4 @@
-// storage.js
+// storage.js - Organized by functionality
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
@@ -8,9 +8,10 @@ import { getAuth } from 'firebase/auth';
 import { ref, getDownloadURL } from 'firebase/storage'
 import { db, storage } from '../FirebaseConfig'
 
-/* ------------------------------------------------------------------
-   1) AsyncStorage for "preferencesCompleted" flag
-   ------------------------------------------------------------------ */
+/* ============================================================================
+   📱 LOCAL STORAGE (AsyncStorage)
+   ============================================================================ */
+
 export async function markPreferencesComplete() {
   try {
     await AsyncStorage.setItem('preferencesComplete', 'true');
@@ -29,39 +30,38 @@ export async function checkPreferencesComplete() {
   }
 }
 
-/* ------------------------------------------------------------------
-   2) Firestore: Save & Read Preferences Subcollection
-      /users/{uid}/profile/main
-   ------------------------------------------------------------------ */
-   export async function saveProfileData({ topCategories, name, bio, avatarUrl, email, username }) {
-    const auth = getAuth();
-    const user = auth.currentUser;
-    if (!user) throw new Error('No user is signed in');
+/* ============================================================================
+   👤 USER PROFILE & SETTINGS
+   ============================================================================ */
 
-    const profileRef = doc(db, 'users', user.uid, 'profile', 'main');
-    const cleanedData: any = { lastUpdated: new Date() };
-    if (topCategories !== undefined) cleanedData.topCategories = topCategories || [];
-    if (name !== undefined) cleanedData.name = name;
-    if (bio !== undefined) cleanedData.bio = bio;
-    if (avatarUrl !== undefined) cleanedData.avatarUrl = avatarUrl;
-    if (email !== undefined) cleanedData.email = email;
-    if (username !== undefined) cleanedData.username = username;
+export async function saveProfileData({ topCategories, name, bio, avatarUrl, email, username }) {
+  const auth = getAuth();
+  const user = auth.currentUser;
+  if (!user) throw new Error('No user is signed in');
 
-    await setDoc(profileRef, cleanedData, { merge: true });
+  const profileRef = doc(db, 'users', user.uid, 'profile', 'main');
+  const cleanedData = { lastUpdated: new Date() };
+  if (topCategories !== undefined) cleanedData.topCategories = topCategories || [];
+  if (name !== undefined) cleanedData.name = name;
+  if (bio !== undefined) cleanedData.bio = bio;
+  if (avatarUrl !== undefined) cleanedData.avatarUrl = avatarUrl;
+  if (email !== undefined) cleanedData.email = email;
+  if (username !== undefined) cleanedData.username = username;
 
-    // 🔎 also maintain a public directory doc
-    const dirRef = doc(db, 'userDirectory', user.uid);
-    await setDoc(dirRef, {
-      emailLower: (email || user.email || '').toLowerCase(),
-      displayName: name || username || user.displayName || '',
-      avatarUrl: avatarUrl || '',
-      usernamePublic: username || '',
-      bioPublic: (bio || '').slice(0, 500),         // optional trimming
-      topCategoriesPublic: Array.isArray(topCategories) ? topCategories : [],
-      updatedAt: new Date(),
-    }, { merge: true });
-  }
-  
+  await setDoc(profileRef, cleanedData, { merge: true });
+
+  // Also maintain a public directory doc
+  const dirRef = doc(db, 'userDirectory', user.uid);
+  await setDoc(dirRef, {
+    emailLower: (email || user.email || '').toLowerCase(),
+    displayName: name || username || user.displayName || '',
+    avatarUrl: avatarUrl || '',
+    usernamePublic: username || '',
+    bioPublic: (bio || '').slice(0, 500),
+    topCategoriesPublic: Array.isArray(topCategories) ? topCategories : [],
+    updatedAt: new Date(),
+  }, { merge: true });
+}
 
 export async function getProfileData() {
   const auth = getAuth();
@@ -73,7 +73,7 @@ export async function getProfileData() {
   if (snap.exists()) {
     return snap.data();
   } else {
-    return null; // doc doesn't exist yet
+    return null;
   }
 }
 
@@ -86,8 +86,6 @@ export async function ensureDirectoryForCurrentUser() {
   const dirSnap = await getDoc(dirRef);
   if (dirSnap.exists()) return;
 
-  // Build from whatever we can get without violating rules
-  // Prefer profile.main if it exists (you can read your own /users/*)
   let displayName = user.displayName || '';
   let avatarUrl = '';
   try {
@@ -110,10 +108,59 @@ export async function ensureDirectoryForCurrentUser() {
   }, { merge: true });
 }
 
-/* ------------------------------------------------------------------
-   3) Firestore: Likes Subcollection
-      /users/{uid}/likes/{placeId}
-   ------------------------------------------------------------------ */
+export async function getPrivacySettings() {
+  const auth = getAuth();
+  const user = auth.currentUser;
+  if (!user) throw new Error('No user is signed in');
+
+  const refDoc = doc(db, 'users', user.uid, 'settings', 'privacy');
+  const snap = await getDoc(refDoc);
+  if (snap.exists()) return snap.data();
+
+  // first-time defaults
+  const defaults = {
+    showProfilePublic: true,
+    showActivityToFriends: true,
+    allowFriendRequests: true,
+    shareEmailWithFriends: false,
+    blockedUsers: [],
+    updatedAt: new Date(),
+  };
+  await setDoc(refDoc, defaults, { merge: true });
+
+  // mirror flags to userDirectory so other screens can read them quickly
+  await setDoc(doc(db, 'userDirectory', user.uid), {
+    isPublicProfile: defaults.showProfilePublic,
+    allowFriendRequests: defaults.allowFriendRequests,
+    shareEmailWithFriends: defaults.shareEmailWithFriends,
+    updatedAt: new Date(),
+  }, { merge: true });
+
+  return defaults;
+}
+
+export async function setPrivacySettings(patch) {
+  const auth = getAuth();
+  const user = auth.currentUser;
+  if (!user) throw new Error('No user is signed in');
+
+  const refDoc = doc(db, 'users', user.uid, 'settings', 'privacy');
+  await setDoc(refDoc, { ...patch, updatedAt: new Date() }, { merge: true });
+
+  // keep public directory in sync with the main flags
+  const dirPatch = {};
+  if (patch.showProfilePublic !== undefined) dirPatch.isPublicProfile = !!patch.showProfilePublic;
+  if (patch.allowFriendRequests !== undefined) dirPatch.allowFriendRequests = !!patch.allowFriendRequests;
+  if (patch.shareEmailWithFriends !== undefined) dirPatch.shareEmailWithFriends = !!patch.shareEmailWithFriends;
+  if (Object.keys(dirPatch).length) {
+    await setDoc(doc(db, 'userDirectory', user.uid), { ...dirPatch, updatedAt: new Date() }, { merge: true });
+  }
+}
+
+/* ============================================================================
+   ❤️ LIKES & COLLECTIONS
+   ============================================================================ */
+
 async function toUrlArray(photos) {
   if (!Array.isArray(photos) || photos.length === 0) return [];
   const paths = typeof photos[0] === 'string'
@@ -180,24 +227,6 @@ export async function getAllLikes() {
   }));
 }
 
-/* ------------------------------------------------------------------
-   4) Firestore: Store Reviews 
-      /places/{placeId}/reviews/{autoId}
-   ------------------------------------------------------------------ */
-export async function storeReviewsForPlace(placeId, reviews) {
-  for (let i = 0; i < reviews.length; i++) {
-    const r = reviews[i];
-    // Each doc is an individual review
-    await addDoc(collection(db, "places", placeId, "reviews"), {
-      text: r.text || "",
-      rating: r.rating || 0,
-      authorName: r.author_name || "",
-      relativeTime: r.relative_time_description || "",
-      createdAt: new Date()
-    });
-  }
-}
-
 // Make sure any incoming "place" becomes a clean activity snapshot
 async function normalizeActivity(place) {
   // Prefer already-resolved URLs if present
@@ -221,173 +250,89 @@ async function normalizeActivity(place) {
     name: place.name || '',
     rating: place.rating || 0,
     types: place.types || [],
-    photoUrls,     // ✅ what UI uses
+    photoUrls,     // what UI uses
     photoPaths,    // optional reference
   };
 }
-/* ------------------------------------------------------------------
-   New: Firestore helper to add a place to a user's collection
-      /users/{uid}/collections/{collectionId}
-   ------------------------------------------------------------------ */
-   export async function addToCollection(collectionId, place) {
-    const auth = getAuth();
-    const user = auth.currentUser;
-    if (!user) throw new Error('No user is signed in');
 
-    const colDocRef = doc(db, 'users', user.uid, 'collections', collectionId);
-    const snap = await getDoc(colDocRef);
-    const norm = await normalizeActivity(place);
+export async function addToCollection(collectionId, place) {
+  const auth = getAuth();
+  const user = auth.currentUser;
+  if (!user) throw new Error('No user is signed in');
 
-    if (!snap.exists()) {
-      await setDoc(colDocRef, { activities: [norm] }, { merge: true });
-      return;
-    }
+  const colDocRef = doc(db, 'users', user.uid, 'collections', collectionId);
+  const snap = await getDoc(colDocRef);
+  const norm = await normalizeActivity(place);
 
-    const activities = snap.data().activities || [];
-    if (!activities.some(a => a.id === norm.id)) {
-      activities.push(norm);
-      await updateDoc(colDocRef, { activities });
-    }
+  if (!snap.exists()) {
+    await setDoc(colDocRef, { activities: [norm] }, { merge: true });
+    return;
   }
-  
-/* ------------------------------------------------------------------
-   5) Firestore: Create a Meetup Document
-      /meetups/{autoId}
-   ------------------------------------------------------------------ */
-   export async function createMeetup(meetupData) {
-    const auth = getAuth();
-    const user = auth.currentUser;
-    if (!user) throw new Error('No user is signed in');
-    // Auto-generate a 6-digit code if none was provided
-    if (!meetupData.code) {
-      meetupData.code = Math.floor(100000 + Math.random() * 900000).toString();
-    }
-    // Ensure each field is defined (use defaults if necessary)
-    const cleanedData = {
-      eventName: meetupData.eventName || "",
-      mood: meetupData.mood || "",
-      category: meetupData.category || "",
-      groupSize: meetupData.groupSize || 1,
-      date: meetupData.date, // already an ISO string from new Date()
-      time: meetupData.time, // same as above
-      priceRange: meetupData.priceRange || 0,
-      description: meetupData.description || "",
-      restrictions: meetupData.restrictions || "",
-      // In case selectedFriends is missing or a friend object is missing uid, fallback to an empty array
-      friends: (meetupData.friends || []).map(friend => ({
-        uid: friend.uid || "",
-        email: friend.email || "",
-        name: friend.name || "",
-        avatarUrl: friend.avatarUrl || ""
-      })),
-      location: meetupData.location || "",
-      // Ensure collections is at least an empty array
-      collections: meetupData.collections || [],
-      code: meetupData.code,
-    };
-  
-    // Build additional fields
-    const invitedFriends = cleanedData.friends;
-    const data = {
-      ...cleanedData,
-      creatorId: user.uid,
-      participants: [user.uid, ...invitedFriends.map(friend => friend.uid)],
-      createdAt: new Date(),
-    };
-  
-    // Log the final data for debugging
-    console.log("Final meetup data sent to Firestore:", data);
-  
-    // Create the meetup document
-    const meetupRef = await addDoc(collection(db, "meetups"), data);
-    
-    // Add a meetupId field to the document (using the document ID)
-    await updateDoc(meetupRef, { meetupId: meetupRef.id });
-    
-    return meetupRef.id;
-  }
-  
 
-export async function getUserMeetups() {
+  const activities = snap.data().activities || [];
+  if (!activities.some(a => a.id === norm.id)) {
+    activities.push(norm);
+    await updateDoc(colDocRef, { activities });
+  }
+}
+
+export async function deleteCollection(collectionId) {
+  const auth = getAuth();
+  const user = auth.currentUser;
+  if (!user) throw new Error('No user is signed in');
+
+  if (!collectionId) throw new Error('Collection ID is required');
+
+  const collectionRef = doc(db, 'users', user.uid, 'collections', collectionId);
+  await deleteDoc(collectionRef);
+}
+
+/* ============================================================================
+   🤝 SOCIAL - FRIENDS & FRIEND REQUESTS
+   ============================================================================ */
+
+export async function sendFriendRequest(targetUserId) {
   const auth = getAuth();
   const user = auth.currentUser;
   if (!user) throw new Error("No user is signed in");
 
-  const meetupsColRef = collection(db, "meetups");
+  // sender info
+  const fromProfileRef = doc(db, 'users', user.uid, 'profile', 'main');
+  const fromSnap = await getDoc(fromProfileRef);
+  const fromEmail = user.email || '';
+  const fromAvatarUrl = fromSnap.exists() ? (fromSnap.data().avatarUrl || '') : '';
 
-  // Query for meetups where the user is the creator
-  const createdQuery = query(meetupsColRef, where("creatorId", "==", user.uid));
-  const createdSnap = await getDocs(createdQuery);
-  const createdMeetups = createdSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  // get target's public directory info
+  const dirSnap = await getDoc(doc(db, 'userDirectory', targetUserId));
+  const toEmail = dirSnap.exists() ? (dirSnap.data().emailLower || '') : '';
+  const toDisplayName = dirSnap.exists() ? (dirSnap.data().displayName || '') : '';
 
-  // Query for meetups where the user is in the participants array
-  const joinedQuery = query(meetupsColRef, where("participants", "array-contains", user.uid));
-  const joinedSnap = await getDocs(joinedQuery);
-  const joinedMeetups = joinedSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-
-  // Combine and deduplicate meetups (in case creator is also a participant)
-  const allMeetupsMap = new Map();
-  createdMeetups.forEach(meetup => allMeetupsMap.set(meetup.id, meetup));
-  joinedMeetups.forEach(meetup => allMeetupsMap.set(meetup.id, meetup));
-
-  return Array.from(allMeetupsMap.values());
+  await addDoc(collection(db, 'friendRequests'), {
+    from: user.uid,
+    fromEmail,
+    to: targetUserId,
+    toEmail,
+    toDisplayName,
+    profilePicUrl: fromAvatarUrl,
+    status: 'pending',
+    timestamp: new Date(),
+  });
 }
 
-/* ------------------------------------------------------------------
-   7) Firestore: Social - Friend Requests & Friendships
-      Using two separate collections: "friendRequests" and "friendships"
-   ------------------------------------------------------------------ */
-
-/**
- * sendFriendRequest:
- * - We now store the **sender's** avatar in "profilePicUrl" so the receiving user
- *   sees who is requesting them.
- */
-export async function sendFriendRequest(targetUserId) {
-    const auth = getAuth();
-    const user = auth.currentUser;
-    if (!user) throw new Error("No user is signed in");
-
-    // sender info
-    const fromProfileRef = doc(db, 'users', user.uid, 'profile', 'main');
-    const fromSnap = await getDoc(fromProfileRef);
-    const fromEmail = user.email || '';
-    const fromAvatarUrl = fromSnap.exists() ? (fromSnap.data().avatarUrl || '') : '';
-
-    // ✅ get target's public directory info
-    const dirSnap = await getDoc(doc(db, 'userDirectory', targetUserId));
-    const toEmail = dirSnap.exists() ? (dirSnap.data().emailLower || '') : '';
-    const toDisplayName = dirSnap.exists() ? (dirSnap.data().displayName || '') : '';
-
-    await addDoc(collection(db, 'friendRequests'), {
-      from: user.uid,
-      fromEmail,
-      to: targetUserId,
-      toEmail,              // <— now set
-      toDisplayName,        // optional
-      profilePicUrl: fromAvatarUrl,
-      status: 'pending',
-      timestamp: new Date(),
-    });
-  }
-
-/**
- * Accept a friend request.
- */
 export async function acceptFriendRequest(requestId, fromUserId) {
   const auth = getAuth();
   const user = auth.currentUser;
   if (!user) throw new Error("No user is signed in");
 
-  // 1) mark accepted (allowed: only 'to' can update)
+  // 1) mark accepted
   await updateDoc(doc(db, "friendRequests", requestId), { status: "accepted" });
 
-  // 2) create MY friend edge only (allowed by rules)
+  // 2) create MY friend edge only
   await setDoc(doc(db, 'users', user.uid, 'friends', fromUserId), {
     createdAt: new Date(),
   });
 
-  // 3) build friendship doc for both (allowed by your friendships rules)
+  // 3) build friendship doc for both
   const currentUserDetails = {
     uid: user.uid,
     email: user.email || '',
@@ -421,24 +366,6 @@ export async function rejectFriendRequest(requestId) {
   await updateDoc(requestRef, { status: "rejected" });
 }
 
-// Meetup invites example (unrelated to friendRequests, but included in your code)
-export async function getPendingMeetupInvites() {
-  const auth = getAuth();
-  const user = auth.currentUser;
-  if (!user) throw new Error("No user is signed in");
-
-  const invitesQuery = query(
-    collection(db, "meetupInvites"),
-    where("invitedFriendId", "==", user.uid),
-    where("status", "==", "pending")
-  );
-  const querySnapshot = await getDocs(invitesQuery);
-  return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-}
-
-/**
- * Retrieve the list of friendships for the current user.
- */
 export async function getFriendships() {
   const auth = getAuth();
   const user = auth.currentUser;
@@ -455,16 +382,126 @@ export async function getFriendships() {
   }));
 }
 
-/* ------------------------------------------------------------------
-   8) Firestore: Update / Delete Meetup
-   ------------------------------------------------------------------ */
+export async function removeFriend(friendUid) {
+  const auth = getAuth();
+  const user = auth.currentUser;
+  if (!user) throw new Error("No user is signed in");
+  
+  await deleteDoc(doc(db, 'users', user.uid, 'friends', friendUid));
+  await deleteDoc(doc(db, 'users', friendUid, 'friends', user.uid));
+  
+  // Find all friendship docs that contain the current user
+  const friendshipsRef = collection(db, "friendships");
+  const q = query(friendshipsRef, where("users", "array-contains", user.uid));
+  const snapshot = await getDocs(q);
+
+  // For each matching doc, check if the doc's "users" also includes friendUid
+  snapshot.forEach(async (docSnap) => {
+    const data = docSnap.data();
+    if (data.users.includes(friendUid)) {
+      await deleteDoc(doc(db, "friendships", docSnap.id));
+    }
+  });
+}
+
+/* ============================================================================
+   🎉 MEETUPS - CRUD Operations
+   ============================================================================ */
+
+export async function createMeetup(meetupData) {
+  const auth = getAuth();
+  const user = auth.currentUser;
+  if (!user) throw new Error('No user is signed in');
+  
+  // Auto-generate a 6-digit code if none was provided
+  if (!meetupData.code) {
+    meetupData.code = Math.floor(100000 + Math.random() * 900000).toString();
+  }
+  
+  // Ensure each field is defined (use defaults if necessary)
+  const cleanedData = {
+    eventName: meetupData.eventName || "",
+    mood: meetupData.mood || "",
+    category: meetupData.category || "",
+    groupSize: meetupData.groupSize || 1,
+    date: meetupData.date,
+    time: meetupData.time,
+    priceRange: meetupData.priceRange || 0,
+    description: meetupData.description || "",
+    restrictions: meetupData.restrictions || "",
+    friends: (meetupData.friends || []).map(friend => ({
+      uid: friend.uid || "",
+      email: friend.email || "",
+      name: friend.name || "",
+      avatarUrl: friend.avatarUrl || ""
+    })),
+    location: meetupData.location || "",
+    collections: meetupData.collections || [],
+    code: meetupData.code,
+  };
+
+  // Build additional fields
+  const invitedFriends = cleanedData.friends;
+  const data = {
+    ...cleanedData,
+    creatorId: user.uid,
+    participants: [user.uid, ...invitedFriends.map(friend => friend.uid)],
+    createdAt: new Date(),
+  };
+
+  console.log("Final meetup data sent to Firestore:", data);
+
+  // Create the meetup document
+  const meetupRef = await addDoc(collection(db, "meetups"), data);
+  
+  // Add a meetupId field to the document
+  await updateDoc(meetupRef, { meetupId: meetupRef.id });
+  
+  return meetupRef.id;
+}
+
+export async function getUserMeetups() {
+  const auth = getAuth();
+  const user = auth.currentUser;
+  if (!user) throw new Error("No user is signed in");
+
+  const meetupsColRef = collection(db, "meetups");
+
+  // Query for meetups where the user is the creator
+  const createdQuery = query(meetupsColRef, where("creatorId", "==", user.uid));
+  const createdSnap = await getDocs(createdQuery);
+  const createdMeetups = createdSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+  // Query for meetups where the user is in the participants array
+  const joinedQuery = query(meetupsColRef, where("participants", "array-contains", user.uid));
+  const joinedSnap = await getDocs(joinedQuery);
+  const joinedMeetups = joinedSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+  // Combine and deduplicate meetups
+  const allMeetupsMap = new Map();
+  createdMeetups.forEach(meetup => allMeetupsMap.set(meetup.id, meetup));
+  joinedMeetups.forEach(meetup => allMeetupsMap.set(meetup.id, meetup));
+
+  return Array.from(allMeetupsMap.values());
+}
+
+export async function getMeetupData(meetupId) {
+  const meetupRef = doc(db, "meetups", meetupId);
+  const meetupSnap = await getDoc(meetupRef);
+  if (meetupSnap.exists()) {
+    return { id: meetupSnap.id, ...meetupSnap.data() };
+  } else {
+    throw new Error("Meetup not found");
+  }
+}
+
 export async function updateMeetup(meetupData) {
   if (!meetupData.id) {
     throw new Error('No meetup id provided');
   }
   const meetupRef = doc(db, 'meetups', meetupData.id);
   
-  // Build an object with only the fields that are defined.
+  // Build an object with only the fields that are defined
   const updateFields = {};
   if (meetupData.eventName !== undefined) updateFields.eventName = meetupData.eventName;
   if (meetupData.mood !== undefined) updateFields.mood = meetupData.mood;
@@ -484,9 +521,10 @@ export async function removeMeetup(meetupId) {
   await deleteDoc(meetupRef);
 }
 
-/* ------------------------------------------------------------------
-   9) Firestore: Send & Manage Meetup Invites
-   ------------------------------------------------------------------ */
+/* ============================================================================
+   📨 MEETUP INVITES & JOINING
+   ============================================================================ */
+
 export async function sendMeetupInvite(meetupId, friend) {
   const auth = getAuth();
   const user = auth.currentUser;
@@ -501,12 +539,26 @@ export async function sendMeetupInvite(meetupId, friend) {
   });
 }
 
+export async function getPendingMeetupInvites() {
+  const auth = getAuth();
+  const user = auth.currentUser;
+  if (!user) throw new Error("No user is signed in");
+
+  const invitesQuery = query(
+    collection(db, "meetupInvites"),
+    where("invitedFriendId", "==", user.uid),
+    where("status", "==", "pending")
+  );
+  const querySnapshot = await getDocs(invitesQuery);
+  return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+}
+
 export async function acceptMeetupInvite(inviteId, meetupId) {
-  // Update the invite document's status.
+  // Update the invite document's status
   const inviteRef = doc(db, "meetupInvites", inviteId);
   await updateDoc(inviteRef, { status: "accepted" });
 
-  // Optionally, update the corresponding meetup document to ensure the user is in the participants.
+  // Update the corresponding meetup document to ensure the user is in the participants
   const meetupRef = doc(db, "meetups", meetupId);
   const meetupSnap = await getDoc(meetupRef);
   if (meetupSnap.exists()) {
@@ -526,22 +578,58 @@ export async function declineMeetupInvite(inviteId) {
   await updateDoc(inviteRef, { status: "declined" });
 }
 
-export async function getMeetupData(meetupId) {
-  const meetupRef = doc(db, "meetups", meetupId);
-  const meetupSnap = await getDoc(meetupRef);
-  if (meetupSnap.exists()) {
-    return { id: meetupSnap.id, ...meetupSnap.data() };
-  } else {
-    throw new Error("Meetup not found");
-  }
+export async function joinMeetup(inviteId) {
+  const inviteRef = doc(db, "meetupInvites", inviteId);
+  const inviteSnap = await getDoc(inviteRef);
+  if (!inviteSnap.exists()) throw new Error("Invite not found");
+  const inviteData = inviteSnap.data();
+  if (!inviteData.meetupId) throw new Error("Meetup ID missing in invite");
+
+  // mark accepted + add participant if needed
+  await acceptMeetupInvite(inviteId, inviteData.meetupId);
+
+  // immediately mirror my likes into the meetup
+  await exportMyLikesToMeetup(inviteData.meetupId);
+
+  return inviteData.meetupId;
 }
+
+export async function joinMeetupByCode(inviteCode) {
+  const meetupsColRef = collection(db, "meetups");
+  const q = query(meetupsColRef, where("code", "==", inviteCode));
+  const snap = await getDocs(q);
+  if (snap.empty) throw new Error("No meetup found with the provided code.");
+
+  const meetupDoc = snap.docs[0];
+  const meetupData = meetupDoc.data();
+
+  const auth = getAuth();
+  const user = auth.currentUser;
+  if (!user) throw new Error("No user is signed in");
+
+  if (!meetupData.participants.includes(user.uid)) {
+    await updateDoc(doc(db, "meetups", meetupDoc.id), {
+      participants: [...meetupData.participants, user.uid],
+    });
+  }
+  await exportMyLikesToMeetup(meetupDoc.id);
+  return meetupDoc.id;
+}
+
+export async function declineMeetup(inviteId) {
+  await declineMeetupInvite(inviteId);
+}
+
+/* ============================================================================
+   💖 MEETUP LIKES & ACTIVITY MANAGEMENT
+   ============================================================================ */
 
 export async function exportMyLikesToMeetup(meetupId) {
   const auth = getAuth();
   const user = auth.currentUser;
   if (!user) throw new Error("No user is signed in");
 
-  // read ONLY my likes (allowed by rules)
+  // read ONLY my likes
   const likesColRef = collection(db, "users", user.uid, "likes");
   const snap = await getDocs(likesColRef);
 
@@ -561,7 +649,6 @@ export async function exportMyLikesToMeetup(meetupId) {
   await Promise.all(writes);
 }
 
-// Read mirrored likes from the meetup (no cross-user /users reads)
 export async function getMeetupLikes(meetupId) {
   const col = collection(db, "meetups", meetupId, "likes");
   const snap = await getDocs(col);
@@ -581,77 +668,11 @@ export async function getMeetupLikes(meetupId) {
   return Array.from(map.values());
 }
 
-/**
- * Removes a friendship between the current user and friendUid.
- */
-export async function removeFriend(friendUid) {
-  const auth = getAuth();
-  const user = auth.currentUser;
-  if (!user) throw new Error("No user is signed in");
-  await deleteDoc(doc(db, 'users', user.uid, 'friends', friendUid));
-await deleteDoc(doc(db, 'users', friendUid, 'friends', user.uid));
-  // Find all friendship docs that contain the current user
-  const friendshipsRef = collection(db, "friendships");
-  const q = query(friendshipsRef, where("users", "array-contains", user.uid));
-  const snapshot = await getDocs(q);
+/* ============================================================================
+   📊 MEETUP SWIPES & LEADERBOARD
+   ============================================================================ */
 
-  // For each matching doc, check if the doc's "users" also includes friendUid
-  snapshot.forEach(async (docSnap) => {
-    const data = docSnap.data();
-    if (data.users.includes(friendUid)) {
-      // Delete the friendship doc
-      await deleteDoc(doc(db, "friendships", docSnap.id));
-    }
-  });
-}
-
-// Function to join a meetup using an invite (direct invitation)
-export async function joinMeetup(inviteId) {
-  const inviteRef = doc(db, "meetupInvites", inviteId);
-  const inviteSnap = await getDoc(inviteRef);
-  if (!inviteSnap.exists()) throw new Error("Invite not found");
-  const inviteData = inviteSnap.data();
-  if (!inviteData.meetupId) throw new Error("Meetup ID missing in invite");
-
-  // mark accepted + add participant if needed
-  await acceptMeetupInvite(inviteId, inviteData.meetupId);
-
-  // immediately mirror my likes into the meetup
-  await exportMyLikesToMeetup(inviteData.meetupId);
-
-  return inviteData.meetupId; // <— return plain string
-}
-
-// Function to join a meetup by using an invite code.
-export async function joinMeetupByCode(inviteCode) {
-  const meetupsColRef = collection(db, "meetups");
-  const q = query(meetupsColRef, where("code", "==", inviteCode));
-  const snap = await getDocs(q);
-  if (snap.empty) throw new Error("No meetup found with the provided code.");
-
-  const meetupDoc = snap.docs[0];
-  const meetupData = meetupDoc.data();
-
-  const auth = getAuth();
-  const user = auth.currentUser;
-  if (!user) throw new Error("No user is signed in");
-
-  if (!meetupData.participants.includes(user.uid)) {
-    await updateDoc(doc(db, "meetups", meetupDoc.id), {
-      participants: [...meetupData.participants, user.uid],
-    });
-  }
-  await exportMyLikesToMeetup(meetupDoc.id); // so they have cards right away
-  return meetupDoc.id; // return a string
-}
-
-// Alias for declining a meetup invite.
-export async function declineMeetup(inviteId) {
-  await declineMeetupInvite(inviteId);
-}
-
-// Call this whenever someone swipes on an activity
-export async function recordSwipe(meetupId, userId, activityId, decision /* 'yes'|'no' */, name) {
+export async function recordSwipe(meetupId, userId, activityId, decision, name) {
   // doc ID could be `${userId}_${activityId}` to dedupe per user-activity
   const swipeDocRef = doc(db, 'meetups', meetupId, 'swipes', `${userId}_${activityId}`);
   await setDoc(swipeDocRef, {
@@ -663,21 +684,13 @@ export async function recordSwipe(meetupId, userId, activityId, decision /* 'yes
   });
 }
 
-// Call this when the meetup ends to clear out the swipe data
-export async function clearMeetupSwipes(meetupId) {
-  const swipesColRef = collection(db, 'meetups', meetupId, 'swipes');
-  const snap = await getDocs(swipesColRef);
-  const batchDeletes = snap.docs.map(d => deleteDoc(d.ref));
-  await Promise.all(batchDeletes);
-}
-
 export async function getMeetupLeaderboard(meetupId) {
   // grab all docs under /meetups/{meetupId}/swipes
   const swipesRef = collection(db, 'meetups', meetupId, 'swipes');
   const snap = await getDocs(swipesRef);
 
   // tally up yes/no per activity
-  const tally: Record<string, { yesCount: number; noCount: number }> = {};
+  const tally = {};
   snap.docs.forEach(docSnap => {
     const { activityId, decision, name } = docSnap.data();
     // initialize
@@ -690,12 +703,23 @@ export async function getMeetupLeaderboard(meetupId) {
   });
 
   // build leaderboard array
-  return Object.entries(tally).map(([activityId, stats]: any) => ({
+  return Object.entries(tally).map(([activityId, stats]) => ({
     name: stats.name || activityId,
     yesCount: stats.yesCount,
     noCount: stats.noCount,
   }));
 }
+
+export async function clearMeetupSwipes(meetupId) {
+  const swipesColRef = collection(db, 'meetups', meetupId, 'swipes');
+  const snap = await getDocs(swipesColRef);
+  const batchDeletes = snap.docs.map(d => deleteDoc(d.ref));
+  await Promise.all(batchDeletes);
+}
+
+/* ============================================================================
+   📍 PLACES & LOCATION DATA
+   ============================================================================ */
 
 // Convert degrees → radians
 function toRad(d) {
@@ -713,32 +737,21 @@ function haversine(lat1, lng1, lat2, lng2) {
   return 2 * R * Math.asin(Math.sqrt(a))
 }
 
-/**
- * Grabs _all_ docs in /places, then filters by distance.
- * (With ~100 docs this is fine — if you grow much bigger you can add a geo‐query lib.)
- */
 export async function fetchPlacesNearby(userLat, userLng, maxKm = 5) {
   const snap = await getDocs(collection(db, 'places'))
   const all = snap.docs.map(d => ({ id: d.id, ...d.data() }))
-  if (!isFinite(userLat) || !isFinite(userLng) || !maxKm) return all; // no filter
+  if (!isFinite(userLat) || !isFinite(userLng) || !maxKm) return all;
   return all.filter(p =>
     haversine(userLat, userLng, p.location.lat, p.location.lng) <= maxKm
   )
 }
 
-/**
- * Reads /places/{placeId} doc
- */
 export async function fetchPlaceDetails(placeId) {
   const snap = await getDoc(doc(db, 'places', placeId))
   if (!snap.exists()) throw new Error('Place not found')
   return { id: snap.id, ...snap.data() }
 }
 
-/**
- * Given a place doc with `photos: string[]` of storage paths,
- * turn them into download URLs.
- */
 export async function fetchPlacePhotos(place) {
   if (!Array.isArray(place.photos)) return []
   return Promise.all(
@@ -748,63 +761,20 @@ export async function fetchPlacePhotos(place) {
   )
 }
 
-export async function getPrivacySettings() {
-  const auth = getAuth();
-  const user = auth.currentUser;
-  if (!user) throw new Error('No user is signed in');
+/* ============================================================================
+   📝 REVIEWS
+   ============================================================================ */
 
-  const refDoc = doc(db, 'users', user.uid, 'settings', 'privacy');
-  const snap = await getDoc(refDoc);
-  if (snap.exists()) return snap.data();
-
-  // first-time defaults
-  const defaults = {
-    showProfilePublic: true,
-    showActivityToFriends: true,
-    allowFriendRequests: true,
-    shareEmailWithFriends: false,
-    blockedUsers: [],
-    updatedAt: new Date(),
-  };
-  await setDoc(refDoc, defaults, { merge: true });
-
-  // mirror flags to userDirectory so other screens can read them quickly
-  await setDoc(doc(db, 'userDirectory', user.uid), {
-    isPublicProfile: defaults.showProfilePublic,
-    allowFriendRequests: defaults.allowFriendRequests,
-    shareEmailWithFriends: defaults.shareEmailWithFriends,
-    updatedAt: new Date(),
-  }, { merge: true });
-
-  return defaults;
-}
-
-export async function setPrivacySettings(patch) {
-  const auth = getAuth();
-  const user = auth.currentUser;
-  if (!user) throw new Error('No user is signed in');
-
-  const refDoc = doc(db, 'users', user.uid, 'settings', 'privacy');
-  await setDoc(refDoc, { ...patch, updatedAt: new Date() }, { merge: true });
-
-  // keep public directory in sync with the main flags (so friendProfile can respect them)
-  const dirPatch: any = {};
-  if (patch.showProfilePublic !== undefined) dirPatch.isPublicProfile = !!patch.showProfilePublic;
-  if (patch.allowFriendRequests !== undefined) dirPatch.allowFriendRequests = !!patch.allowFriendRequests;
-  if (patch.shareEmailWithFriends !== undefined) dirPatch.shareEmailWithFriends = !!patch.shareEmailWithFriends;
-  if (Object.keys(dirPatch).length) {
-    await setDoc(doc(db, 'userDirectory', user.uid), { ...dirPatch, updatedAt: new Date() }, { merge: true });
+export async function storeReviewsForPlace(placeId, reviews) {
+  for (let i = 0; i < reviews.length; i++) {
+    const r = reviews[i];
+    // Each doc is an individual review
+    await addDoc(collection(db, "places", placeId, "reviews"), {
+      text: r.text || "",
+      rating: r.rating || 0,
+      authorName: r.author_name || "",
+      relativeTime: r.relative_time_description || "",
+      createdAt: new Date()
+    });
   }
-}
-
-export async function deleteCollection(collectionId) {
-  const auth = getAuth();
-  const user = auth.currentUser;
-  if (!user) throw new Error('No user is signed in');
-
-  if (!collectionId) throw new Error('Collection ID is required');
-
-  // Delete the collection document from Firestore
-  const collectionRef = doc(db, 'users', user.uid, 'collections', collectionId);
-  await deleteDoc(collectionRef);
 }

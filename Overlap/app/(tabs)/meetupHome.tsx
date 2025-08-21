@@ -13,7 +13,7 @@ import {
 import CreateMeetupScreen from '../meetupFolder/create';
 import MyMeetupsScreen from '../meetupFolder/MyMeetupsScreen';
 import JoinMeetupsScreen from '../meetupFolder/join';
-import { getPendingMeetupInvites } from '../../_utils/storage';
+import { getPendingMeetupInvites } from '../../_utils/storage/meetupInvites';
 
 // Types
 interface PendingInvite {

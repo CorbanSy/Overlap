@@ -6,7 +6,8 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { getPrivacySettings, setPrivacySettings } from '../../_utils/storage';
+import { getPrivacySettings, setPrivacySettings } from '../../_utils/storage/userProfile';
+
 
 const BG = '#0D1117';
 const CARD = '#1B1F24';

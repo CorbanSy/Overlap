@@ -15,7 +15,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { getProfileData, saveProfileData } from '../../_utils/storage';
+import { getProfileData, saveProfileData } from '../../_utils/storage/userProfile';
 
 export const options = { headerShown: false };
 export const unstable_settings = { headerShown: false };
