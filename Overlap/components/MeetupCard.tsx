@@ -1,5 +1,4 @@
-// MeetupCard.tsx
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -11,37 +10,142 @@ import {
   Platform,
   UIManager,
   Image,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import FriendCard from './FriendCard';
 import CollectionCard from './CollectionCard';
 
+// Types
+interface Friend {
+  uid: string;
+  name?: string;
+  email?: string;
+  avatarUrl?: string;
+}
+
+interface Collection {
+  id: string;
+  name?: string;
+  // Add other collection properties as needed
+}
+
+interface Meetup {
+  id: string;
+  eventName?: string;
+  description?: string;
+  date?: any;
+  time?: any;
+  location?: string;
+  code?: string;
+  category?: string;
+  mood?: string;
+  priceRange?: number;
+  groupSize?: number;
+  participants?: any[];
+  meetupId?: string;
+  creatorId?: string;
+  createdAt?: any;
+  ongoing?: boolean;
+  friends?: Friend[];
+  collections?: Collection[];
+}
+
 interface MeetupCardProps {
-  meetup: any;
+  meetup: Meetup;
   onEdit?: () => void;
   onRemove?: () => void;
   onStart?: (meetupId: string) => void;
   onStop?: (meetupId: string) => void;
 }
 
-const toDate = (v: any): Date => {
-  if (!v) return new Date();
-  if (typeof v?.toDate === 'function') return v.toDate(); // Firestore Timestamp
-  return new Date(v);
+// Constants
+const COLORS = {
+  background: '#0D1117',
+  card: '#1B1F24',
+  surface: '#232A33',
+  surfaceHover: '#2A3441',
+  primary: '#238636',
+  primaryHover: '#2EA043',
+  accent: '#FFC107',
+  accentHover: '#FFD54F',
+  danger: '#F85149',
+  text: '#FFFFFF',
+  textSecondary: '#8B949E',
+  textTertiary: '#6E7681',
+  border: 'rgba(255,255,255,0.08)',
+  borderHover: 'rgba(255,255,255,0.12)',
+} as const;
+
+const SPACING = {
+  xs: 4,
+  sm: 8,
+  md: 12,
+  lg: 16,
+  xl: 20,
+  xxl: 24,
+} as const;
+
+const FRIEND_PREVIEW_COUNT = 8;
+const COLLECTION_PREVIEW_COUNT = 6;
+const DESCRIPTION_PREVIEW_LENGTH = 120;
+
+// Utility functions
+const toDate = (value: any): Date => {
+  if (!value) return new Date();
+  if (typeof value?.toDate === 'function') return value.toDate();
+  return new Date(value);
 };
 
-const fmtDate = (v: any) => toDate(v).toLocaleDateString();
-const fmtTime = (v: any) =>
-  toDate(v).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+const formatDate = (value: any): string => {
+  try {
+    return toDate(value).toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    });
+  } catch {
+    return 'Invalid Date';
+  }
+};
 
-const priceBadge = (priceRange?: number) => {
+const formatTime = (value: any): string => {
+  try {
+    return toDate(value).toLocaleTimeString('en-US', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true,
+    });
+  } catch {
+    return 'Invalid Time';
+  }
+};
+
+const formatDateTime = (value: any): string => {
+  try {
+    return toDate(value).toLocaleString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true,
+    });
+  } catch {
+    return 'Invalid Date';
+  }
+};
+
+const getPriceBadge = (priceRange?: number): string => {
   if (!priceRange || priceRange <= 0) return 'Free';
-  const buckets = Math.max(1, Math.min(4, Math.ceil(priceRange / 20))); // 0–20:$, 21–40:$$, etc.
+  const buckets = Math.max(1, Math.min(4, Math.ceil(priceRange / 25)));
   return '$'.repeat(buckets);
 };
 
-const FRIEND_PREVIEW = 8;
-const COLLECTION_PREVIEW = 6;
+// Configure layout animations
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 
 const MeetupCard: React.FC<MeetupCardProps> = ({
   meetup,
@@ -50,135 +154,197 @@ const MeetupCard: React.FC<MeetupCardProps> = ({
   onStart,
   onStop,
 }) => {
+  // State
   const [expanded, setExpanded] = useState(false);
   const [showAllFriends, setShowAllFriends] = useState(false);
   const [showAllCollections, setShowAllCollections] = useState(false);
-  const [width, setWidth] = useState(0);
-  const isWide = width >= 560;
+  const [cardWidth, setCardWidth] = useState(0);
 
-  useEffect(() => {
-    if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
-      UIManager.setLayoutAnimationEnabledExperimental(true);
-    }
-  }, []);
-
-  const onLayout = (e: LayoutChangeEvent) => setWidth(e.nativeEvent.layout.width);
-
+  // Computed values
+  const isWideLayout = cardWidth >= 560;
+  const friends = Array.isArray(meetup?.friends) ? meetup.friends : [];
+  const collections = Array.isArray(meetup?.collections) ? meetup.collections : [];
+  
   const truncatedDescription = useMemo(() => {
-    const d = meetup?.description || '';
-    return d.length > 140 ? d.slice(0, 140) + '…' : d;
+    const description = meetup?.description || '';
+    if (description.length <= DESCRIPTION_PREVIEW_LENGTH) return description;
+    return description.slice(0, DESCRIPTION_PREVIEW_LENGTH) + '…';
   }, [meetup?.description]);
 
-  const createdAtLabel = useMemo(
-    () => (meetup?.createdAt ? toDate(meetup.createdAt).toLocaleString() : 'N/A'),
-    [meetup?.createdAt]
-  );
+  const friendsToShow = showAllFriends ? friends : friends.slice(0, FRIEND_PREVIEW_COUNT);
+  const collectionsToShow = showAllCollections 
+    ? collections 
+    : collections.slice(0, COLLECTION_PREVIEW_COUNT);
 
-  const handleToggleMeetup = () => {
-    if (!meetup?.id) return;
-    if (meetup?.ongoing) onStop?.(meetup.id);
-    else onStart?.(meetup.id);
-  };
+  // Event handlers
+  const handleLayout = useCallback((event: LayoutChangeEvent) => {
+    setCardWidth(event.nativeEvent.layout.width);
+  }, []);
 
-  const toggleExpanded = () => {
+  const handleToggleExpanded = useCallback(() => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setExpanded(v => !v);
-  };
+    setExpanded(prev => !prev);
+  }, []);
 
-  const MetaRow = ({ label, value }: { label: string; value?: string }) => (
-    <View style={styles.metaRow}>
-      <Text style={styles.metaLabel}>{label}</Text>
-      <Text style={styles.metaValue}>{value ?? 'N/A'}</Text>
+  const handleToggleMeetup = useCallback(() => {
+    if (!meetup?.id) return;
+    
+    if (meetup.ongoing) {
+      Alert.alert(
+        'Stop Meetup',
+        'Are you sure you want to stop this meetup?',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Stop', style: 'destructive', onPress: () => onStop?.(meetup.id) },
+        ]
+      );
+    } else {
+      onStart?.(meetup.id);
+    }
+  }, [meetup?.id, meetup?.ongoing, onStart, onStop]);
+
+  const handleRemove = useCallback(() => {
+    Alert.alert(
+      'Remove Meetup',
+      'Are you sure you want to remove this meetup? This action cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Remove', style: 'destructive', onPress: onRemove },
+      ]
+    );
+  }, [onRemove]);
+
+  const handleToggleFriends = useCallback(() => {
+    setShowAllFriends(prev => !prev);
+  }, []);
+
+  const handleToggleCollections = useCallback(() => {
+    setShowAllCollections(prev => !prev);
+  }, []);
+
+  // Render helpers
+  const renderChip = (icon: string, text: string, key: string) => (
+    <View key={key} style={styles.chip}>
+      <Ionicons name={icon as any} size={14} color={COLORS.textSecondary} />
+      <Text style={styles.chipText} numberOfLines={1}>
+        {text}
+      </Text>
     </View>
   );
 
-  const friends: any[] = Array.isArray(meetup?.friends) ? meetup.friends : [];
-  const collections: any[] = Array.isArray(meetup?.collections) ? meetup.collections : [];
+  const renderMetaRow = (label: string, value?: string | number) => (
+    <View key={label} style={styles.metaRow}>
+      <Text style={styles.metaLabel}>{label}</Text>
+      <Text style={styles.metaValue} numberOfLines={1}>
+        {value ?? 'N/A'}
+      </Text>
+    </View>
+  );
 
-  const friendsToShow = showAllFriends ? friends : friends.slice(0, FRIEND_PREVIEW);
-  const collectionsToShow = showAllCollections
-    ? collections
-    : collections.slice(0, COLLECTION_PREVIEW);
+  const renderFriendCard = ({ item, index }: { item: Friend; index: number }) => (
+    <View style={styles.friendCard}>
+      <Image
+        source={
+          item?.avatarUrl
+            ? { uri: item.avatarUrl }
+            : require('../assets/images/profile.png')
+        }
+        style={styles.friendAvatar}
+      />
+      <Text numberOfLines={2} style={styles.friendName}>
+        {item?.name || item?.email || `Friend ${index + 1}`}
+      </Text>
+    </View>
+  );
+
+  const renderCollectionCard = ({ item }: { item: Collection }) => (
+    <CollectionCard collection={item} previewOnly />
+  );
 
   return (
-    <View style={styles.cardContainer} onLayout={onLayout}>
-      {/* Header row */}
-      <View style={styles.headerRow}>
-        <View style={{ flex: 1, paddingRight: 12 }}>
-          <Text style={styles.meetupName} numberOfLines={2}>
+    <View style={styles.cardContainer} onLayout={handleLayout}>
+      {/* Status indicator */}
+      {meetup.ongoing && <View style={styles.statusIndicator} />}
+
+      {/* Header */}
+      <View style={styles.header}>
+        <View style={styles.titleContainer}>
+          <Text style={styles.title} numberOfLines={2}>
             {meetup?.eventName || 'Untitled Meetup'}
           </Text>
+          {meetup.ongoing && (
+            <View style={styles.livebadge}>
+              <Text style={styles.liveBadgeText}>LIVE</Text>
+            </View>
+          )}
         </View>
 
-        {/* Collapse/expand */}
-        <TouchableOpacity style={styles.chevBtn} onPress={toggleExpanded} activeOpacity={0.8}>
-          <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={18} color="#E6E6E6" />
-        </TouchableOpacity>
+        <View style={styles.headerActions}>
+          <TouchableOpacity
+            style={styles.expandButton}
+            onPress={handleToggleExpanded}
+            activeOpacity={0.7}
+            accessibilityLabel={expanded ? 'Collapse details' : 'Expand details'}
+          >
+            <Ionicons
+              name={expanded ? 'chevron-up' : 'chevron-down'}
+              size={20}
+              color={COLORS.textSecondary}
+            />
+          </TouchableOpacity>
 
-        {/* Start/Stop */}
-        <TouchableOpacity
-          style={[styles.startButton, meetup?.ongoing ? styles.stopBg : styles.startBg]}
-          onPress={handleToggleMeetup}
-          activeOpacity={0.9}
-        >
-          <Ionicons
-            name={meetup?.ongoing ? 'stop-circle-outline' : 'play-circle-outline'}
-            size={20}
-            color="#0D1117"
-            style={styles.startIcon}
-          />
-          <Text style={styles.startButtonText}>{meetup?.ongoing ? 'Stop' : 'Start'}</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* Subheader chips */}
-      <View style={styles.chipsRow}>
-        {!!meetup?.date && (
-          <View style={styles.chip}>
-            <Ionicons name="calendar-outline" size={14} color="#CFCFCF" />
-            <Text style={styles.chipText}>{fmtDate(meetup.date)}</Text>
-          </View>
-        )}
-        {!!meetup?.time && (
-          <View style={styles.chip}>
-            <Ionicons name="time-outline" size={14} color="#CFCFCF" />
-            <Text style={styles.chipText}>{fmtTime(meetup.time)}</Text>
-          </View>
-        )}
-        {!!meetup?.location && (
-          <View style={styles.chip}>
-            <Ionicons name="location-outline" size={14} color="#CFCFCF" />
-            <Text style={styles.chipText} numberOfLines={1}>
-              {meetup.location}
+          <TouchableOpacity
+            style={[
+              styles.actionButton,
+              meetup.ongoing ? styles.stopButton : styles.startButton,
+            ]}
+            onPress={handleToggleMeetup}
+            activeOpacity={0.8}
+            accessibilityLabel={meetup.ongoing ? 'Stop meetup' : 'Start meetup'}
+          >
+            <Ionicons
+              name={meetup.ongoing ? 'stop' : 'play'}
+              size={16}
+              color={COLORS.background}
+            />
+            <Text style={styles.actionButtonText}>
+              {meetup.ongoing ? 'Stop' : 'Start'}
             </Text>
-          </View>
-        )}
-        {!!meetup?.code && (
-          <View style={styles.chip}>
-            <Ionicons name="key-outline" size={14} color="#CFCFCF" />
-            <Text style={styles.chipText}>Code: {meetup.code}</Text>
-          </View>
-        )}
+          </TouchableOpacity>
+        </View>
       </View>
 
-      {/* Collapsed summary */}
-      {!expanded && !!truncatedDescription && (
-        <Text style={[styles.description, { marginTop: 8 }]}>{truncatedDescription}</Text>
+      {/* Chips row */}
+      <View style={styles.chipsContainer}>
+        {meetup.date && renderChip('calendar-outline', formatDate(meetup.date), 'date')}
+        {meetup.time && renderChip('time-outline', formatTime(meetup.time), 'time')}
+        {meetup.location && renderChip('location-outline', meetup.location, 'location')}
+        {meetup.code && renderChip('key-outline', `Code: ${meetup.code}`, 'code')}
+      </View>
+
+      {/* Preview description */}
+      {!expanded && truncatedDescription && (
+        <Text style={styles.previewDescription}>{truncatedDescription}</Text>
       )}
 
       {/* Expanded content */}
       {expanded && (
-        <View style={[styles.contentRow, !isWide && { flexDirection: 'column' }]}>
-          {/* Left column */}
-          <View style={[styles.leftCol, !isWide && { paddingRight: 0 }]}>
-            <Text style={styles.description}>{meetup?.description || 'No description.'}</Text>
+        <View style={[styles.expandedContent, !isWideLayout && styles.expandedContentStacked]}>
+          {/* Main content */}
+          <View style={styles.mainContent}>
+            {/* Full description */}
+            <Text style={styles.description}>
+              {meetup?.description || 'No description provided.'}
+            </Text>
 
-            {/* Collections */}
-            <View style={{ marginTop: 12 }}>
+            {/* Collections section */}
+            <View style={styles.section}>
               <View style={styles.sectionHeader}>
-                <Text style={styles.subTitle}>Collections</Text>
-                {!!collections?.length && (
-                  <Text style={styles.countPill}>{collections.length}</Text>
+                <Text style={styles.sectionTitle}>Collections</Text>
+                {collections.length > 0 && (
+                  <View style={styles.countBadge}>
+                    <Text style={styles.countBadgeText}>{collections.length}</Text>
+                  </View>
                 )}
               </View>
 
@@ -186,96 +352,113 @@ const MeetupCard: React.FC<MeetupCardProps> = ({
                 <FlatList
                   horizontal
                   data={collectionsToShow}
-                  keyExtractor={(item, index) => item?.id?.toString?.() ?? String(index)}
-                  renderItem={({ item }) => <CollectionCard collection={item} previewOnly />}
+                  keyExtractor={(item) => item?.id?.toString() || Math.random().toString()}
+                  renderItem={renderCollectionCard}
                   showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={{ paddingVertical: 6, gap: 10 }}
+                  contentContainerStyle={styles.horizontalList}
                 />
               ) : (
-                <Text style={styles.dimText}>No collections added.</Text>
+                <Text style={styles.emptyText}>No collections added yet.</Text>
               )}
 
-              {collections.length > COLLECTION_PREVIEW && (
+              {collections.length > COLLECTION_PREVIEW_COUNT && (
                 <TouchableOpacity
-                  style={styles.smallGhostBtn}
-                  onPress={() => setShowAllCollections(v => !v)}
-                  activeOpacity={0.85}
+                  style={styles.toggleButton}
+                  onPress={handleToggleCollections}
+                  activeOpacity={0.7}
                 >
-                  <Text style={styles.ghostText}>
+                  <Text style={styles.toggleButtonText}>
                     {showAllCollections
-                      ? 'Show fewer collections'
-                      : `Show all ${collections.length}`}
+                      ? 'Show fewer'
+                      : `Show all ${collections.length} collections`}
                   </Text>
                 </TouchableOpacity>
               )}
             </View>
 
-            {/* Friends */}
-            <View style={{ marginTop: 12 }}>
+            {/* Friends section */}
+            <View style={styles.section}>
               <View style={styles.sectionHeader}>
-                <Text style={styles.subTitle}>Friends</Text>
-                {!!friends?.length && <Text style={styles.countPill}>{friends.length}</Text>}
+                <Text style={styles.sectionTitle}>Invited Friends</Text>
+                {friends.length > 0 && (
+                  <View style={styles.countBadge}>
+                    <Text style={styles.countBadgeText}>{friends.length}</Text>
+                  </View>
+                )}
               </View>
 
               {friendsToShow.length > 0 ? (
-                <View style={styles.invitedGrid}>
-                  {friendsToShow.map((f, idx) => (
-                    <View key={f?.uid ?? idx} style={styles.friendChip}>
+                <View style={styles.friendsGrid}>
+                  {friendsToShow.map((friend, index) => (
+                    <View key={friend?.uid || index} style={styles.friendCard}>
                       <Image
                         source={
-                          f?.avatarUrl
-                            ? { uri: f.avatarUrl }
+                          friend?.avatarUrl
+                            ? { uri: friend.avatarUrl }
                             : require('../assets/images/profile.png')
                         }
                         style={styles.friendAvatar}
                       />
-                      <Text numberOfLines={1} style={styles.friendLabel}>
-                        {f?.name || f?.email || f?.uid || 'Friend'}
+                      <Text numberOfLines={2} style={styles.friendName}>
+                        {friend?.name || friend?.email || `Friend ${index + 1}`}
                       </Text>
                     </View>
                   ))}
                 </View>
               ) : (
-                <Text style={styles.dimText}>No friends invited yet.</Text>
+                <Text style={styles.emptyText}>No friends invited yet.</Text>
               )}
 
-              {friends.length > FRIEND_PREVIEW && (
+              {friends.length > FRIEND_PREVIEW_COUNT && (
                 <TouchableOpacity
-                  style={[styles.smallGhostBtn, { marginTop: 8 }]}
-                  onPress={() => setShowAllFriends(v => !v)}
-                  activeOpacity={0.85}
+                  style={styles.toggleButton}
+                  onPress={handleToggleFriends}
+                  activeOpacity={0.7}
                 >
-                  <Text style={styles.ghostText}>
-                    {showAllFriends ? 'Show fewer friends' : `Show all ${friends.length}`}
+                  <Text style={styles.toggleButtonText}>
+                    {showAllFriends
+                      ? 'Show fewer'
+                      : `Show all ${friends.length} friends`}
                   </Text>
                 </TouchableOpacity>
               )}
             </View>
           </View>
 
-          {/* Right column (meta) */}
-          <View style={[styles.rightCol, !isWide && { marginTop: 12 }]}>
-            <Text style={styles.subTitle}>Details</Text>
-            <MetaRow label="Category" value={meetup?.category} />
-            <MetaRow label="Mood" value={meetup?.mood} />
-            <MetaRow
-              label="Price"
-              value={`${priceBadge(meetup?.priceRange)} (${meetup?.priceRange ?? 0})`}
-            />
-            <MetaRow label="Group Size" value={String(meetup?.groupSize ?? 0)} />
-            <MetaRow label="Participants" value={String(meetup?.participants?.length ?? 0)} />
-            <MetaRow label="Meetup ID" value={meetup?.meetupId || meetup?.id} />
-            <MetaRow label="Creator ID" value={meetup?.creatorId} />
-            <MetaRow label="Created At" value={createdAtLabel} />
+          {/* Sidebar with details */}
+          <View style={styles.sidebar}>
+            <Text style={styles.sidebarTitle}>Details</Text>
+            
+            <View style={styles.metaContainer}>
+              {renderMetaRow('Category', meetup?.category)}
+              {renderMetaRow('Mood', meetup?.mood)}
+              {renderMetaRow('Price', `${getPriceBadge(meetup?.priceRange)} (${meetup?.priceRange ?? 0})`)}
+              {renderMetaRow('Group Size', meetup?.groupSize)}
+              {renderMetaRow('Participants', meetup?.participants?.length ?? 0)}
+              {renderMetaRow('Created', formatDateTime(meetup?.createdAt))}
+              {renderMetaRow('Meetup ID', meetup?.meetupId || meetup?.id)}
+            </View>
 
-            {/* Edit / Remove */}
-            <View style={styles.actionRow}>
-              <TouchableOpacity style={styles.iconButton} onPress={onEdit || (() => {})}>
-                <Ionicons name="pencil-outline" size={20} color="#4DA6FF" />
-              </TouchableOpacity>
-              {!!onRemove && (
-                <TouchableOpacity style={styles.iconButton} onPress={onRemove}>
-                  <Ionicons name="trash-outline" size={20} color="#FF6B6B" />
+            {/* Action buttons */}
+            <View style={styles.sidebarActions}>
+              {onEdit && (
+                <TouchableOpacity
+                  style={[styles.iconButton, styles.editButton]}
+                  onPress={onEdit}
+                  activeOpacity={0.7}
+                  accessibilityLabel="Edit meetup"
+                >
+                  <Ionicons name="pencil" size={18} color={COLORS.primary} />
+                </TouchableOpacity>
+              )}
+              {onRemove && (
+                <TouchableOpacity
+                  style={[styles.iconButton, styles.removeButton]}
+                  onPress={handleRemove}
+                  activeOpacity={0.7}
+                  accessibilityLabel="Remove meetup"
+                >
+                  <Ionicons name="trash" size={18} color={COLORS.danger} />
                 </TouchableOpacity>
               )}
             </View>
@@ -286,161 +469,273 @@ const MeetupCard: React.FC<MeetupCardProps> = ({
   );
 };
 
-const CARD = '#1B1F24';
-const SURFACE = '#232A33';
-const BORDER = 'rgba(255,255,255,0.08)';
-const TEXT = '#FFFFFF';
-const SUBTLE = '#9AA0A6';
-
 const styles = StyleSheet.create({
   cardContainer: {
-    backgroundColor: CARD,
-    borderRadius: 12,
-    padding: 14,
-    marginBottom: 12,
+    backgroundColor: COLORS.card,
+    borderRadius: 16,
+    padding: SPACING.lg,
+    marginBottom: SPACING.md,
     borderWidth: 1,
-    borderColor: BORDER,
+    borderColor: COLORS.border,
+    position: 'relative',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
-  headerRow: {
+  statusIndicator: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 3,
+    backgroundColor: COLORS.primary,
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+  },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    marginBottom: SPACING.md,
+  },
+  titleContainer: {
+    flex: 1,
+    marginRight: SPACING.md,
+  },
+  title: {
+    color: COLORS.text,
+    fontSize: 18,
+    fontWeight: '700',
+    lineHeight: 24,
+    marginBottom: SPACING.xs,
+  },
+  liveBadge: {
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 2,
+    borderRadius: 4,
+    alignSelf: 'flex-start',
+  },
+  liveBadgeText: {
+    color: COLORS.text,
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+  },
+  headerActions: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: SPACING.sm,
   },
-  meetupName: {
-    color: TEXT,
-    fontSize: 18,
-    fontWeight: '800',
-  },
-  chevBtn: {
-    backgroundColor: 'rgba(255,255,255,0.06)',
+  expandButton: {
+    backgroundColor: COLORS.surface,
     borderRadius: 8,
-    paddingVertical: 6,
-    paddingHorizontal: 8,
+    padding: SPACING.sm,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  actionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+    borderRadius: 20,
+    gap: SPACING.xs,
   },
   startButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 999,
+    backgroundColor: COLORS.accent,
   },
-  startBg: { backgroundColor: '#FFC107' },
-  stopBg: { backgroundColor: '#FFD54F' },
-  startIcon: { marginRight: 6 },
-  startButtonText: {
-    color: '#0D1117',
-    fontWeight: '800',
+  stopButton: {
+    backgroundColor: COLORS.accentHover,
   },
-  chipsRow: {
+  actionButtonText: {
+    color: COLORS.background,
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  chipsContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
-    marginTop: 10,
+    gap: SPACING.sm,
+    marginBottom: SPACING.md,
   },
   chip: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    backgroundColor: 'rgba(255,255,255,0.06)',
-    borderRadius: 999,
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-  },
-  chipText: { color: '#CFCFCF', fontSize: 12 },
-  contentRow: {
-    flexDirection: 'row',
-    gap: 14,
-    marginTop: 12,
-  },
-  leftCol: { flex: 1, paddingRight: 6 },
-  rightCol: {
-    minWidth: 220,
-    maxWidth: 320,
-    alignSelf: 'flex-start',
-    backgroundColor: '#141821',
-    borderRadius: 10,
+    gap: SPACING.xs,
+    backgroundColor: COLORS.surface,
+    borderRadius: 16,
+    paddingVertical: SPACING.xs,
+    paddingHorizontal: SPACING.sm,
     borderWidth: 1,
-    borderColor: BORDER,
-    padding: 12,
+    borderColor: COLORS.border,
   },
-  description: { color: '#CCCCCC', fontSize: 14, lineHeight: 20 },
-
+  chipText: {
+    color: COLORS.textSecondary,
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  previewDescription: {
+    color: COLORS.textSecondary,
+    fontSize: 14,
+    lineHeight: 20,
+    marginBottom: SPACING.sm,
+  },
+  expandedContent: {
+    flexDirection: 'row',
+    gap: SPACING.xl,
+  },
+  expandedContentStacked: {
+    flexDirection: 'column',
+  },
+  mainContent: {
+    flex: 1,
+  },
+  description: {
+    color: COLORS.textSecondary,
+    fontSize: 14,
+    lineHeight: 20,
+    marginBottom: SPACING.lg,
+  },
+  section: {
+    marginBottom: SPACING.lg,
+  },
   sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
-    marginBottom: 4,
+    justifyContent: 'space-between',
+    marginBottom: SPACING.sm,
   },
-  subTitle: {
-    color: TEXT,
-    fontSize: 14,
-    fontWeight: '800',
+  sectionTitle: {
+    color: COLORS.text,
+    fontSize: 16,
+    fontWeight: '600',
   },
-  countPill: {
-    color: TEXT,
-    backgroundColor: 'rgba(255,255,255,0.06)',
-    paddingHorizontal: 8,
+  countBadge: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 12,
+    paddingHorizontal: SPACING.sm,
     paddingVertical: 2,
-    borderRadius: 999,
-    fontSize: 12,
-    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: COLORS.border,
   },
-  dimText: { color: SUBTLE, fontSize: 13 },
-
-  /** Friends grid (inspired by create.tsx) */
-  invitedGrid: {
+  countBadgeText: {
+    color: COLORS.text,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  horizontalList: {
+    gap: SPACING.sm,
+    paddingVertical: SPACING.xs,
+  },
+  friendsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 10,
-    marginTop: 6,
+    gap: SPACING.sm,
   },
-  friendChip: {
-    width: 90,
-    height: 110,
-    borderRadius: 10,
-    borderWidth: 1,
-    borderColor: BORDER,
-    backgroundColor: SURFACE,
-    padding: 8,
+  friendCard: {
+    width: 80,
+    height: 100,
+    backgroundColor: COLORS.surface,
+    borderRadius: 12,
+    padding: SPACING.sm,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  friendAvatar: { width: 46, height: 46, borderRadius: 23, marginBottom: 6 },
-  friendLabel: { color: TEXT, fontSize: 10, textAlign: 'center' },
-
-  /** Ghost button (matches create.tsx tone) */
-  smallGhostBtn: {
-    alignSelf: 'flex-start',
-    borderRadius: 8,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    backgroundColor: SURFACE,
     borderWidth: 1,
-    borderColor: BORDER,
-    marginTop: 6,
+    borderColor: COLORS.border,
   },
-  ghostText: { color: TEXT, fontWeight: '700', fontSize: 12 },
-
-  /** Meta panel */
+  friendAvatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    marginBottom: SPACING.xs,
+  },
+  friendName: {
+    color: COLORS.text,
+    fontSize: 10,
+    textAlign: 'center',
+    lineHeight: 12,
+  },
+  emptyText: {
+    color: COLORS.textTertiary,
+    fontSize: 14,
+    fontStyle: 'italic',
+  },
+  toggleButton: {
+    alignSelf: 'flex-start',
+    backgroundColor: COLORS.surface,
+    borderRadius: 8,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+    marginTop: SPACING.sm,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  toggleButtonText: {
+    color: COLORS.text,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  sidebar: {
+    minWidth: 200,
+    maxWidth: 280,
+    backgroundColor: COLORS.surface,
+    borderRadius: 12,
+    padding: SPACING.md,
+    alignSelf: 'flex-start',
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  sidebarTitle: {
+    color: COLORS.text,
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: SPACING.md,
+  },
+  metaContainer: {
+    marginBottom: SPACING.lg,
+  },
   metaRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    gap: 8,
-    paddingVertical: 6,
+    alignItems: 'center',
+    paddingVertical: SPACING.sm,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(255,255,255,0.06)',
+    borderBottomColor: COLORS.border,
   },
-  metaLabel: { color: '#9AA0A6', fontSize: 12 },
-  metaValue: { color: '#EDEDED', fontSize: 13, flexShrink: 1, textAlign: 'right' },
-
-  /** Actions */
-  actionRow: {
+  metaLabel: {
+    color: COLORS.textTertiary,
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  metaValue: {
+    color: COLORS.text,
+    fontSize: 12,
+    fontWeight: '600',
+    textAlign: 'right',
+    flex: 1,
+    marginLeft: SPACING.sm,
+  },
+  sidebarActions: {
     flexDirection: 'row',
     justifyContent: 'flex-end',
-    marginTop: 8,
-    gap: 8,
+    gap: SPACING.sm,
   },
-  iconButton: { padding: 6 },
+  iconButton: {
+    padding: SPACING.sm,
+    borderRadius: 8,
+    borderWidth: 1,
+  },
+  editButton: {
+    backgroundColor: 'rgba(35, 134, 54, 0.1)',
+    borderColor: COLORS.primary,
+  },
+  removeButton: {
+    backgroundColor: 'rgba(248, 81, 73, 0.1)',
+    borderColor: COLORS.danger,
+  },
 });
 
 export default MeetupCard;
