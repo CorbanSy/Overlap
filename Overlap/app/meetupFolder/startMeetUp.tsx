@@ -1,4 +1,3 @@
-// app/meetupFolder/startMeetUp.tsx
 import React, { useState, useRef, useMemo } from 'react';
 import {
   SafeAreaView,
@@ -11,18 +10,27 @@ import {
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { BottomSheetModal } from '@gorhom/bottom-sheet';
-import SwipingScreen from '../../components/swiping';
+import SwipingScreen, { SwipingHandle } from '../../components/swiping';
 import ExploreMoreCard from '../../components/ExploreMoreCard';
 import Leader from '../../components/leader';
 import { PLACE_CATEGORIES } from '../../_utils/placeCategories';
+import { Ionicons } from '@expo/vector-icons';
 
 const BUTTON_SIZE = 60;
+const COLORS = {
+  bg: '#0D1117',
+  surface: '#1B1F24',
+  accent: '#F5A623',
+  danger: '#DC3545',
+  success: '#28A745',
+};
 
 export default function StartMeetupScreen() {
   const { meetupId } = useLocalSearchParams<{ meetupId?: string }>();
   const router = useRouter();
   const [showDirectionModal, setShowDirectionModal] = useState(false);
 
+  const deckRef = useRef<SwipingHandle>(null);
   const sheetModalRef = useRef<BottomSheetModal>(null);
   const snapPoints = useMemo(() => ['75%'], []);
 
@@ -30,8 +38,8 @@ export default function StartMeetupScreen() {
 
   const currentCatKey = PLACE_CATEGORIES[0]?.key;
   const currentCat =
-    PLACE_CATEGORIES.find(c => c.key === currentCatKey) || { subCategories: [] };
-  const otherCats = PLACE_CATEGORIES.filter(c => c.key !== currentCat.key);
+    PLACE_CATEGORIES.find((c) => c.key === currentCatKey) || { subCategories: [] };
+  const otherCats = PLACE_CATEGORIES.filter((c) => c.key !== currentCat.key);
 
   if (!meetupId) {
     return (
@@ -46,30 +54,40 @@ export default function StartMeetupScreen() {
       <SafeAreaView style={styles.container}>
         {/* HEADER */}
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()}>
-            <Text style={styles.headerButton}>‹ Leave Meetup</Text>
+          <TouchableOpacity onPress={() => router.back()} style={styles.headerAction}>
+            <Ionicons name="chevron-back" size={20} color={COLORS.accent} />
+            <Text style={styles.headerButton}>Leave Meetup</Text>
           </TouchableOpacity>
-          <TouchableOpacity onPress={openLeaderboard}>
+          <TouchableOpacity onPress={openLeaderboard} style={styles.headerAction}>
+            <Ionicons name="trophy-outline" size={18} color={COLORS.accent} />
             <Text style={styles.headerButton}>Leaderboard</Text>
           </TouchableOpacity>
         </View>
 
         {/* SWIPE DECK */}
-        <SwipingScreen meetupId={String(meetupId)} />
+        <SwipingScreen ref={deckRef} meetupId={String(meetupId)} showInternalButtons={false} />
 
-        {/* CONTROLS */}
+        {/* CONTROLS (single source of truth) */}
         <View style={styles.controlBar}>
-          <TouchableOpacity style={styles.controlButton}>
-            <Text style={[styles.controlEmoji, { color: '#DC3545' }]}>❌</Text>
+          <TouchableOpacity
+            style={[styles.controlButton, { backgroundColor: COLORS.danger }]}
+            onPress={() => deckRef.current?.swipeLeft()}
+          >
+            <Ionicons name="close" size={26} color="#fff" />
           </TouchableOpacity>
+
           <TouchableOpacity
             style={[styles.controlButton, styles.centerButton]}
             onPress={() => setShowDirectionModal(true)}
           >
-            <Text style={styles.controlEmoji}>🔄</Text>
+            <Ionicons name="refresh" size={24} color="#0D1117" />
           </TouchableOpacity>
-          <TouchableOpacity style={styles.controlButton}>
-            <Text style={[styles.controlEmoji, { color: '#28A745' }]}>✅</Text>
+
+          <TouchableOpacity
+            style={[styles.controlButton, { backgroundColor: COLORS.success }]}
+            onPress={() => deckRef.current?.swipeRight()}
+          >
+            <Ionicons name="checkmark" size={26} color="#fff" />
           </TouchableOpacity>
         </View>
 
@@ -88,10 +106,7 @@ export default function StartMeetupScreen() {
                 onSubCategoryPress={() => setShowDirectionModal(false)}
                 onBroadCategoryPress={() => setShowDirectionModal(false)}
               />
-              <TouchableOpacity
-                style={styles.closeButton}
-                onPress={() => setShowDirectionModal(false)}
-              >
+              <TouchableOpacity style={styles.closeButton} onPress={() => setShowDirectionModal(false)}>
                 <Text style={styles.closeText}>Close</Text>
               </TouchableOpacity>
             </View>
@@ -115,7 +130,7 @@ export default function StartMeetupScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#0D1117' },
+  container: { flex: 1, backgroundColor: COLORS.bg },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -123,7 +138,9 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#232533',
   },
-  headerButton: { color: '#F5A623', fontSize: 16, fontWeight: '600' },
+  headerAction: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  headerButton: { color: COLORS.accent, fontSize: 16, fontWeight: '600' },
+
   controlBar: {
     position: 'absolute',
     bottom: 20,
@@ -140,10 +157,15 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.1)',
     justifyContent: 'center',
     alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    elevation: 6,
   },
-  centerButton: { backgroundColor: '#F5A623' },
-  controlEmoji: { fontSize: 28 },
-  sheetBackground: { backgroundColor: '#1B1F24' },
+  centerButton: { backgroundColor: COLORS.accent },
+  sheetBackground: { backgroundColor: COLORS.surface },
+
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',
@@ -153,17 +175,17 @@ const styles = StyleSheet.create({
   modalContent: {
     width: '90%',
     maxHeight: '80%',
-    backgroundColor: '#1B1F24',
+    backgroundColor: COLORS.surface,
     borderRadius: 12,
     padding: 20,
   },
   closeButton: {
     marginTop: 16,
     alignSelf: 'center',
-    backgroundColor: '#F5A623',
+    backgroundColor: COLORS.accent,
     paddingHorizontal: 20,
     paddingVertical: 10,
     borderRadius: 8,
   },
-  closeText: { color: '#0D1117', fontWeight: 'bold' },
+  closeText: { color: COLORS.bg, fontWeight: 'bold' },
 });
