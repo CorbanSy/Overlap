@@ -10,9 +10,10 @@ import { Ionicons } from '@expo/vector-icons';
 import 'react-native-reanimated';
 
 const BG = '#0D1117'; // Updated to match home.tsx
-const ORB_COUNT = 18;
+const ORB_COUNT = 24; // Increased for more particles
 const EDGE_PAD  = 16;
 const CENTER_BASE = 80; // base px for center ball (we scale this)
+const PARTICLE_COUNT = 15; // Extra ambient particles
 
 // ----- Poisson-disc scatter for natural, even placement -----
 function samplePoisson(width, height, targetCount, edgePad) {
@@ -109,11 +110,11 @@ export default function App() {
 
   // Orbs
   const [orbs, setOrbs] = useState([]);
+  const [particles, setParticles] = useState([]); // Extra ambient particles
 
   // Growing center ball
   const centerScale = useRef(new Animated.Value(0)).current; // 0 → targetScale
   const [centerPos, setCenterPos] = useState({ left: 0, top: 0 });
-  const [centerStepScales, setCenterStepScales] = useState([]); // step targets per arriving orb
 
   // Updated palette to match home.tsx colors
   const palette = useMemo(() => ['#F5A623', '#1B1F24', '#AAAAAA', '#FFF', '#333'], []);
@@ -201,25 +202,35 @@ export default function App() {
 
     setOrbs(created);
 
-    // Calculate center ball scaling
-    const areas = created.map(o => Math.PI * (o.size / 2) ** 2);
-    const totalArea = areas.reduce((a, b) => a + b, 0);
-
-    const maxDiameter = Math.min(stage.w, stage.h) - EDGE_PAD * 2;
-    const finalUncapped = 2 * Math.sqrt(totalArea / Math.PI);
-    const finalDiameter = Math.max(
-      CENTER_BASE * 0.6,
-      Math.min(finalUncapped, maxDiameter)
-    );
-
-    const stepScales = [];
-    let cum = 0;
-    for (let i = 0; i < areas.length; i++) {
-      cum += areas[i];
-      const d = finalDiameter * (cum / totalArea);
-      stepScales.push(d / CENTER_BASE);
+    // Create extra ambient particles
+    const particlePositions = [];
+    for (let i = 0; i < PARTICLE_COUNT; i++) {
+      particlePositions.push({
+        x: EDGE_PAD + Math.random() * (stage.w - EDGE_PAD * 2),
+        y: EDGE_PAD + Math.random() * (stage.h - EDGE_PAD * 2),
+      });
     }
-    setCenterStepScales(stepScales);
+
+    const ambientParticles = particlePositions.map((p, i) => {
+      const size = 8 + Math.random() * 16; // Small particles
+      const ampX = (20 + Math.random() * 15) * (Math.random() < 0.5 ? -1 : 1);
+      const ampY = (20 + Math.random() * 15) * (Math.random() < 0.5 ? -1 : 1);
+      
+      return {
+        key: `particle-${i}`,
+        color: palette[Math.floor(Math.random() * palette.length)],
+        size,
+        depth: 0.1 + Math.random() * 0.15, // More transparent
+        ampX, ampY,
+        phaseOffset: Math.random() * Math.PI * 2,
+        pos: { x: new Animated.Value(p.x - size / 2), y: new Animated.Value(p.y - size / 2) },
+        scale: new Animated.Value(1),
+      };
+    });
+
+    setParticles(ambientParticles);
+
+    // Simple center ball setup - no complex calculations needed
     centerScale.setValue(0.0001);
   }, [stage, palette]);
 
@@ -308,35 +319,27 @@ export default function App() {
       groupStartDelay += halfwayTime;
     });
 
-    // Center ball growth - synchronized with orb arrivals
-    const growthAnimations = [];
-    let growthDelay = baseDelay;
+    // Simple center ball growth - just grows naturally as orbs arrive
+    const totalOrbs = orbs.length;
+    const finalScale = Math.min(stage.w, stage.h) * 0.4 / CENTER_BASE; // Simple final size
     
-    groups.forEach((groupOrbs, groupIndex) => {
-      groupOrbs.forEach((_, orbIndexInGroup) => {
-        const orbArrivalTime = growthDelay + (orbIndexInGroup * 20) + moveDuration;
-        const scaleIndex = groups.slice(0, groupIndex).reduce((sum, g) => sum + g.length, 0) + orbIndexInGroup;
-        
-        if (scaleIndex < centerStepScales.length) {
-          growthAnimations.push(
-            Animated.timing(centerScale, {
-              toValue: centerStepScales[scaleIndex],
-              duration: 120,
-              delay: orbArrivalTime - baseDelay,
-              easing: RNEasing.out(RNEasing.cubic),
-              useNativeDriver: true,
-            })
-          );
-        }
-      });
-      
-      growthDelay += halfwayTime;
+    // Start growing after first orb starts moving, finish when last orb arrives
+    const firstOrbStart = baseDelay;
+    const lastOrbArrival = baseDelay + (groups.length - 1) * halfwayTime + moveDuration;
+    const totalGrowthTime = lastOrbArrival - firstOrbStart;
+    
+    const centerGrowth = Animated.timing(centerScale, {
+      toValue: finalScale,
+      duration: totalGrowthTime,
+      delay: firstOrbStart,
+      easing: RNEasing.out(RNEasing.cubic),
+      useNativeDriver: true,
     });
 
     // Start all animations
     Animated.parallel([
       ...allAnimations,
-      Animated.sequence(growthAnimations),
+      centerGrowth,
     ]).start(() => router.push('/sign-in'));
   };
 
@@ -362,6 +365,7 @@ export default function App() {
         >
           {/* BACKGROUND: scattered orbs with dynamic movement */}
           <View style={styles.orbLayer} pointerEvents="none">
+            {/* Main orbs */}
             {orbs.map((o) => {
               let translateX, translateY;
               
@@ -435,6 +439,33 @@ export default function App() {
               );
             })}
 
+            {/* Ambient particles */}
+            {particles.map((p) => {
+              const translateX = Animated.add(p.pos.x, Animated.multiply(floatUnit, p.ampX));
+              const translateY = Animated.add(p.pos.y, Animated.multiply(floatUnit, p.ampY));
+
+              return (
+                <Animated.View
+                  key={p.key}
+                  style={[
+                    styles.orb,
+                    {
+                      width: p.size,
+                      height: p.size,
+                      borderRadius: p.size / 2,
+                      backgroundColor: p.color,
+                      opacity: p.depth,
+                      transform: [
+                        { translateX },
+                        { translateY },
+                        { scale: p.scale },
+                      ],
+                    },
+                  ]}
+                />
+              );
+            })}
+
             {/* center ripple */}
             <Animated.View
               style={[
@@ -443,7 +474,7 @@ export default function App() {
               ]}
             />
 
-            {/* growing center ball */}
+            {/* growing center ball with orbital particles */}
             <Animated.View
               style={[
                 styles.centerBall,
@@ -454,6 +485,44 @@ export default function App() {
                 },
               ]}
             />
+            
+            {/* Orbital particles around center ball */}
+            {[...Array(8)].map((_, i) => {
+              const angle = (i / 8) * Math.PI * 2;
+              const radius = CENTER_BASE * 0.8;
+              const orbitalX = centerPos.left + CENTER_BASE / 2 + Math.cos(angle) * radius - 4;
+              const orbitalY = centerPos.top + CENTER_BASE / 2 + Math.sin(angle) * radius - 4;
+              
+              const orbitalTranslateX = Animated.add(
+                orbitalX,
+                Animated.multiply(floatUnit, 15 * Math.cos(angle + Math.PI / 4))
+              );
+              const orbitalTranslateY = Animated.add(
+                orbitalY,
+                Animated.multiply(floatUnit, 15 * Math.sin(angle + Math.PI / 4))
+              );
+
+              return (
+                <Animated.View
+                  key={`orbital-${i}`}
+                  style={[
+                    styles.orb,
+                    {
+                      width: 8,
+                      height: 8,
+                      borderRadius: 4,
+                      backgroundColor: '#F5A623',
+                      opacity: 0.3,
+                      transform: [
+                        { translateX: orbitalTranslateX },
+                        { translateY: orbitalTranslateY },
+                        { scale: centerScale },
+                      ],
+                    },
+                  ]}
+                />
+              );
+            })}
           </View>
 
           {/* FOREGROUND UI */}
