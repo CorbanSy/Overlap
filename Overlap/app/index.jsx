@@ -953,8 +953,14 @@ const styles = StyleSheet.create({
     elevation: 8,
     borderWidth: 2,
     borderColor: 'rgba(245, 166, 35, 0.6)', // Match CenterBall border
-    // Ensure perfect circle
+    // Fix octagon artifact
     overflow: 'hidden',
+    // Force circular rendering
+    borderStyle: 'solid',
+    // Ensure smooth edges
+    backfaceVisibility: 'hidden',
+    shouldRasterizeIOS: true,
+    renderToHardwareTextureAndroid: true,
   },
 
   footer: { 
