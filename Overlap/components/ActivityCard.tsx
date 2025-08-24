@@ -407,6 +407,7 @@ const styles = StyleSheet.create({
     top: 12,
     right: 12,
     alignItems: 'flex-end',
+    zIndex: 1000, // Add this line
   },
   dropdownToggle: {
     width: 36,
@@ -420,6 +421,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.2,
     shadowRadius: 4,
     elevation: 4,
+    zIndex: 1001, // Add this line
   },
   dropdownToggleActive: {
     backgroundColor: Colors.primary,
@@ -438,6 +440,7 @@ const styles = StyleSheet.create({
     elevation: 16,
     borderWidth: 1,
     borderColor: Colors.border,
+    zIndex: 1002, // Add this line - highest priority
   },
   dropdownItem: {
     flexDirection: 'row',
@@ -446,6 +449,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     borderBottomWidth: 1,
     borderBottomColor: Colors.border,
+    zIndex: 1003, // Add this line
   },
   lastDropdownItem: {
     borderBottomWidth: 0,

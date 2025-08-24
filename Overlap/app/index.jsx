@@ -860,10 +860,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center', 
     position: 'relative' 
   },
-
   centerTitle: {
     position: 'absolute',
-    top: 140,
+    top: 140 + CENTER_BASE / 2 - 16, // Center vertically within the ball (16 is roughly half the text height)
     left: 0,
     right: 0,
     alignItems: 'center',
