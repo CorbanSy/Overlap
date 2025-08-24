@@ -24,7 +24,7 @@ import {
   getDocs,
   updateDoc,
   doc,
-  getDoc, // ✅ Needed for directory enrichment
+  getDoc,
 } from 'firebase/firestore';
 
 import {
@@ -38,6 +38,31 @@ import FriendCard from '../../components/FriendCard';
 
 export const options = { headerShown: false };
 
+// Type definitions
+interface FriendRequestData {
+  id: string;
+  from?: string;
+  to?: string;
+  fromEmail?: string;
+  toEmail?: string;
+  toDisplayName?: string;
+  profilePicUrl?: string;
+  status?: string;
+  timestamp?: any;
+  [key: string]: any; // Allow additional properties
+}
+
+interface FriendData {
+  id: string;
+  uid: string;
+  name: string;
+  displayName: string;
+  username: string;
+  email: string;
+  avatarUrl: string;
+  createdAt?: any;
+}
+
 const BG = '#0D1117';
 const CARD = '#1B1F24';
 const BORDER = 'rgba(255,255,255,0.08)';
@@ -46,9 +71,9 @@ const ACCENT = '#FFA500';
 const LINK = '#4dabf7';
 
 function FriendsScreen() {
-  const [friendships, setFriendships] = useState<any[]>([]);
-  const [sentRequests, setSentRequests] = useState<any[]>([]);
-  const [receivedRequests, setReceivedRequests] = useState<any[]>([]);
+  const [friends, setFriends] = useState<FriendData[]>([]);
+  const [sentRequests, setSentRequests] = useState<FriendRequestData[]>([]);
+  const [receivedRequests, setReceivedRequests] = useState<FriendRequestData[]>([]);
   const [searchEmail, setSearchEmail] = useState('');
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -58,38 +83,83 @@ function FriendsScreen() {
   const firestore = getFirestore();
   const router = useRouter();
 
-    // ✅ Set UID when component mounts or auth changes
+  // Set UID when component mounts or auth changes
   useEffect(() => {
     const u = auth.currentUser?.uid || null;
     setCurrentUid(u);
   }, [auth.currentUser]);
 
-  // ✅ Helper to find the "other" user in a friendship
-  function resolveFriendUid(item: any, me: string) {
-    // Prefer userDetails keys (most reliable)
-    if (item?.userDetails && typeof item.userDetails === 'object') {
-      const keys = Object.keys(item.userDetails);
-      const other = keys.find(k => k !== me);
-      if (other) return other;
-    }
-    // Fallback to users array
-    if (Array.isArray(item?.users)) {
-      const other = item.users.find((u: string) => u !== me);
-      if (other) return other;
-    }
-    // Nothing reliable found
-    return '';
-  }
-
-
-  const fetchFriendships = useCallback(async () => {
+  // Updated: Fetch friends from user's friends subcollection
+  const fetchFriends = useCallback(async () => {
     const currentUser = auth.currentUser;
     if (!currentUser) return;
-    const friendshipsRef = collection(firestore, 'friendships');
-    const qf = query(friendshipsRef, where('users', 'array-contains', currentUser.uid));
-    const snap = await getDocs(qf);
-    const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-    setFriendships(list);
+
+    try {
+      // Get friends from user's subcollection
+      const friendsRef = collection(firestore, 'users', currentUser.uid, 'friends');
+      const friendsSnapshot = await getDocs(friendsRef);
+      
+      if (friendsSnapshot.empty) {
+        setFriends([]);
+        return;
+      }
+
+      // Get friend details from userDirectory for each friend
+      const friendPromises = friendsSnapshot.docs.map(async (friendDoc) => {
+        const friendId = friendDoc.id;
+        const friendData = friendDoc.data();
+
+        try {
+          // Get friend's directory info
+          const dirRef = doc(firestore, 'userDirectory', friendId);
+          const dirSnap = await getDoc(dirRef);
+          
+          if (dirSnap.exists()) {
+            const dirData = dirSnap.data();
+            return {
+              id: friendId,
+              uid: friendId,
+              name: dirData.displayName || dirData.usernamePublic || dirData.emailLower || 'Friend',
+              displayName: dirData.displayName || '',
+              username: dirData.usernamePublic || '',
+              email: dirData.emailLower || '',
+              avatarUrl: dirData.avatarUrl || '',
+              createdAt: friendData.createdAt,
+            };
+          } else {
+            // Fallback if no directory entry
+            return {
+              id: friendId,
+              uid: friendId,
+              name: 'Friend',
+              displayName: '',
+              username: '',
+              email: '',
+              avatarUrl: '',
+              createdAt: friendData.createdAt,
+            };
+          }
+        } catch (error) {
+          console.error(`Error fetching friend ${friendId}:`, error);
+          return {
+            id: friendId,
+            uid: friendId,
+            name: 'Friend',
+            displayName: '',
+            username: '',
+            email: '',
+            avatarUrl: '',
+            createdAt: friendData.createdAt,
+          };
+        }
+      });
+
+      const friendsList = await Promise.all(friendPromises);
+      setFriends(friendsList.filter(friend => friend !== null));
+    } catch (error) {
+      console.error('Error fetching friends:', error);
+      setFriends([]);
+    }
   }, [auth.currentUser, firestore]);
 
   const fetchSentRequests = useCallback(async () => {
@@ -102,20 +172,23 @@ function FriendsScreen() {
       where('status', '==', 'pending')
     );
     const snap = await getDocs(qs);
-    const raw = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    const raw = snap.docs.map((d) => ({ id: d.id, ...d.data() } as FriendRequestData));
 
     // Enrich with directory (email / display name)
     const enriched = await Promise.all(
       raw.map(async (r) => {
         if (!r.toEmail || !r.toDisplayName) {
-          const ds = await getDoc(doc(firestore, 'userDirectory', r.to));
-          if (ds.exists()) {
-            const dir = ds.data() || {};
-            return {
-              ...r,
-              toEmail: dir.emailLower || r.toEmail,
-              toDisplayName: dir.displayName || r.toDisplayName,
-            };
+          // Ensure r.to exists before using it
+          if (r.to) {
+            const ds = await getDoc(doc(firestore, 'userDirectory', r.to));
+            if (ds.exists()) {
+              const dir = ds.data() || {};
+              return {
+                ...r,
+                toEmail: dir.emailLower || r.toEmail,
+                toDisplayName: dir.displayName || r.toDisplayName,
+              };
+            }
           }
         }
         return r;
@@ -134,7 +207,7 @@ function FriendsScreen() {
       where('status', '==', 'pending')
     );
     const snap = await getDocs(qr);
-    const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    const list = snap.docs.map((d) => ({ id: d.id, ...d.data() } as FriendRequestData));
     setReceivedRequests(list);
   }, [auth.currentUser, firestore]);
 
@@ -142,7 +215,7 @@ function FriendsScreen() {
     try {
       setLoading(true);
       await Promise.all([
-        fetchFriendships(),
+        fetchFriends(), // Updated to use new function
         fetchSentRequests(),
         fetchReceivedRequests(),
         ensureDirectoryForCurrentUser().catch(() => {}),
@@ -152,7 +225,7 @@ function FriendsScreen() {
     } finally {
       setLoading(false);
     }
-  }, [fetchFriendships, fetchSentRequests, fetchReceivedRequests]);
+  }, [fetchFriends, fetchSentRequests, fetchReceivedRequests]);
 
   useEffect(() => {
     loadAll();
@@ -203,7 +276,7 @@ function FriendsScreen() {
     try {
       await acceptFriendRequest(requestId, fromUserId);
       Alert.alert('Friend request accepted!');
-      await Promise.all([fetchReceivedRequests(), fetchFriendships()]);
+      await Promise.all([fetchReceivedRequests(), fetchFriends()]); // Updated
     } catch (error) {
       console.error('Accept error:', error);
     }
@@ -230,7 +303,7 @@ function FriendsScreen() {
           try {
             await removeFriend(friendUid);
             Alert.alert('Friend removed.');
-            fetchFriendships();
+            fetchFriends(); // Updated
           } catch (error) {
             console.error('Remove error:', error);
             Alert.alert('Error removing friend.');
@@ -240,76 +313,39 @@ function FriendsScreen() {
     ]);
   };
 
-  // UI renderers
-  const renderFriend = ({ item }: any) => {
-  if (!currentUid) return null;
-
-  const friendUid = resolveFriendUid(item, currentUid);
-  console.log('[Friends] row', {
-    currentUid,
-    users: item?.users,
-    userDetailsKeys: item?.userDetails ? Object.keys(item.userDetails) : null,
-    resolvedFriendUid: friendUid,
-  });
-
-  if (!friendUid) {
-    // Render a disabled row so we see it's bad data
+  // Updated: Simplified friend rendering
+  const renderFriend = ({ item }: { item: FriendData }) => {
     return (
       <View style={styles.cardRow}>
-        <FriendCard item={{ name: 'Unknown friend (bad doc)', profilePicUrl: undefined }} />
-        <Text style={{ color: '#f88' }}>Fix friendship doc</Text>
+        <TouchableOpacity
+          onPress={() => router.push({ pathname: '/profile/friendProfile', params: { uid: item.uid } })}
+          style={{ flex: 1 }}
+          activeOpacity={0.85}
+        >
+          <FriendCard
+            item={{
+              name: item.name,
+              profilePicUrl: item.avatarUrl,
+            }}
+          />
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.smallBtn, { backgroundColor: '#F44336' }]}
+          onPress={() => handleRemoveFriend(item.uid)}
+          activeOpacity={0.85}
+        >
+          <Text style={styles.smallBtnText}>Remove</Text>
+        </TouchableOpacity>
       </View>
     );
-  }
+  };
 
-  const friendData = (item.userDetails && item.userDetails[friendUid]) || {};
-  
-  // Improved name resolution with better fallbacks
-  const displayName = 
-    friendData.name || 
-    friendData.displayName || 
-    friendData.username || 
-    friendData.email || 
-    friendData.emailLower ||
-    'Friend'; // Better fallback than UID
-  
-  // Improved avatar URL resolution
-  const avatarUrl = 
-    friendData.avatarUrl || 
-    friendData.profilePicUrl || 
-    undefined;
-
-  return (
-    <View style={styles.cardRow}>
-      <TouchableOpacity
-        onPress={() => router.push({ pathname: '/profile/friendProfile', params: { uid: friendUid } })}
-        style={{ flex: 1 }}
-        activeOpacity={0.85}
-      >
-        <FriendCard
-          item={{
-            name: displayName,
-            profilePicUrl: avatarUrl,
-          }}
-        />
-      </TouchableOpacity>
-
-      <TouchableOpacity
-        style={[styles.smallBtn, { backgroundColor: '#F44336' }]}
-        onPress={() => handleRemoveFriend(friendUid)}
-        activeOpacity={0.85}
-      >
-        <Text style={styles.smallBtnText}>Remove</Text>
-      </TouchableOpacity>
-    </View>
-  );
-};
-
-  const renderSentRequest = ({ item }: any) => (
+  const renderSentRequest = ({ item }: { item: FriendRequestData }) => (
     <View style={styles.cardRow}>
       <FriendCard
         item={{
-          name: item.toDisplayName || item.toEmail || item.to,
+          name: item.toDisplayName || item.toEmail || item.to || 'Unknown',
           profilePicUrl: item.profilePicUrl,
         }}
       />
@@ -319,18 +355,18 @@ function FriendsScreen() {
     </View>
   );
 
-  const renderReceivedRequest = ({ item }: any) => (
+  const renderReceivedRequest = ({ item }: { item: FriendRequestData }) => (
     <View style={styles.cardRow}>
       <FriendCard
         item={{
-          name: item.fromEmail || item.from,
+          name: item.fromEmail || item.from || 'Unknown',
           profilePicUrl: item.profilePicUrl,
         }}
       />
       <View style={styles.rowActions}>
         <TouchableOpacity
           style={[styles.smallBtn, { backgroundColor: '#4CAF50' }]}
-          onPress={() => handleAccept(item.id, item.from)}
+          onPress={() => handleAccept(item.id, item.from || '')}
           activeOpacity={0.85}
         >
           <Text style={styles.smallBtnText}>Accept</Text>
@@ -391,12 +427,12 @@ function FriendsScreen() {
             <>
               {/* Accepted */}
               <Text style={styles.sectionTitle}>Your Friends</Text>
-              {friendships.length === 0 && (
+              {friends.length === 0 && (
                 <Text style={styles.emptyText}>No friends yet.</Text>
               )}
             </>
           }
-          data={friendships}
+          data={friends}
           keyExtractor={(item) => item.id}
           renderItem={renderFriend}
           contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 24 }}

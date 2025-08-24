@@ -14,7 +14,6 @@ import { collection, doc, getDoc, getDocs, addDoc } from 'firebase/firestore';
 
 import { db } from '../../FirebaseConfig';
 import { createMeetup } from '../../_utils/storage/meetups';
-import { getFriendships } from '../../_utils/storage/social';
 
 // Import meetup components
 import EventDetailsCard from '../../components/meetup_components/EventDetailsCard';
@@ -125,18 +124,21 @@ const CreateMeetupScreen = ({ onBack }: { onBack: () => void }) => {
     return unsub;
   }, [auth]);
 
-  // Load friends
+  // Load friends - Updated to use friends subcollection
   useEffect(() => {
     if (!user) return;
     (async () => {
       try {
-        const friendships = await getFriendships();
-        const currentId = user.uid;
-        const friendIds = friendships.map((f: any) => f.users.find((id: string) => id !== currentId));
+        // Use the friends subcollection instead of friendships
+        const friendsRef = collection(db, 'users', user.uid, 'friends');
+        const friendsSnapshot = await getDocs(friendsRef);
+        const friendIds = friendsSnapshot.docs.map(doc => doc.id);
         const profiles = await Promise.all(friendIds.map((id: string) => getFriendProfile(id)));
         setFriendsList(profiles);
       } catch (e) {
         console.error('Error fetching friends:', e);
+        // Set empty array on error to prevent crashes
+        setFriendsList([]);
       }
     })();
   }, [user]);
@@ -156,6 +158,8 @@ const CreateMeetupScreen = ({ onBack }: { onBack: () => void }) => {
         setCollectionsList(cols);
       } catch (e) {
         console.error('Error fetching collections:', e);
+        // Set empty array on error to prevent crashes
+        setCollectionsList([]);
       }
     })();
   }, [user]);

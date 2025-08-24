@@ -1,11 +1,10 @@
 // Import the necessary functions from Firebase SDKs
 import { initializeApp } from "firebase/app";
 import { getAnalytics } from "firebase/analytics";
-import { getFirestore } from "firebase/firestore"; // Firestore import
-import { getAuth } from "firebase/auth";
+import { getFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
-import AsyncStorage from "@react-native-async-storage/async-storage"; // AsyncStorage for persistence
-//import { initializeAuth, getReactNativePersistence } from "firebase/auth"; // Initialize Auth with persistence
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { initializeAuth, getReactNativePersistence } from "firebase/auth";
 
 // Your web app's Firebase configuration
 const firebaseConfig = {
@@ -20,12 +19,22 @@ const firebaseConfig = {
 
 // Initialize Firebase
 export const app = initializeApp(firebaseConfig);
-export const analytics = getAnalytics(app);
-export const FIREBASE_AUTH = getAuth(app)
+
+// Initialize Analytics (wrap in try-catch for React Native)
+export let analytics: any = null;
+try {
+  if (typeof window !== 'undefined') {
+    analytics = getAnalytics(app);
+  }
+} catch (error) {
+  console.log('Analytics not available in this environment');
+}
+
 // Initialize Firestore
 export const db = getFirestore(app);
 export const storage = getStorage(app);
+
 // Initialize Auth with React Native persistence
-//export const auth = initializeAuth(app, {
-//  persistence: getReactNativePersistence(AsyncStorage),
-//});
+export const FIREBASE_AUTH = initializeAuth(app, {
+  persistence: getReactNativePersistence(AsyncStorage),
+});
