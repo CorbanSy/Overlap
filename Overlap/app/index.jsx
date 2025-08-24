@@ -402,6 +402,7 @@ export default function App() {
     ]);
 
     // Title stays visible inside the circle - proper timing
+    const firstArrival = 100 + 500; // groupDelay + waveDuration
     const titleAnimation = Animated.sequence([
       // Subtle glow as particles approach
       Animated.timing(titleScale, { 
@@ -540,7 +541,6 @@ export default function App() {
     });
 
     // Create final circle - match CenterBall size and appearance exactly
-    const firstArrival = 100 + waveDuration;
     const lastArrival = particleDelay + (6 * 60) + 700;
     const growthDuration = (lastArrival - firstArrival) * 1.0;
     const finalScale = 200 / CENTER_BASE; // Exactly match CenterBall size (200px)
@@ -753,7 +753,7 @@ export default function App() {
               ]}
             />
 
-            {/* Enhanced center ball */}
+            {/* Enhanced center ball - FIXED FOR PERFECT CIRCLE */}
             <Animated.View
               style={[
                 styles.centerBall,
@@ -779,7 +779,6 @@ export default function App() {
                 ]}
               >
                 <Text style={styles.centerTitleText}>Overlap</Text>
-                {/* Remove title glow to prevent interference with circle */}
               </Animated.View>
             </View>
 
@@ -864,35 +863,23 @@ const styles = StyleSheet.create({
 
   centerTitle: {
     position: 'absolute',
-    top: 140, // Fixed position to match CenterBall exactly
+    top: 140,
     left: 0,
     right: 0,
     alignItems: 'center',
-    zIndex: 15, // Above the center ball so text stays visible
+    zIndex: 15,
   },
   
   centerTitleText: {
     color: '#FFFFFF', 
-    fontSize: 32, // Match CenterBall title size exactly
+    fontSize: 32,
     fontWeight: '800', 
-    letterSpacing: 1.0, // Reduced for better fit inside circle
+    letterSpacing: 1.0,
     textAlign: 'center',
-    textShadowColor: 'rgba(245, 166, 35, 0.8)', // Match CenterBall text shadow
+    textShadowColor: 'rgba(245, 166, 35, 0.8)',
     textShadowOffset: { width: 0, height: 0 },
     textShadowRadius: 10,
-    zIndex: 15, // Above everything else
-  },
-
-  titleGlow: {
-    position: 'absolute',
-    top: -5,
-    left: -10,
-    right: -10,
-    bottom: -5,
-    backgroundColor: '#F5A623',
-    opacity: 0.05, // Much more subtle
-    borderRadius: 20, // Smaller radius
-    blur: 10,
+    zIndex: 15,
   },
 
   orb: { 
@@ -939,28 +926,24 @@ const styles = StyleSheet.create({
     elevation: 12,
   },
 
+  // FIXED centerBall style - removed all octagon-causing properties
   centerBall: {
     position: 'absolute',
     width: CENTER_BASE,
     height: CENTER_BASE,
     borderRadius: CENTER_BASE / 2,
-    backgroundColor: 'rgba(245, 166, 35, 0.4)', // Match CenterBall exactly
-    opacity: 1.0, // Full opacity for final state
-    shadowColor: '#F5A623',
-    shadowOpacity: 0.3,
-    shadowRadius: 25,
-    shadowOffset: { width: 0, height: 0 },
-    elevation: 8,
-    borderWidth: 2,
-    borderColor: 'rgba(245, 166, 35, 0.6)', // Match CenterBall border
-    // Fix octagon artifact
-    overflow: 'hidden',
-    // Force circular rendering
-    borderStyle: 'solid',
-    // Ensure smooth edges
-    backfaceVisibility: 'hidden',
-    shouldRasterizeIOS: true,
-    renderToHardwareTextureAndroid: true,
+    backgroundColor: 'rgba(245, 166, 35, 0.4)',
+    // Removed all problematic properties:
+    // - borderWidth (causes octagon artifacts)
+    // - borderColor (causes octagon artifacts) 
+    // - complex shadows (can cause rendering issues)
+    // - overflow: 'hidden' (not needed for circles)
+    // - backfaceVisibility (optimization not needed here)
+    // - shouldRasterizeIOS (can cause artifacts)
+    // - renderToHardwareTextureAndroid (can cause artifacts)
+    
+    // Keep only essential circle properties
+    opacity: 1.0,
   },
 
   footer: { 
