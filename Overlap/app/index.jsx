@@ -1,4 +1,4 @@
-// app/index.jsx - UPDATED WITH HOME.TSX COLOR SCHEME
+// app/index.jsx - UPDATED WITH CASCADING ANIMATION
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { View, Animated, Easing as RNEasing, StyleSheet, TouchableOpacity, Text } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
@@ -238,57 +238,105 @@ export default function App() {
       Animated.timing(slideAnim, { toValue: -10,  duration: 260, easing: RNEasing.inOut(RNEasing.ease), useNativeDriver: true }),
     ]).start();
 
-    // Collapse orbs to center (native) - SYNCHRONIZED timing
+    // CASCADING ANIMATION - Groups of orbs that start when previous group is halfway
     const cx = stage.w / 2;
     const cy = stage.h / 2;
     
-    const orbArrivals = orbs.map((o, idx) => {
-      const tx = cx - o.size / 2;
-      const ty = cy - o.size / 2;
-      const arrivalDelay = 60 + (idx * 135);
+    // Create cascading groups: 1, 2, 4, 8, remaining
+    const groups = [];
+    let orbIndex = 0;
+    const groupSizes = [1, 2, 4, 8]; // Then all remaining
+    
+    groupSizes.forEach(size => {
+      if (orbIndex < orbs.length) {
+        const groupOrbs = orbs.slice(orbIndex, Math.min(orbIndex + size, orbs.length));
+        groups.push(groupOrbs);
+        orbIndex += size;
+      }
+    });
+    
+    // Add remaining orbs as final group
+    if (orbIndex < orbs.length) {
+      groups.push(orbs.slice(orbIndex));
+    }
+
+    const moveDuration = 300;
+    const halfwayTime = moveDuration / 2; // 150ms
+    const scaleDuration = 150;
+    const baseDelay = 60;
+
+    const allAnimations = [];
+    let groupStartDelay = baseDelay;
+
+    groups.forEach((groupOrbs, groupIndex) => {
+      groupOrbs.forEach((o, orbIndexInGroup) => {
+        const tx = cx - o.size / 2;
+        const ty = cy - o.size / 2;
+        
+        // Small stagger within each group for natural feel
+        const inGroupDelay = orbIndexInGroup * 20;
+        const totalDelay = groupStartDelay + inGroupDelay;
+        
+        const orbAnimation = Animated.parallel([
+          Animated.timing(o.pos.x, { 
+            toValue: tx, 
+            duration: moveDuration, 
+            delay: totalDelay, 
+            easing: RNEasing.out(RNEasing.cubic), 
+            useNativeDriver: true 
+          }),
+          Animated.timing(o.pos.y, { 
+            toValue: ty, 
+            duration: moveDuration, 
+            delay: totalDelay, 
+            easing: RNEasing.out(RNEasing.cubic), 
+            useNativeDriver: true 
+          }),
+          Animated.timing(o.scale, { 
+            toValue: 0.1,
+            duration: scaleDuration,
+            delay: totalDelay + moveDuration - scaleDuration,
+            easing: RNEasing.out(RNEasing.cubic), 
+            useNativeDriver: true 
+          }),
+        ]);
+        
+        allAnimations.push(orbAnimation);
+      });
       
-      return Animated.parallel([
-        Animated.timing(o.pos.x, { 
-          toValue: tx, 
-          duration: 300, 
-          delay: arrivalDelay, 
-          easing: RNEasing.out(RNEasing.cubic), 
-          useNativeDriver: true 
-        }),
-        Animated.timing(o.pos.y, { 
-          toValue: ty, 
-          duration: 300, 
-          delay: arrivalDelay, 
-          easing: RNEasing.out(RNEasing.cubic), 
-          useNativeDriver: true 
-        }),
-        Animated.timing(o.scale, { 
-          toValue: 0.1,
-          duration: 150,
-          delay: arrivalDelay + 250,
-          easing: RNEasing.out(RNEasing.cubic), 
-          useNativeDriver: true 
-        }),
-      ]);
+      // Next group starts when this group is halfway through their journey
+      groupStartDelay += halfwayTime;
     });
 
-    // Center ball growth
-    const growthSeq = [
-      Animated.delay(60),
-      ...centerStepScales.flatMap((toVal, idx) => ([
-        Animated.timing(centerScale, {
-          toValue: toVal,
-          duration: 120,
-          easing: RNEasing.out(RNEasing.cubic),
-          useNativeDriver: true,
-        }),
-        ...(idx < centerStepScales.length - 1 ? [Animated.delay(15)] : []),
-      ])),
-    ];
+    // Center ball growth - synchronized with orb arrivals
+    const growthAnimations = [];
+    let growthDelay = baseDelay;
+    
+    groups.forEach((groupOrbs, groupIndex) => {
+      groupOrbs.forEach((_, orbIndexInGroup) => {
+        const orbArrivalTime = growthDelay + (orbIndexInGroup * 20) + moveDuration;
+        const scaleIndex = groups.slice(0, groupIndex).reduce((sum, g) => sum + g.length, 0) + orbIndexInGroup;
+        
+        if (scaleIndex < centerStepScales.length) {
+          growthAnimations.push(
+            Animated.timing(centerScale, {
+              toValue: centerStepScales[scaleIndex],
+              duration: 120,
+              delay: orbArrivalTime - baseDelay,
+              easing: RNEasing.out(RNEasing.cubic),
+              useNativeDriver: true,
+            })
+          );
+        }
+      });
+      
+      growthDelay += halfwayTime;
+    });
 
+    // Start all animations
     Animated.parallel([
-      ...orbArrivals,
-      Animated.sequence(growthSeq),
+      ...allAnimations,
+      Animated.sequence(growthAnimations),
     ]).start(() => router.push('/sign-in'));
   };
 
