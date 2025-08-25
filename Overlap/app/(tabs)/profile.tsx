@@ -36,7 +36,7 @@ import CollectionCard from '../../components/CollectionCard';
 
 // Utility imports
 import { unlikePlace, deleteCollection } from '../../_utils/storage/likesCollections';
-import { saveProfileData } from '../../_utils/storage/userProfile';
+import { saveProfileData, getProfileData } from '../../_utils/storage/userProfile';
 import { Colors } from '../../constants/colors';
 
 /* =========================
@@ -135,6 +135,86 @@ const useAuth = () => {
 };
 
 /**
+ * Hook for loading and managing user profile data with real-time updates
+ */
+const useProfileData = (user: User | null) => {
+  const [profileData, setProfileData] = useState({
+    name: '',
+    tagline: '',
+    profileUri: undefined as string | undefined,
+  });
+  const [isLoading, setIsLoading] = useState(true);
+
+  const loadProfileData = async () => {
+    if (!user) {
+      setIsLoading(false);
+      return;
+    }
+
+    try {
+      const data = await getProfileData();
+      if (data) {
+        setProfileData({
+          name: data.name || '',
+          tagline: data.bio || '',
+          profileUri: data.avatarUrl || undefined,
+        });
+      }
+    } catch (error) {
+      console.error('Error loading profile data:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Initial load when user changes
+  useEffect(() => {
+    loadProfileData();
+  }, [user]);
+
+  // Set up real-time listener for profile changes
+  useEffect(() => {
+    if (!user) return;
+
+    const firestore = getFirestore();
+    const profileRef = doc(firestore, `users/${user.uid}/profile/main`);
+    
+    const unsubscribe = onSnapshot(
+      profileRef,
+      (snapshot) => {
+        if (snapshot.exists()) {
+          const data = snapshot.data();
+          setProfileData({
+            name: data.name || '',
+            tagline: data.bio || '',
+            profileUri: data.avatarUrl || undefined,
+          });
+        }
+      },
+      (error) => console.error("Profile listener error:", error)
+    );
+
+    return () => unsubscribe();
+  }, [user]);
+
+  const updateProfileData = (updates: Partial<typeof profileData>) => {
+    setProfileData(prev => ({ ...prev, ...updates }));
+  };
+
+  // Refresh function to manually reload profile data
+  const refreshProfile = () => {
+    loadProfileData();
+  };
+
+  return {
+    ...profileData,
+    isLoading,
+    updateProfileData,
+    refreshProfile,
+  };
+};
+
+/**
  * Hook for managing Firestore data (likes and collections)
  */
 const useFirestoreData = (user: User | null) => {
@@ -210,32 +290,97 @@ const useFirestoreData = (user: User | null) => {
 };
 
 /**
- * Hook for filtering data based on search query
+ * Hook for filtering and sorting data based on search query with relevance scoring
  */
 const useSearchFilter = (data: (Activity | Collection)[], searchQuery: string, activeTab: string) => {
   return useMemo(() => {
-    if (!searchQuery.trim()) return data;
+    if (!searchQuery.trim()) {
+      // No search query - return original order
+      return data;
+    }
     
-    const query = searchQuery.toLowerCase();
+    const query = searchQuery.toLowerCase().trim();
     
-    return data.filter((item) => {
-      if (activeTab === 'Collections' && 'title' in item) {
-        // Search collections by title and description
-        return (
-          item.title.toLowerCase().includes(query) ||
-          (item.description && item.description.toLowerCase().includes(query))
-        );
-      } else {
-        // Search activities by title, name, or description
-        const activity = item as Activity;
-        const title = activity.title || activity.name || '';
-        const description = activity.description || '';
-        return (
-          title.toLowerCase().includes(query) ||
-          description.toLowerCase().includes(query)
-        );
-      }
-    });
+    // Score and filter items based on relevance
+    const scoredItems = data
+      .map((item) => {
+        let score = 0;
+        let title = '';
+        let description = '';
+        
+        if (activeTab === 'Collections' && 'title' in item) {
+          // Collections
+          title = item.title || '';
+          description = item.description || '';
+        } else {
+          // Activities
+          const activity = item as Activity;
+          title = activity.title || activity.name || '';
+          description = activity.description || '';
+        }
+        
+        const titleLower = title.toLowerCase();
+        const descriptionLower = description.toLowerCase();
+        
+        // Scoring algorithm:
+        // 1. Exact title match (highest priority)
+        if (titleLower === query) {
+          score += 1000;
+        }
+        // 2. Title starts with query
+        else if (titleLower.startsWith(query)) {
+          score += 500;
+        }
+        // 3. Title contains query
+        else if (titleLower.includes(query)) {
+          score += 200;
+        }
+        
+        // 4. Description starts with query
+        if (descriptionLower.startsWith(query)) {
+          score += 100;
+        }
+        // 5. Description contains query
+        else if (descriptionLower.includes(query)) {
+          score += 50;
+        }
+        
+        // 6. Bonus points for multiple word matches
+        const queryWords = query.split(' ').filter(word => word.length > 0);
+        if (queryWords.length > 1) {
+          queryWords.forEach(word => {
+            if (titleLower.includes(word)) score += 25;
+            if (descriptionLower.includes(word)) score += 10;
+          });
+        }
+        
+        // 7. Bonus for shorter titles (more specific matches rank higher)
+        if (score > 0 && title.length < 50) {
+          score += 10;
+        }
+        
+        return { item, score };
+      })
+      .filter(({ score }) => score > 0) // Only include items with matches
+      .sort((a, b) => {
+        // Primary sort: by relevance score (descending)
+        if (b.score !== a.score) {
+          return b.score - a.score;
+        }
+        
+        // Secondary sort: by title length (shorter first)
+        const aTitle = activeTab === 'Collections' && 'title' in a.item 
+          ? a.item.title 
+          : (a.item as Activity).title || (a.item as Activity).name || '';
+        const bTitle = activeTab === 'Collections' && 'title' in b.item 
+          ? b.item.title 
+          : (b.item as Activity).title || (b.item as Activity).name || '';
+        
+        return aTitle.length - bTitle.length;
+      })
+      .map(({ item }) => item);
+    
+    return scoredItems;
   }, [data, searchQuery, activeTab]);
 };
 
@@ -263,17 +408,13 @@ function ProfileScreen() {
   // Collection creation state
   const [newCollectionName, setNewCollectionName] = useState('');
   const [newCollectionDescription, setNewCollectionDescription] = useState('');
-  
-  // Profile editing state
-  const [profileUri, setProfileUri] = useState<string | undefined>(undefined);
-  const [name, setName] = useState('John Doe');
-  const [tagline, setTagline] = useState('Always up for an adventure!');
 
   /* =========================
      Hooks and Data
      ========================= */
   
   const { user, auth } = useAuth();
+  const { name, tagline, profileUri, isLoading: profileLoading, updateProfileData, refreshProfile } = useProfileData(user);
   const { 
     likedActivities, 
     collections, 
@@ -304,6 +445,9 @@ function ProfileScreen() {
     searchQuery, 
     activeTab === 'Collections' && !selectedCollection ? 'Collections' : 'Activities'
   );
+
+  // Check if search is active
+  const isSearchActive = searchQuery.trim().length > 0;
 
   /* =========================
      Side Effects
@@ -462,6 +606,7 @@ function ProfileScreen() {
     setIsCollectionModalVisible(true);
   };
 
+  
   /**
    * Handle saving profile edits
    */
@@ -475,9 +620,14 @@ function ProfileScreen() {
         email: user?.email || '',
         username: user?.email || ''
       });
+      
       setIsEditingProfile(false);
+      
+      // Force refresh profile data after saving
+      refreshProfile();
     } catch (error) {
       console.error("Error saving profile:", error);
+      Alert.alert('Error', 'Failed to save profile changes. Please try again.');
     }
   };
 
@@ -496,7 +646,10 @@ function ProfileScreen() {
     return (
       <View style={profileInfoStyles.fullProfileSection}>
         <View style={profileInfoStyles.profileHeader}>
-          <ProfilePicture imageUri={profileUri} onChangeImage={setProfileUri} />
+          <ProfilePicture 
+            imageUri={profileUri} 
+            onChangeImage={(uri) => updateProfileData({ profileUri: uri })} 
+          />
           <View style={profileInfoStyles.profileDetails}>
             <View style={profileInfoStyles.nameRow}>
               <Text style={profileInfoStyles.name}>{displayName}</Text>
@@ -518,6 +671,24 @@ function ProfileScreen() {
             <Ionicons name="ellipsis-vertical" size={20} color={Colors.text} />
           </View>
         </TouchableOpacity>
+      </View>
+    );
+  };
+
+  /**
+   * Render search results header
+   */
+  const renderSearchHeader = () => {
+    if (!isSearchActive) return null;
+    
+    return (
+      <View style={searchHeaderStyles.container}>
+        <Text style={searchHeaderStyles.text}>
+          {filteredData.length === 0 
+            ? `No ${activeTab.toLowerCase()} match "${searchQuery}"`
+            : `Showing ${filteredData.length} ${activeTab.toLowerCase()} for "${searchQuery}"`
+          }
+        </Text>
       </View>
     );
   };
@@ -560,12 +731,12 @@ function ProfileScreen() {
      Main Render
      ========================= */
 
-  // Show loading state if user is not authenticated
-  if (!user) {
+  // Show loading state if user is not authenticated or profile is loading
+  if (!user || profileLoading) {
     return (
       <SafeAreaView style={styles.container}>
         <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-          <Text style={{ color: 'white', fontSize: 18 }}>Loading user...</Text>
+          <Text style={{ color: 'white', fontSize: 18 }}>Loading...</Text>
         </View>
       </SafeAreaView>
     );
@@ -593,7 +764,11 @@ function ProfileScreen() {
               toggleSettingsMenu={() => setIsSettingsMenuVisible(prev => !prev)}
               searchQuery={searchQuery}
               setSearchQuery={setSearchQuery}
+              resultCount={filteredData.length}
             />
+            
+            {/* Search Results Header */}
+            {renderSearchHeader()}
           </View>
         }
         contentContainerStyle={styles.listContainer}
@@ -602,7 +777,10 @@ function ProfileScreen() {
         ListEmptyComponent={() => (
           <View style={styles.emptyContainer}>
             <Text style={styles.emptyText}>
-              No {activeTab.toLowerCase()} found
+              {isSearchActive 
+                ? `No ${activeTab.toLowerCase()} match "${searchQuery}"`
+                : `No ${activeTab.toLowerCase()} found`
+              }
             </Text>
           </View>
         )}
@@ -653,7 +831,7 @@ function ProfileScreen() {
                 <TextInput
                   style={modalStyles.input}
                   value={name}
-                  onChangeText={setName}
+                  onChangeText={(text) => updateProfileData({ name: text })}
                   placeholder="Enter your name"
                   placeholderTextColor={Colors.textMuted}
                 />
@@ -664,7 +842,7 @@ function ProfileScreen() {
                 <TextInput
                   style={modalStyles.input}
                   value={tagline}
-                  onChangeText={setTagline}
+                  onChangeText={(text) => updateProfileData({ tagline: text })}
                   placeholder="Enter your bio"
                   placeholderTextColor={Colors.textMuted}
                 />
@@ -709,6 +887,7 @@ const styles = StyleSheet.create({
   emptyText: {
     color: 'white',
     fontSize: 16,
+    textAlign: 'center',
   },
 });
 
@@ -798,6 +977,22 @@ const profileInfoStyles = StyleSheet.create({
     alignItems: 'center',
     borderWidth: 1,
     borderColor: Colors.border,
+  },
+});
+
+const searchHeaderStyles = StyleSheet.create({
+  container: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    backgroundColor: Colors.surfaceLight,
+    borderRadius: 8,
+    marginBottom: 16,
+  },
+  text: {
+    color: Colors.textSecondary,
+    fontSize: 14,
+    fontStyle: 'italic',
+    textAlign: 'center',
   },
 });
 

@@ -4,7 +4,7 @@ import {
   addDoc, query, where, updateDoc 
 } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
-import { db } from '../../FirebaseConfig';
+import { db, auth } from '../../FirebaseConfig';
 
 // TypeScript-like interfaces for JSDoc (optional, for better IDE support)
 /**
@@ -26,12 +26,162 @@ import { db } from '../../FirebaseConfig';
  * @property {string} avatarUrl
  */
 
-// Debug version of sendFriendRequest with detailed logging
+// Enhanced debug version of sendFriendRequest with detailed logging
+console.log('🔍 Social.js loaded, auth instance:', !!auth);
+console.log('🔍 Social.js loaded, db instance:', !!db);
+
+// Debug Firebase setup function
+export async function debugFirebaseSetup() {
+  console.log('🔍 Starting Firebase setup debug...');
+  
+  try {
+    // Test 1: Check if db is defined
+    console.log('✅ Test 1 - DB object:', !!db, typeof db);
+    
+    // Test 2: Check if auth is working
+    console.log('✅ Test 2 - Auth object:', !!auth, typeof auth);
+    
+    // Test 3: Check current user
+    const user = auth.currentUser;
+    console.log('✅ Test 3 - Current user:', user ? `${user.uid} (${user.email})` : 'No user');
+    
+    if (!user) {
+      throw new Error('No user authenticated - please sign in first');
+    }
+    
+    // Test 4: Try to read from a collection
+    console.log('🔍 Test 4 - Testing Firestore read...');
+    const testCollectionRef = collection(db, 'userDirectory');
+    const testQuery = query(testCollectionRef);
+    const testSnapshot = await getDocs(testQuery);
+    console.log('✅ Test 4 - Firestore read successful, docs count:', testSnapshot.size);
+    
+    // Test 5: Try to create a simple document
+    console.log('🔍 Test 5 - Testing Firestore write...');
+    const testData = {
+      testField: 'debug test',
+      userId: user.uid,
+      timestamp: new Date(),
+    };
+    
+    const testDocRef = await addDoc(collection(db, 'debugTest'), testData);
+    console.log('✅ Test 5 - Firestore write successful, doc ID:', testDocRef.id);
+    
+    return 'All tests passed!';
+    
+  } catch (error) {
+    console.error('❌ Firebase setup debug failed:', {
+      message: error.message,
+      code: error.code,
+      name: error.name,
+      stack: error.stack?.split('\n').slice(0, 3)
+    });
+    throw error;
+  }
+}
+
+// Enhanced debug version of sendFriendRequest
+export async function sendFriendRequestDebug(targetUserId) {
+  console.log('🔍 =================================');
+  console.log('🔍 Starting sendFriendRequestDebug');
+  console.log('🔍 Target user ID:', targetUserId);
+  console.log('🔍 =================================');
+  
+  try {
+    // Step 1: Basic setup check
+    console.log('🔍 Step 1: Checking basic setup...');
+    if (!db) {
+      throw new Error('Database not initialized');
+    }
+    console.log('✅ Database object exists');
+    
+    if (!auth) {
+      throw new Error('Auth not initialized');
+    }
+    console.log('✅ Auth object exists');
+    
+    const user = auth.currentUser;
+    if (!user) {
+      throw new Error('No user signed in');
+    }
+    console.log('✅ User authenticated:', user.uid, user.email);
+    
+    // Step 2: Validate input
+    console.log('🔍 Step 2: Validating input...');
+    if (!targetUserId || typeof targetUserId !== 'string') {
+      throw new Error('Invalid target user ID: ' + targetUserId);
+    }
+    console.log('✅ Target user ID valid:', targetUserId);
+    
+    if (user.uid === targetUserId) {
+      throw new Error('Cannot send friend request to yourself');
+    }
+    console.log('✅ Not sending to self');
+    
+    // Step 3: Check for existing requests
+    console.log('🔍 Step 3: Checking for existing requests...');
+    const existingRequestsRef = collection(db, 'friendRequests');
+    const existingQuery = query(
+      existingRequestsRef,
+      where('from', '==', user.uid),
+      where('to', '==', targetUserId),
+      where('status', '==', 'pending')
+    );
+    const existingSnap = await getDocs(existingQuery);
+    
+    if (!existingSnap.empty) {
+      console.log('⚠️ Friend request already exists');
+      throw new Error("Friend request already sent");
+    }
+    console.log('✅ No existing request found');
+    
+    // Step 4: Prepare request data
+    console.log('🔍 Step 4: Preparing data...');
+    const requestData = {
+      from: user.uid,
+      fromEmail: user.email || '',
+      to: targetUserId,
+      status: 'pending',
+      timestamp: new Date(),
+    };
+    console.log('✅ Request data prepared:', requestData);
+    
+    // Step 5: Get collection reference
+    console.log('🔍 Step 5: Getting collection reference...');
+    const friendRequestsRef = collection(db, 'friendRequests');
+    console.log('✅ Collection reference created');
+    
+    // Step 6: Attempt to create document
+    console.log('🔍 Step 6: Creating document...');
+    console.log('🔍 About to call addDoc with collection: friendRequests');
+    
+    const docRef = await addDoc(friendRequestsRef, requestData);
+    
+    console.log('✅ SUCCESS! Document created with ID:', docRef.id);
+    console.log('🔍 =================================');
+    return docRef.id;
+    
+  } catch (error) {
+    console.log('🔍 =================================');
+    console.error('❌ FAILED at some step:');
+    console.error('❌ Error type:', error.constructor.name);
+    console.error('❌ Error message:', error.message);
+    console.error('❌ Error code:', error.code);
+    if (error.code === 'permission-denied') {
+      console.error('❌ PERMISSION DENIED - Check your Firestore security rules!');
+    }
+    console.error('❌ Full error object:', error);
+    console.log('🔍 =================================');
+    throw error;
+  }
+}
+
+// Original function with proper auth import
 export async function sendFriendRequest(targetUserId) {
   console.log('🔍 Starting sendFriendRequest for:', targetUserId);
   
-  const auth = getAuth();
-  const user = auth.currentUser;
+  const user = auth.currentUser; // Use imported auth instead of getAuth()
+  
   if (!user) {
     console.error('❌ No user signed in');
     throw new Error("No user is signed in");
@@ -39,8 +189,13 @@ export async function sendFriendRequest(targetUserId) {
   
   console.log('✅ Current user:', user.uid, user.email);
 
+  if (user.uid === targetUserId) {
+    console.error('❌ Cannot send friend request to self');
+    throw new Error("Cannot send friend request to yourself");
+  }
+
   try {
-    // Check if request already exists
+    // Check for existing requests
     console.log('🔍 Checking for existing requests...');
     const existingRequestsRef = collection(db, 'friendRequests');
     const existingQuery = query(
@@ -63,9 +218,9 @@ export async function sendFriendRequest(targetUserId) {
     const fromSnap = await getDoc(fromProfileRef);
     const fromEmail = user.email || '';
     const fromAvatarUrl = fromSnap.exists() ? (fromSnap.data().avatarUrl || '') : '';
-    console.log('✅ Sender info retrieved:', { fromEmail, hasAvatar: !!fromAvatarUrl });
+    console.log('✅ Sender info retrieved');
 
-    // Get target's public directory info
+    // Get target's directory info
     console.log('🔍 Getting target user directory info...');
     const dirSnap = await getDoc(doc(db, 'userDirectory', targetUserId));
     if (!dirSnap.exists()) {
@@ -76,7 +231,7 @@ export async function sendFriendRequest(targetUserId) {
     const dirData = dirSnap.data();
     const toEmail = dirData.emailLower || '';
     const toDisplayName = dirData.displayName || '';
-    console.log('✅ Target info retrieved:', { toEmail, toDisplayName });
+    console.log('✅ Target info retrieved');
 
     // Prepare the friend request data
     const requestData = {
@@ -90,12 +245,11 @@ export async function sendFriendRequest(targetUserId) {
       timestamp: new Date(),
     };
     
-    console.log('🔍 Preparing to create friend request with data:', requestData);
-
-    // Try to create the friend request
-    console.log('🔍 Attempting to create friend request document...');
+    console.log('🔍 Creating friend request document...');
     const docRef = await addDoc(collection(db, 'friendRequests'), requestData);
     console.log('✅ Friend request created successfully with ID:', docRef.id);
+    
+    return docRef.id;
     
   } catch (error) {
     console.error('❌ Error in sendFriendRequest:', {
@@ -107,65 +261,107 @@ export async function sendFriendRequest(targetUserId) {
   }
 }
 
-export async function acceptFriendRequest(requestId, fromUserId) {
-  const auth = getAuth();
-  const user = auth.currentUser;
-  if (!user) throw new Error("No user is signed in");
+// Add this enhanced debug version to your social.js file
+export async function acceptFriendRequestDebug(requestId, fromUserId) {
+  console.log('🔍 =================================');
+  console.log('🔍 Starting acceptFriendRequestDebug');
+  console.log('🔍 Request ID:', requestId);
+  console.log('🔍 From User ID:', fromUserId);
+  console.log('🔍 =================================');
 
-  // 1) mark accepted
-  await updateDoc(doc(db, "friendRequests", requestId), { status: "accepted" });
+  try {
+    const user = auth.currentUser;
+    if (!user) {
+      throw new Error("No user is signed in");
+    }
+    console.log('✅ Current user:', user.uid);
 
-  // 2) create BOTH friend edges (bidirectional relationship)
-  await setDoc(doc(db, 'users', user.uid, 'friends', fromUserId), {
-    createdAt: new Date(),
-  });
-  
-  await setDoc(doc(db, 'users', fromUserId, 'friends', user.uid), {
-    createdAt: new Date(),
-  });
+    // Step 1: Mark request as accepted
+    console.log('🔍 Step 1: Marking request as accepted...');
+    await updateDoc(doc(db, "friendRequests", requestId), { status: "accepted" });
+    console.log('✅ Request marked as accepted');
 
-  // 3) Get current user's directory info for better data
-  const currentUserDirSnap = await getDoc(doc(db, "userDirectory", user.uid));
-  const currentUserDir = currentUserDirSnap.exists() ? currentUserDirSnap.data() : {};
-  
-  // 4) Get friend's directory info
-  const friendDirSnap = await getDoc(doc(db, "userDirectory", fromUserId));
-  const friendDir = friendDirSnap.exists() ? friendDirSnap.data() : {};
+    // Step 2: Create bidirectional friendship documents
+    console.log('🔍 Step 2: Creating bidirectional friendship...');
+    
+    console.log('🔍 Creating friend doc for current user...');
+    await setDoc(doc(db, 'users', user.uid, 'friends', fromUserId), {
+      createdAt: new Date(),
+    });
+    console.log('✅ Friend doc created for current user');
+    
+    console.log('🔍 Creating friend doc for sender...');
+    await setDoc(doc(db, 'users', fromUserId, 'friends', user.uid), {
+      createdAt: new Date(),
+    });
+    console.log('✅ Friend doc created for sender');
 
-  // 5) Build comprehensive user details
-  const currentUserDetails = {
-    uid: user.uid,
-    email: user.email || currentUserDir.emailLower || '',
-    emailLower: currentUserDir.emailLower || user.email?.toLowerCase() || '',
-    name: currentUserDir.displayName || user.displayName || currentUserDir.usernamePublic || '',
-    displayName: currentUserDir.displayName || user.displayName || '',
-    username: currentUserDir.usernamePublic || user.displayName || '',
-    avatarUrl: currentUserDir.avatarUrl || '',
-  };
+    // Step 3: Get user directory info
+    console.log('🔍 Step 3: Getting user directory info...');
+    
+    console.log('🔍 Getting current user directory info...');
+    const currentUserDirSnap = await getDoc(doc(db, "userDirectory", user.uid));
+    const currentUserDir = currentUserDirSnap.exists() ? currentUserDirSnap.data() : {};
+    console.log('✅ Current user directory info retrieved');
+    
+    console.log('🔍 Getting friend directory info...');
+    const friendDirSnap = await getDoc(doc(db, "userDirectory", fromUserId));
+    const friendDir = friendDirSnap.exists() ? friendDirSnap.data() : {};
+    console.log('✅ Friend directory info retrieved');
 
-  const friendDetails = {
-    uid: fromUserId,
-    email: friendDir.emailLower || '',
-    emailLower: friendDir.emailLower || '',
-    name: friendDir.displayName || friendDir.usernamePublic || friendDir.emailLower || '',
-    displayName: friendDir.displayName || '',
-    username: friendDir.usernamePublic || '',
-    avatarUrl: friendDir.avatarUrl || '',
-  };
+    // Step 4: Build user details
+    console.log('🔍 Step 4: Building user details...');
+    
+    const currentUserDetails = {
+      uid: user.uid,
+      email: user.email || currentUserDir.emailLower || '',
+      emailLower: currentUserDir.emailLower || user.email?.toLowerCase() || '',
+      name: currentUserDir.displayName || user.displayName || currentUserDir.usernamePublic || '',
+      displayName: currentUserDir.displayName || user.displayName || '',
+      username: currentUserDir.usernamePublic || user.displayName || '',
+      avatarUrl: currentUserDir.avatarUrl || '',
+    };
 
-  // 6) Create friendship document with comprehensive data
-  await addDoc(collection(db, "friendships"), {
-    users: [user.uid, fromUserId],
-    userDetails: {
-      [user.uid]: currentUserDetails,
-      [fromUserId]: friendDetails,
-    },
-    establishedAt: new Date(),
-  });
+    const friendDetails = {
+      uid: fromUserId,
+      email: friendDir.emailLower || '',
+      emailLower: friendDir.emailLower || '',
+      name: friendDir.displayName || friendDir.usernamePublic || friendDir.emailLower || '',
+      displayName: friendDir.displayName || '',
+      username: friendDir.usernamePublic || '',
+      avatarUrl: friendDir.avatarUrl || '',
+    };
+
+    console.log('✅ User details built');
+
+    // Step 5: Create friendship document
+    console.log('🔍 Step 5: Creating friendship document...');
+    await addDoc(collection(db, "friendships"), {
+      users: [user.uid, fromUserId],
+      userDetails: {
+        [user.uid]: currentUserDetails,
+        [fromUserId]: friendDetails,
+      },
+      establishedAt: new Date(),
+    });
+    console.log('✅ Friendship document created');
+
+    console.log('✅ SUCCESS! Friend request accepted successfully');
+    console.log('🔍 =================================');
+
+  } catch (error) {
+    console.log('🔍 =================================');
+    console.error('❌ FAILED in acceptFriendRequestDebug:');
+    console.error('❌ Error type:', error.constructor.name);
+    console.error('❌ Error message:', error.message);
+    console.error('❌ Error code:', error.code);
+    console.error('❌ Full error object:', error);
+    console.log('🔍 =================================');
+    throw error;
+  }
 }
 
 export async function rejectFriendRequest(requestId) {
-  const auth = getAuth();
   const user = auth.currentUser;
   if (!user) throw new Error("No user is signed in");
 
@@ -174,7 +370,6 @@ export async function rejectFriendRequest(requestId) {
 }
 
 export async function getFriendships() {
-  const auth = getAuth();
   const user = auth.currentUser;
   if (!user) throw new Error("No user is signed in");
 
@@ -190,20 +385,16 @@ export async function getFriendships() {
 }
 
 export async function removeFriend(friendUid) {
-  const auth = getAuth();
   const user = auth.currentUser;
   if (!user) throw new Error("No user is signed in");
   
-  // Remove both sides of the friendship
   await deleteDoc(doc(db, 'users', user.uid, 'friends', friendUid));
   await deleteDoc(doc(db, 'users', friendUid, 'friends', user.uid));
   
-  // Find and remove friendship document
   const friendshipsRef = collection(db, "friendships");
   const q = query(friendshipsRef, where("users", "array-contains", user.uid));
   const snapshot = await getDocs(q);
 
-  // For each matching doc, check if the doc's "users" also includes friendUid
   const deletePromises = snapshot.docs
     .filter(docSnap => {
       const data = docSnap.data();
@@ -214,10 +405,8 @@ export async function removeFriend(friendUid) {
   await Promise.all(deletePromises);
 }
 
-// Block/Unblock and User Management Functions
 export async function blockUser(userIdToBlock) {
-  const auth = getAuth();
-  const user = auth.currentUser;
+  const user = auth.currentUser; // Use imported auth
   if (!user) throw new Error("No user is signed in");
 
   // Get current privacy settings
@@ -247,8 +436,7 @@ export async function blockUser(userIdToBlock) {
 }
 
 export async function unblockUser(userIdToUnblock) {
-  const auth = getAuth();
-  const user = auth.currentUser;
+  const user = auth.currentUser; // Use imported auth
   if (!user) throw new Error("No user is signed in");
 
   const privacyRef = doc(db, 'users', user.uid, 'settings', 'privacy');
@@ -266,8 +454,7 @@ export async function unblockUser(userIdToUnblock) {
 }
 
 export async function getBlockedUsers() {
-  const auth = getAuth();
-  const user = auth.currentUser;
+  const user = auth.currentUser; // Use imported auth
   if (!user) throw new Error("No user is signed in");
 
   const privacyRef = doc(db, 'users', user.uid, 'settings', 'privacy');
@@ -323,8 +510,7 @@ export async function getBlockedUsers() {
 }
 
 export async function searchUsers(searchTerm, limit = 10) {
-  const auth = getAuth();
-  const user = auth.currentUser;
+  const user = auth.currentUser; // Use imported auth
   if (!user) throw new Error("No user is signed in");
 
   const searchLower = searchTerm.toLowerCase().trim();
@@ -376,8 +562,7 @@ export async function searchUsers(searchTerm, limit = 10) {
 }
 
 export async function reportUser(reportedUserId, reason, description = '') {
-  const auth = getAuth();
-  const user = auth.currentUser;
+  const user = auth.currentUser; // Use imported auth
   if (!user) throw new Error("No user is signed in");
 
   // Create a report document

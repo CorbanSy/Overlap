@@ -1,11 +1,10 @@
 // _utils/storage/userProfile.js
 import { doc, setDoc, getDoc } from 'firebase/firestore';
-import { getAuth } from 'firebase/auth';
-import { db } from '../../FirebaseConfig';
+// Import auth from your config instead of using getAuth
+import { db, auth } from '../../FirebaseConfig';
 
 export async function saveProfileData({ topCategories, name, bio, avatarUrl, email, username }) {
-  const auth = getAuth();
-  const user = auth.currentUser;
+  const user = auth.currentUser; // Use imported auth
   if (!user) throw new Error('No user is signed in');
 
   const profileRef = doc(db, 'users', user.uid, 'profile', 'main');
@@ -33,8 +32,7 @@ export async function saveProfileData({ topCategories, name, bio, avatarUrl, ema
 }
 
 export async function getProfileData() {
-  const auth = getAuth();
-  const user = auth.currentUser;
+  const user = auth.currentUser; // Use imported auth
   if (!user) throw new Error('No user is signed in');
 
   const profileRef = doc(db, 'users', user.uid, 'profile', 'main');
@@ -45,14 +43,21 @@ export async function getProfileData() {
     return null;
   }
 }
+
 export async function ensureDirectoryForCurrentUser() {
-  const auth = getAuth();
-  const user = auth.currentUser;
+  const user = auth.currentUser; // Use imported auth
   if (!user) return;
+
+  console.log('🔍 ensureDirectoryForCurrentUser called for:', user.uid);
 
   const dirRef = doc(db, 'userDirectory', user.uid);
   const dirSnap = await getDoc(dirRef);
-  if (dirSnap.exists()) return;
+  if (dirSnap.exists()) {
+    console.log('✅ Directory already exists');
+    return;
+  }
+
+  console.log('🔍 Creating directory for user');
 
   let displayName = user.displayName || '';
   let avatarUrl = '';
@@ -65,6 +70,7 @@ export async function ensureDirectoryForCurrentUser() {
       avatarUrl = d.avatarUrl || '';
     }
   } catch (e) {
+    console.log('⚠️ Could not read profile data:', e.message);
     // ignore — rules allow you to read your own; just being defensive
   }
 
@@ -74,11 +80,12 @@ export async function ensureDirectoryForCurrentUser() {
     avatarUrl,
     updatedAt: new Date(),
   }, { merge: true });
+
+  console.log('✅ Directory created successfully');
 }
 
 export async function getPrivacySettings() {
-  const auth = getAuth();
-  const user = auth.currentUser;
+  const user = auth.currentUser; // Use imported auth
   if (!user) throw new Error('No user is signed in');
 
   const refDoc = doc(db, 'users', user.uid, 'settings', 'privacy');
@@ -108,8 +115,7 @@ export async function getPrivacySettings() {
 }
 
 export async function setPrivacySettings(patch) {
-  const auth = getAuth();
-  const user = auth.currentUser;
+  const user = auth.currentUser; // Use imported auth
   if (!user) throw new Error('No user is signed in');
 
   const refDoc = doc(db, 'users', user.uid, 'settings', 'privacy');

@@ -15,7 +15,8 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 
-import { getAuth } from 'firebase/auth';
+// Import auth from your config instead of using getAuth
+import { auth } from '../../FirebaseConfig';
 import {
   getFirestore,
   collection,
@@ -31,6 +32,9 @@ import {
   sendFriendRequest,
   removeFriend,
   acceptFriendRequest,
+  debugFirebaseSetup,
+  sendFriendRequestDebug,
+  acceptFriendRequestDebug
 } from '../../_utils/storage/social';
 import { ensureDirectoryForCurrentUser } from '../../_utils/storage/userProfile';
 
@@ -49,7 +53,7 @@ interface FriendRequestData {
   profilePicUrl?: string;
   status?: string;
   timestamp?: any;
-  [key: string]: any; // Allow additional properties
+  [key: string]: any;
 }
 
 interface FriendData {
@@ -79,9 +83,24 @@ function FriendsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [currentUid, setCurrentUid] = useState<string | null>(null);
   
-  const auth = getAuth();
   const firestore = getFirestore();
   const router = useRouter();
+
+  // Updated useAuth hook to use the imported auth
+  const useAuth = () => {
+    const [user, setUser] = useState(null);
+
+    useEffect(() => {
+      const unsubscribeAuth = auth.onAuthStateChanged((currentUser) => {
+        setUser(currentUser);
+      });
+      return () => unsubscribeAuth();
+    }, []);
+
+    return { user, auth };
+  };
+
+  const { user } = useAuth();
 
   // Set UID when component mounts or auth changes
   useEffect(() => {
@@ -89,7 +108,7 @@ function FriendsScreen() {
     setCurrentUid(u);
   }, [auth.currentUser]);
 
-  // Updated: Fetch friends from user's friends subcollection
+  // Fetch friends from user's friends subcollection
   const fetchFriends = useCallback(async () => {
     const currentUser = auth.currentUser;
     if (!currentUser) return;
@@ -215,7 +234,7 @@ function FriendsScreen() {
     try {
       setLoading(true);
       await Promise.all([
-        fetchFriends(), // Updated to use new function
+        fetchFriends(),
         fetchSentRequests(),
         fetchReceivedRequests(),
         ensureDirectoryForCurrentUser().catch(() => {}),
@@ -237,50 +256,101 @@ function FriendsScreen() {
     setRefreshing(false);
   }, [loadAll]);
 
-  // Search & send request
+  // Enhanced search & send request function with debugging
   const handleSearchAndSendFriendRequest = async () => {
+    console.log('🔍 =================================');
+    console.log('🔍 handleSearchAndSendFriendRequest started');
+    console.log('🔍 =================================');
+    
     if (!searchEmail.trim()) {
       Alert.alert('Please enter an email address.');
       return;
     }
+
     try {
+      // Step 1: Debug Firebase setup first
+      console.log('🔍 Step 1: Testing Firebase setup...');
+      await debugFirebaseSetup();
+      console.log('✅ Firebase setup OK');
+
+      // Step 2: Check authentication
+      console.log('🔍 Step 2: Checking authentication...');
       const currentUser = auth.currentUser;
+      console.log('✅ Current user:', currentUser?.uid, currentUser?.email);
+      
+      if (!currentUser) {
+        Alert.alert('Authentication Error', 'You must be signed in to send friend requests.');
+        return;
+      }
+
+      // Step 3: Search for user
+      console.log('🔍 Step 3: Searching for user...');
       const needle = searchEmail.trim().toLowerCase().replace(/^'+|'+$/g, '');
+      console.log('✅ Search email:', needle);
 
       const directoryRef = collection(firestore, 'userDirectory');
       const qDir = query(directoryRef, where('emailLower', '==', needle));
+      console.log('✅ Query created');
+      
       const snap = await getDocs(qDir);
+      console.log('✅ Query executed, results:', snap.empty ? 'empty' : `${snap.docs.length} docs`);
 
       if (snap.empty) {
-        Alert.alert('No user found with that email.');
+        Alert.alert('User Not Found', 'No user found with that email address.');
         return;
       }
 
       const targetUserId = snap.docs[0].id;
+      const targetData = snap.docs[0].data();
+      console.log('✅ Target user found:', targetUserId, targetData.displayName || targetData.emailLower);
+      
       if (currentUser && targetUserId === currentUser.uid) {
-        Alert.alert('You cannot add yourself as a friend.');
+        Alert.alert('Invalid Request', 'You cannot add yourself as a friend.');
         return;
       }
 
-      await sendFriendRequest(targetUserId);
-      Alert.alert('Friend request sent!');
+      // Step 4: Send friend request using debug version
+      console.log('🔍 Step 4: Sending friend request...');
+      const requestId = await sendFriendRequestDebug(targetUserId);
+      console.log('✅ Friend request sent successfully:', requestId);
+      
+      Alert.alert('Success!', 'Friend request sent successfully!');
       setSearchEmail('');
       fetchSentRequests();
+
     } catch (error) {
-      console.error('Error searching/sending:', error);
-      Alert.alert('Error sending friend request.');
+      console.log('🔍 =================================');
+      console.error('❌ Error in handleSearchAndSendFriendRequest:');
+      console.error('❌ Error type:', error.constructor.name);
+      console.error('❌ Error message:', error.message);
+      console.error('❌ Error code:', error.code);
+      console.error('❌ Full error:', error);
+      console.log('🔍 =================================');
+      
+      let userMessage = 'Error sending friend request.';
+      if (error.code === 'permission-denied') {
+        userMessage = 'Permission denied. Please check your account settings.';
+      } else if (error.message.includes('network')) {
+        userMessage = 'Network error. Please check your connection.';
+      } else if (error.message.includes('auth')) {
+        userMessage = 'Authentication error. Please sign in again.';
+      }
+      
+      Alert.alert('Error', userMessage);
     }
   };
 
   const handleAccept = async (requestId: string, fromUserId: string) => {
-    try {
-      await acceptFriendRequest(requestId, fromUserId);
-      Alert.alert('Friend request accepted!');
-      await Promise.all([fetchReceivedRequests(), fetchFriends()]); // Updated
-    } catch (error) {
-      console.error('Accept error:', error);
-    }
-  };
+  try {
+    // Use the debug version to see where it fails
+    await acceptFriendRequestDebug(requestId, fromUserId);
+    Alert.alert('Friend request accepted!');
+    await Promise.all([fetchReceivedRequests(), fetchFriends()]);
+  } catch (error) {
+    console.error('Accept error:', error);
+    Alert.alert('Error accepting friend request:', error.message);
+  }
+};
 
   const handleReject = async (requestId: string) => {
     try {
@@ -303,7 +373,7 @@ function FriendsScreen() {
           try {
             await removeFriend(friendUid);
             Alert.alert('Friend removed.');
-            fetchFriends(); // Updated
+            fetchFriends();
           } catch (error) {
             console.error('Remove error:', error);
             Alert.alert('Error removing friend.');
@@ -313,7 +383,6 @@ function FriendsScreen() {
     ]);
   };
 
-  // Updated: Simplified friend rendering
   const renderFriend = ({ item }: { item: FriendData }) => {
     return (
       <View style={styles.cardRow}>
@@ -415,6 +484,25 @@ function FriendsScreen() {
         <Text style={styles.hint}>
           Tip: your friends must have added their email to the directory.
         </Text>
+        
+        {/* Test button - remove after debugging */}
+        <View style={[styles.searchRow, { marginTop: 8 }]}>
+          <TouchableOpacity 
+            style={[styles.primaryBtn, { backgroundColor: '#4CAF50', flex: 1 }]} 
+            onPress={async () => {
+              try {
+                console.log('🔍 Testing Firebase setup...');
+                const result = await debugFirebaseSetup();
+                Alert.alert('Success', result);
+              } catch (error) {
+                console.error('Setup test failed:', error);
+                Alert.alert('Setup Test Failed', error.message);
+              }
+            }}
+          >
+            <Text style={styles.primaryBtnText}>Test Firebase Setup</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {loading ? (
