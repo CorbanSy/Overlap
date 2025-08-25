@@ -1,3 +1,4 @@
+// components/swiping.tsx - Updated with participant indicator
 import React, {
   useRef,
   useState,
@@ -26,6 +27,7 @@ import { useRouter } from 'expo-router';
 import { getMeetupLikes } from '../_utils/storage/meetupActivities';
 import { recordSwipe } from '../_utils/storage/meetupSwipes';
 import { getAuth } from 'firebase/auth';
+import MeetupParticipants from './MeetupParticipants'; // Import the new component
 
 interface Card {
   id: string;
@@ -195,7 +197,7 @@ const SwipingScreen = forwardRef<SwipingHandle, SwipingScreenProps>(
 
           onPanResponderMove: (_, g) => {
             if (isAnimating) return;
-            position.setValue({ x: g.dx, y: g.dy }); // keep single setValue
+            position.setValue({ x: g.dx, y: g.dy });
           },
 
           onPanResponderRelease: (_, g) => {
@@ -248,132 +250,132 @@ const SwipingScreen = forwardRef<SwipingHandle, SwipingScreenProps>(
     };
 
     const renderCard = (card: Card, index: number, isNext = false) => {
-  const imageUrl =
-    Array.isArray(card.photoUrls) && card.photoUrls.length > 0 ? card.photoUrls[0] : null;
+      const imageUrl =
+        Array.isArray(card.photoUrls) && card.photoUrls.length > 0 ? card.photoUrls[0] : null;
 
-  const cardStyle = isNext
-    ? [
-        styles.card,
-        styles.nextCard,
-        { transform: [{ scale: nextCardScale }], opacity: nextCardOpacity, zIndex: 1 },
-      ]
-    : [
-        styles.card,
-        {
-          zIndex: 2, // Higher z-index for the current card
-          transform: [
-            ...position.getTranslateTransform(),
+      const cardStyle = isNext
+        ? [
+            styles.card,
+            styles.nextCard,
+            { transform: [{ scale: nextCardScale }], opacity: nextCardOpacity, zIndex: 1 },
+          ]
+        : [
+            styles.card,
             {
-              rotate: position.x.interpolate({
-                inputRange: [-SCREEN_WIDTH, 0, SCREEN_WIDTH],
-                outputRange: ['-30deg', '0deg', '30deg'],
-                extrapolate: 'clamp',
-              }),
+              zIndex: 2,
+              transform: [
+                ...position.getTranslateTransform(),
+                {
+                  rotate: position.x.interpolate({
+                    inputRange: [-SCREEN_WIDTH, 0, SCREEN_WIDTH],
+                    outputRange: ['-30deg', '0deg', '30deg'],
+                    extrapolate: 'clamp',
+                  }),
+                },
+                { scale },
+              ],
             },
-            { scale },
-          ],
-        },
-      ];
+          ];
 
-  return (
-    <Animated.View
-      key={`${card.id}-${index}`}
-      style={cardStyle}
-      {...(!isNext ? panResponder.panHandlers : {})}
-    >
-      {imageUrl ? (
-        <>
-          <Image source={{ uri: imageUrl }} style={styles.cardImage} resizeMode="cover" />
-          <LinearGradient
-            colors={['transparent', 'rgba(0,0,0,0.4)', 'rgba(0,0,0,0.85)']}
-            locations={[0, 0.55, 1]}
-            style={styles.cardGradient}
-          />
-        </>
-      ) : (
-        <View style={styles.noImageContainer}>
-          <Ionicons name="image-outline" size={64} color={COLORS.textTertiary} />
-          <Text style={styles.noImageText}>No Image Available</Text>
-        </View>
-      )}
+      return (
+        <Animated.View
+          key={`${card.id}-${index}`}
+          style={cardStyle}
+          {...(!isNext ? panResponder.panHandlers : {})}
+        >
+          {imageUrl ? (
+            <>
+              <Image source={{ uri: imageUrl }} style={styles.cardImage} resizeMode="cover" />
+              <LinearGradient
+                colors={['transparent', 'rgba(0,0,0,0.4)', 'rgba(0,0,0,0.85)']}
+                locations={[0, 0.55, 1]}
+                style={styles.cardGradient}
+              />
+            </>
+          ) : (
+            <View style={styles.noImageContainer}>
+              <Ionicons name="image-outline" size={64} color={COLORS.textTertiary} />
+              <Text style={styles.noImageText}>No Image Available</Text>
+            </View>
+          )}
 
-      {/* swipe hints */}
-      {!isNext && (
-        <>
-          <Animated.View
-            style={[
-              styles.swipeIndicator,
-              styles.likeIndicator,
-              {
-                opacity: position.x.interpolate({
-                  inputRange: [0, SWIPE_THRESHOLD],
-                  outputRange: [0, 1],
-                  extrapolate: 'clamp',
-                }),
-              },
-            ]}
-          >
-            <Text style={styles.indicatorText}>LIKE</Text>
-          </Animated.View>
+          {/* swipe hints */}
+          {!isNext && (
+            <>
+              <Animated.View
+                style={[
+                  styles.swipeIndicator,
+                  styles.likeIndicator,
+                  {
+                    opacity: position.x.interpolate({
+                      inputRange: [0, SWIPE_THRESHOLD],
+                      outputRange: [0, 1],
+                      extrapolate: 'clamp',
+                    }),
+                  },
+                ]}
+              >
+                <Text style={styles.indicatorText}>LIKE</Text>
+              </Animated.View>
 
-          <Animated.View
-            style={[
-              styles.swipeIndicator,
-              styles.passIndicator,
-              {
-                opacity: position.x.interpolate({
-                  inputRange: [-SWIPE_THRESHOLD, 0],
-                  outputRange: [1, 0],
-                  extrapolate: 'clamp',
-                }),
-              },
-            ]}
-          >
-            <Text style={styles.indicatorText}>PASS</Text>
-          </Animated.View>
-        </>
-      )}
+              <Animated.View
+                style={[
+                  styles.swipeIndicator,
+                  styles.passIndicator,
+                  {
+                    opacity: position.x.interpolate({
+                      inputRange: [-SWIPE_THRESHOLD, 0],
+                      outputRange: [1, 0],
+                      extrapolate: 'clamp',
+                    }),
+                  },
+                ]}
+              >
+                <Text style={styles.indicatorText}>PASS</Text>
+              </Animated.View>
+            </>
+          )}
 
-      {/* info */}
-      <View style={styles.cardInfo}>
-        <View style={styles.cardHeader}>
-          <Text style={styles.cardTitle} numberOfLines={2}>
-            {card.name}
-          </Text>
-          <View style={styles.cardMeta}>
-            {renderRating(card.rating)}
-            {renderPriceLevel(card.priceLevel)}
+          {/* info */}
+          <View style={styles.cardInfo}>
+            <View style={styles.cardHeader}>
+              <Text style={styles.cardTitle} numberOfLines={2}>
+                {card.name}
+              </Text>
+              <View style={styles.cardMeta}>
+                {renderRating(card.rating)}
+                {renderPriceLevel(card.priceLevel)}
+              </View>
+            </View>
+
+            {card.address && (
+              <View style={styles.addressContainer}>
+                <Ionicons name="location-outline" size={16} color={COLORS.textSecondary} />
+                <Text style={styles.address} numberOfLines={1}>
+                  {card.address}
+                </Text>
+              </View>
+            )}
+
+            {card.category && (
+              <View style={styles.categoryContainer}>
+                <Text style={styles.category}>{card.category}</Text>
+              </View>
+            )}
+
+            {!isNext && (
+              <TouchableOpacity
+                style={styles.moreInfoButton}
+                onPress={handleCardTap}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Ionicons name="information-circle-outline" size={18} color={COLORS.background} />
+                <Text style={styles.moreInfoText}>More Info</Text>
+              </TouchableOpacity>
+            )}
           </View>
-        </View>
-
-        {card.address && (
-          <View style={styles.addressContainer}>
-            <Ionicons name="location-outline" size={16} color={COLORS.textSecondary} />
-            <Text style={styles.address} numberOfLines={1}>
-              {card.address}
-            </Text>
-          </View>
-        )}
-
-        {card.category && (
-          <View style={styles.categoryContainer}>
-            <Text style={styles.category}>{card.category}</Text>
-          </View>
-        )}
-
-        {!isNext && (
-          <TouchableOpacity
-            style={styles.moreInfoButton}
-            onPress={handleCardTap}
-            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-          >
-            <Ionicons name="information-circle-outline" size={18} color={COLORS.background} />
-            <Text style={styles.moreInfoText}>More Info</Text>
-          </TouchableOpacity>
-        )}
-      </View>
-    </Animated.View>
-  );
+        </Animated.View>
+      );
     };
 
     if (loading) {
@@ -426,7 +428,7 @@ const SwipingScreen = forwardRef<SwipingHandle, SwipingScreenProps>(
       <View style={styles.container}>
         <StatusBar barStyle="light-content" backgroundColor={COLORS.background} />
         <View style={styles.cardContainer}>
-          {/* progress */}
+          {/* Progress bar */}
           <View style={styles.progressContainer}>
             <View style={styles.progressBar}>
               <View
@@ -439,6 +441,11 @@ const SwipingScreen = forwardRef<SwipingHandle, SwipingScreenProps>(
             <Text style={styles.progressText}>
               {currentCardIndex + 1} / {cards.length}
             </Text>
+          </View>
+
+          {/* Participants indicator - positioned at top center */}
+          <View style={styles.participantsContainer}>
+            <MeetupParticipants meetupId={meetupId} maxVisible={5} />
           </View>
 
           {nextCard && renderCard(nextCard, currentCardIndex + 1, true)}
@@ -480,7 +487,6 @@ const SwipingScreen = forwardRef<SwipingHandle, SwipingScreenProps>(
   }
 );
 
-
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.background },
   centerContainer: {
@@ -501,6 +507,15 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: SPACING.md,
   },
+  // New styles for participants container
+  participantsContainer: {
+    position: 'absolute',
+    top: SPACING.xl + 40, // Position below progress bar
+    left: 0,
+    right: 0,
+    zIndex: 10,
+    alignItems: 'center',
+  },
   progressBar: { flex: 1, height: 4, backgroundColor: COLORS.border, borderRadius: 2, overflow: 'hidden' },
   progressFill: { height: '100%', backgroundColor: COLORS.accent, borderRadius: 2 },
   progressText: { color: COLORS.textSecondary, fontSize: 12, fontWeight: '600', minWidth: 50, textAlign: 'right' },
@@ -518,7 +533,7 @@ const styles = StyleSheet.create({
     shadowRadius: 16,
     elevation: 10,
   },
-  nextCard: {}, // Removed zIndex: 1 from here since it's handled in the component
+  nextCard: {},
   cardImage: { width: '100%', height: '100%' },
   cardGradient: { position: 'absolute', left: 0, right: 0, bottom: 0, height: '55%' },
 
@@ -575,7 +590,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.xl,
     paddingBottom: SPACING.xl,
     gap: SPACING.xl,
-    zIndex: 10, // Higher z-index to appear above cards
+    zIndex: 10,
   },
   actionButton: {
     width: 56,
@@ -587,8 +602,8 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,
-    elevation: 1000, // Higher elevation for Android
-    zIndex: 1001, // Higher z-index
+    elevation: 1000,
+    zIndex: 1001,
   },
   passButton: { backgroundColor: COLORS.danger },
   likeButton: { backgroundColor: COLORS.success },
