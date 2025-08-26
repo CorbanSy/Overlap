@@ -14,8 +14,8 @@ admin.initializeApp();
 const db = admin.firestore();
 const storage = getStorage();
 
-// Optional global default config
-setGlobalOptions({ memory: "1GiB", timeoutSeconds: 540 });
+// Optional global default config - increased for larger batch processing
+setGlobalOptions({ memory: "2GiB", timeoutSeconds: 540 });
 
 /* ==============================
    1. analyzeLikedPlace Function
@@ -80,90 +80,181 @@ exports.analyzeLikedPlace = onDocumentCreated("users/{userId}/likes/{placeId}", 
 });
 
 /* ==============================
-   2. storeNearbyPlacesAndDetails Function
+   2. storeNearbyPlacesAndDetails Function - OPTIMIZED FOR ONE-TIME BULK POPULATION
 ============================== */
 exports.storeNearbyPlacesAndDetails = onRequest(
-  { timeoutSeconds: 540, memory: "1GiB" },
+  { timeoutSeconds: 540, memory: "2GiB" },
   async (req, res) => {
-    const { lat, lng, radius = 5000, types = ["restaurant", "museum", "park"] } = req.query;
-    const apiKey = "AIzaSyB6fvIePcBwSZQvyXtZvW-9XCbcKMf2I7o"; // ✅ use your own key
-    const maxPlaces = 200;
+    const { 
+      lat, 
+      lng, 
+      radius = 10000, // Increased to 10km for better coverage
+      // Comprehensive list of place types for your one-time population
+      types = [
+        "restaurant", "museum", "park", "cafe", "bar", "tourist_attraction",
+        "shopping_mall", "hotel", "gym", "hospital", "pharmacy", "bank", 
+        "gas_station", "movie_theater", "library", "school", "university",
+        "church", "synagogue", "mosque", "hindu_temple", "buddhist_temple",
+        "amusement_park", "aquarium", "art_gallery", "bowling_alley",
+        "casino", "cemetery", "city_hall", "courthouse", "embassy",
+        "fire_station", "funeral_home", "hardware_store", "laundry",
+        "night_club", "police", "post_office", "spa", "stadium",
+        "supermarket", "veterinary_care", "zoo"
+      ]
+    } = req.query;
+    
+    const apiKey = "AIzaSyB6fvIePcBwSZQvyXtZvW-9XCbcKMf2I7o"; // Use your API key
+    const maxPlaces = 1000; // Increased limit for comprehensive coverage
     let storedCount = 0;
-    let nextPageToken = null;
+    let skippedCount = 0;
+    let errorCount = 0;
+
+    console.log(`🚀 Starting comprehensive place population for ${types.length} types`);
+    console.log(`📍 Location: ${lat}, ${lng} | Radius: ${radius}m | Max places: ${maxPlaces}`);
 
     try {
       for (const type of types) {
+        let nextPageToken = null;
+        let typeCount = 0;
+        
         do {
-          console.log(`📍 Fetching nearby places for type: ${type}`);
-          const url = `https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=${lat},${lng}&radius=${radius}&type=${type}&key=${apiKey}${nextPageToken ? `&pagetoken=${nextPageToken}` : ""}`;
-          const nearbyResponse = await axios.get(url);
-          const places = nearbyResponse.data.results;
+          console.log(`📍 Fetching ${type} places (batch ${typeCount + 1})`);
+          
+          try {
+            const url = `https://maps.googleapis.com/maps/api/place/nearbysearch/json?location=${lat},${lng}&radius=${radius}&type=${type}&key=${apiKey}${nextPageToken ? `&pagetoken=${nextPageToken}` : ""}`;
+            const nearbyResponse = await axios.get(url);
+            const places = nearbyResponse.data.results;
 
-          console.log(`✅ Fetched ${places.length} places for type: ${type}`);
-          nextPageToken = nearbyResponse.data.next_page_token || null;
+            console.log(`✅ Fetched ${places.length} ${type} places`);
+            nextPageToken = nearbyResponse.data.next_page_token || null;
 
-          for (const place of places) {
-            if (storedCount >= maxPlaces) break;
-            console.log(`🔍 Fetching details for place: ${place.name} (${place.place_id})`);
-            const exists = await db.collection("places").doc(place.place_id).get();
-            if (exists.exists) continue;
+            for (const place of places) {
+              if (storedCount >= maxPlaces) {
+                console.log(`🎯 Reached maximum places limit: ${maxPlaces}`);
+                break;
+              }
 
-            const detailUrl = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${place.place_id}&fields=place_id,name,formatted_address,geometry,types,rating,user_ratings_total,formatted_phone_number,website,opening_hours,photos,reviews&key=${apiKey}`;
-            const detailRes = await axios.get(detailUrl);
-            const d = detailRes.data.result;
+              try {
+                console.log(`🔍 Processing: ${place.name} (${place.place_id})`);
+                
+                // Check if place already exists (handles duplicates)
+                const exists = await db.collection("places").doc(place.place_id).get();
+                if (exists.exists) {
+                  console.log(`⏭️  Skipping existing place: ${place.name}`);
+                  skippedCount++;
+                  continue;
+                }
 
-            const photosMeta = d.photos?.slice(0, 5) || [];
-            const photoUrls = [];
+                // Get detailed place information
+                const detailUrl = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${place.place_id}&fields=place_id,name,formatted_address,geometry,types,rating,user_ratings_total,formatted_phone_number,website,opening_hours,photos,reviews&key=${apiKey}`;
+                const detailRes = await axios.get(detailUrl);
+                const d = detailRes.data.result;
 
-            for (let i = 0; i < photosMeta.length; i++) {
-              const photoUrl = `https://maps.googleapis.com/maps/api/place/photo?maxwidth=800&photoreference=${photosMeta[i].photo_reference}&key=${apiKey}`;
-              const response = await fetch(photoUrl);
-              const buffer = await response.buffer();
-              const filePath = `places/${d.place_id}/${uuidv4()}.jpg`;
-              const file = storage.bucket().file(filePath);
-              await file.save(buffer, { contentType: "image/jpeg" });
-              const [url] = await file.getSignedUrl({ action: "read", expires: "03-01-2030" });
-              photoUrls.push(url);
+                // Process photos (reduced to 3 to save costs while still getting good coverage)
+                const photosMeta = d.photos?.slice(0, 3) || [];
+                const photoUrls = [];
+
+                for (let i = 0; i < photosMeta.length; i++) {
+                  try {
+                    const photoUrl = `https://maps.googleapis.com/maps/api/place/photo?maxwidth=800&photoreference=${photosMeta[i].photo_reference}&key=${apiKey}`;
+                    const response = await fetch(photoUrl);
+                    const buffer = await response.buffer();
+                    const filePath = `places/${d.place_id}/${uuidv4()}.jpg`;
+                    const file = storage.bucket().file(filePath);
+                    await file.save(buffer, { contentType: "image/jpeg" });
+                    const [url] = await file.getSignedUrl({ action: "read", expires: "03-01-2030" });
+                    photoUrls.push(url);
+                  } catch (photoError) {
+                    console.error(`❌ Photo processing error for ${place.name}:`, photoError.message);
+                  }
+                }
+
+                // Store place in Firestore
+                await db.collection("places").doc(d.place_id).set({
+                  id: d.place_id,
+                  name: d.name,
+                  formatted_address: d.formatted_address,
+                  location: {
+                    lat: d.geometry.location.lat,
+                    lng: d.geometry.location.lng,
+                  },
+                  types: d.types || [],
+                  rating: d.rating || 0,
+                  userRatingsTotal: d.user_ratings_total || 0,
+                  phoneNumber: d.formatted_phone_number || "",
+                  website: d.website || "",
+                  openingHours: d.opening_hours?.weekday_text || [],
+                  photoReference: d.photos?.[0]?.photo_reference || null,
+                  photos: photoUrls,
+                  reviews: d.reviews?.map((r) => ({
+                    text: r.text,
+                    rating: r.rating,
+                    authorName: r.author_name,
+                    relativeTime: r.relative_time_description,
+                  })) || [],
+                  description: "",
+                  createdAt: admin.firestore.FieldValue.serverTimestamp(),
+                });
+
+                storedCount++;
+                typeCount++;
+                console.log(`✅ Stored: ${place.name} (${storedCount}/${maxPlaces} total)`);
+
+                // Brief pause to avoid rate limiting
+                await new Promise(r => setTimeout(r, 100));
+
+              } catch (placeError) {
+                console.error(`❌ Error processing place ${place.name}:`, placeError.message);
+                errorCount++;
+              }
             }
 
-            await db.collection("places").doc(d.place_id).set({
-              id: d.place_id,
-              name: d.name,
-              formatted_address: d.formatted_address,
-              location: {
-                lat: d.geometry.location.lat,
-                lng: d.geometry.location.lng,
-              },
-              types: d.types || [],
-              rating: d.rating || 0,
-              userRatingsTotal: d.user_ratings_total || 0,
-              phoneNumber: d.formatted_phone_number || "",
-              website: d.website || "",
-              openingHours: d.opening_hours?.weekday_text || [],
-              photoReference: d.photos?.[0]?.photo_reference || null,
-              photos: photoUrls,
-              reviews: d.reviews?.map((r) => ({
-                text: r.text,
-                rating: r.rating,
-                authorName: r.author_name,
-                relativeTime: r.relative_time_description,
-              })) || [],
-              description: "",
-              createdAt: admin.firestore.FieldValue.serverTimestamp(),
-            });
-
-            storedCount++;
+            if (storedCount >= maxPlaces) break;
+            
+            // Wait before next page (Google requires delay for pagination)
+            if (nextPageToken) {
+              console.log(`⏳ Waiting for next page of ${type} results...`);
+              await new Promise(r => setTimeout(r, 2000));
+            }
+            
+          } catch (typeError) {
+            console.error(`❌ Error fetching ${type} places:`, typeError.message);
+            errorCount++;
+            break;
           }
-
-          if (storedCount >= maxPlaces) break;
-          if (nextPageToken) await new Promise(r => setTimeout(r, 2000));
         } while (nextPageToken && storedCount < maxPlaces);
+
+        console.log(`📊 Completed ${type}: ${typeCount} places processed`);
+        
+        // Brief pause between place types
+        await new Promise(r => setTimeout(r, 500));
       }
 
-      res.status(200).send(`Stored ${storedCount} places.`);
+      const summary = {
+        totalStored: storedCount,
+        totalSkipped: skippedCount,
+        totalErrors: errorCount,
+        typesProcessed: types.length,
+        status: 'completed'
+      };
+
+      console.log(`🎉 Population completed!`, summary);
+      res.status(200).json({
+        message: `Successfully populated database!`,
+        summary
+      });
+
     } catch (err) {
-      console.error("Error storing places:", err);
-      res.status(500).send("Failed to store places.");
+      console.error("❌ Critical error during population:", err);
+      res.status(500).json({
+        message: "Failed to populate database",
+        error: err.message,
+        partialResults: {
+          stored: storedCount,
+          skipped: skippedCount,
+          errors: errorCount
+        }
+      });
     }
   }
 );
