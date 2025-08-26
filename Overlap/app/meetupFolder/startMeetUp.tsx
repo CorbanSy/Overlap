@@ -1,3 +1,4 @@
+//app/meetupFolder/startMeetUp.tsx
 import React, { useState, useRef, useMemo } from 'react';
 import {
   SafeAreaView,

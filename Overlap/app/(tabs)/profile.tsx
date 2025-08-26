@@ -36,28 +36,15 @@ import CollectionCard from '../../components/CollectionCard';
 
 // Utility imports
 import { unlikePlace, deleteCollection } from '../../_utils/storage/likesCollections';
-import { saveProfileData } from '../../_utils/storage/userProfile';
+import { saveProfileData, getProfileData } from '../../_utils/storage/userProfile';
 import { Colors } from '../../constants/colors';
+
+// Import shared types
+import { SharedActivity, SharedCollection } from '../../components/profile_components/profileTypes';
 
 /* =========================
    Types and Interfaces
    ========================= */
-
-interface Collection {
-  id: string;
-  title: string;
-  description?: string;
-  activities: Activity[];
-  createdAt: Date;
-}
-
-interface Activity {
-  id: string;
-  title?: string;
-  name?: string;
-  description?: string;
-  [key: string]: any;
-}
 
 interface ProfilePictureProps {
   imageUri?: string;
@@ -135,11 +122,91 @@ const useAuth = () => {
 };
 
 /**
+ * Hook for loading and managing user profile data with real-time updates
+ */
+const useProfileData = (user: User | null) => {
+  const [profileData, setProfileData] = useState({
+    name: '',
+    tagline: '',
+    profileUri: undefined as string | undefined,
+  });
+  const [isLoading, setIsLoading] = useState(true);
+
+  const loadProfileData = async () => {
+    if (!user) {
+      setIsLoading(false);
+      return;
+    }
+
+    try {
+      const data = await getProfileData();
+      if (data) {
+        setProfileData({
+          name: data.name || '',
+          tagline: data.bio || '',
+          profileUri: data.avatarUrl || undefined,
+        });
+      }
+    } catch (error) {
+      console.error('Error loading profile data:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Initial load when user changes
+  useEffect(() => {
+    loadProfileData();
+  }, [user]);
+
+  // Set up real-time listener for profile changes
+  useEffect(() => {
+    if (!user) return;
+
+    const firestore = getFirestore();
+    const profileRef = doc(firestore, `users/${user.uid}/profile/main`);
+    
+    const unsubscribe = onSnapshot(
+      profileRef,
+      (snapshot) => {
+        if (snapshot.exists()) {
+          const data = snapshot.data();
+          setProfileData({
+            name: data.name || '',
+            tagline: data.bio || '',
+            profileUri: data.avatarUrl || undefined,
+          });
+        }
+      },
+      (error) => console.error("Profile listener error:", error)
+    );
+
+    return () => unsubscribe();
+  }, [user]);
+
+  const updateProfileData = (updates: Partial<typeof profileData>) => {
+    setProfileData(prev => ({ ...prev, ...updates }));
+  };
+
+  // Refresh function to manually reload profile data
+  const refreshProfile = () => {
+    loadProfileData();
+  };
+
+  return {
+    ...profileData,
+    isLoading,
+    updateProfileData,
+    refreshProfile,
+  };
+};
+
+/**
  * Hook for managing Firestore data (likes and collections)
  */
 const useFirestoreData = (user: User | null) => {
-  const [likedActivities, setLikedActivities] = useState<Activity[]>([]);
-  const [collections, setCollections] = useState<Collection[]>([]);
+  const [likedActivities, setLikedActivities] = useState<SharedActivity[]>([]);
+  const [collections, setCollections] = useState<SharedCollection[]>([]);
   const firestore: Firestore = getFirestore();
   const unsubscribeLikesRef = useRef<(() => void) | null>(null);
   const unsubscribeCollectionsRef = useRef<(() => void) | null>(null);
@@ -152,7 +219,19 @@ const useFirestoreData = (user: User | null) => {
     const unsubscribe = onSnapshot(
       likesRef,
       (snapshot) => {
-        setLikedActivities(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Activity)));
+        setLikedActivities(snapshot.docs.map(doc => {
+          const data = doc.data();
+          return {
+            id: doc.id,
+            name: data.name || data.title || 'Unnamed Activity',
+            title: data.title,
+            description: data.description,
+            rating: data.rating,
+            photos: data.photos,
+            photoUrls: data.photoUrls,
+            ...data
+          } as SharedActivity;
+        }));
       },
       (error) => console.error("Likes listener error:", error)
     );
@@ -175,11 +254,25 @@ const useFirestoreData = (user: User | null) => {
       collectionsRef,
       (snapshot) => {
         setCollections(
-          snapshot.docs.map(doc => ({
-            id: doc.id,
-            ...doc.data(),
-            activities: doc.data().activities || [],
-          } as Collection))
+          snapshot.docs.map(doc => {
+            const data = doc.data();
+            return {
+              id: doc.id,
+              title: data.title || 'Untitled Collection',
+              description: data.description,
+              activities: (data.activities || []).map((activity: any) => ({
+                id: activity.id,
+                name: activity.name || activity.title || 'Unnamed Activity',
+                title: activity.title,
+                description: activity.description,
+                rating: activity.rating,
+                photos: activity.photos,
+                photoUrls: activity.photoUrls,
+                ...activity
+              })),
+              createdAt: data.createdAt?.toDate?.() || new Date(),
+            } as SharedCollection;
+          })
         );
       },
       (error) => console.error("Collections listener error:", error)
@@ -210,32 +303,91 @@ const useFirestoreData = (user: User | null) => {
 };
 
 /**
- * Hook for filtering data based on search query
+ * Hook for filtering and sorting data based on search query with relevance scoring
  */
-const useSearchFilter = (data: (Activity | Collection)[], searchQuery: string, activeTab: string) => {
+const useSearchFilter = (data: (SharedActivity | SharedCollection)[], searchQuery: string, activeTab: string) => {
   return useMemo(() => {
-    if (!searchQuery.trim()) return data;
+    if (!searchQuery.trim()) {
+      // No search query - return original order
+      return data;
+    }
     
-    const query = searchQuery.toLowerCase();
+    const query = searchQuery.toLowerCase().trim();
     
-    return data.filter((item) => {
-      if (activeTab === 'Collections' && 'title' in item) {
-        // Search collections by title and description
-        return (
-          item.title.toLowerCase().includes(query) ||
-          (item.description && item.description.toLowerCase().includes(query))
-        );
-      } else {
-        // Search activities by title, name, or description
-        const activity = item as Activity;
-        const title = activity.title || activity.name || '';
-        const description = activity.description || '';
-        return (
-          title.toLowerCase().includes(query) ||
-          description.toLowerCase().includes(query)
-        );
-      }
-    });
+    // Score and filter items based on relevance
+    const scoredItems = data
+      .map((item) => {
+        let score = 0;
+        let title = '';
+        let description = '';
+        
+        if (activeTab === 'Collections' && 'title' in item) {
+          // Collections
+          title = item.title || '';
+          description = item.description || '';
+        } else {
+          // Activities
+          const activity = item as SharedActivity;
+          title = activity.title || activity.name || '';
+          description = activity.description || '';
+        }
+        
+        const titleLower = title.toLowerCase();
+        const descriptionLower = description.toLowerCase();
+        
+        // Scoring algorithm:
+        // 1. Exact title match (highest priority)
+        if (titleLower === query) {
+          score += 1000;
+        }
+        // 2. Title starts with query
+        else if (titleLower.startsWith(query)) {
+          score += 500;
+        }
+        // 3. Title contains query
+        else if (titleLower.includes(query)) {
+          score += 200;
+        }
+        
+        // 4. Description starts with query
+        if (descriptionLower.startsWith(query)) {
+          score += 100;
+        }
+        // 5. Description contains query
+        else if (descriptionLower.includes(query)) {
+          score += 50;
+        }
+        
+        // 6. Bonus points for multiple word matches
+        const queryWords = query.split(' ').filter(word => word.length > 0);
+        if (queryWords.length > 1) {
+          queryWords.forEach(word => {
+            if (titleLower.includes(word)) score += 25;
+            if (descriptionLower.includes(word)) score += 10;
+          });
+        }
+        
+        // 7. Bonus for shorter titles (more specific matches rank higher)
+        if (score > 0 && title.length < 50) {
+          score += 10;
+        }
+        
+        return { item, score, title }; // Include title in return for sorting
+      })
+      .filter(({ score }) => score > 0) // Only include items with matches
+      .sort((a, b) => {
+        // Primary sort: by relevance score (descending)
+        if (b.score !== a.score) {
+          return b.score - a.score;
+        }
+        
+        // Secondary sort: by title length (shorter first)
+        // Now we can safely use the title we already extracted
+        return a.title.length - b.title.length;
+      })
+      .map(({ item }) => item);
+    
+    return scoredItems;
   }, [data, searchQuery, activeTab]);
 };
 
@@ -251,8 +403,8 @@ function ProfileScreen() {
   // UI state
   const [activeTab, setActiveTab] = useState('Liked Activities');
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCollection, setSelectedCollection] = useState<Collection | null>(null);
-  const [selectedActivity, setSelectedActivity] = useState<Activity | null>(null);
+  const [selectedCollection, setSelectedCollection] = useState<SharedCollection | null>(null);
+  const [selectedActivity, setSelectedActivity] = useState<SharedActivity | null>(null);
   
   // Modal visibility states
   const [isModalVisible, setIsModalVisible] = useState(false);
@@ -263,17 +415,13 @@ function ProfileScreen() {
   // Collection creation state
   const [newCollectionName, setNewCollectionName] = useState('');
   const [newCollectionDescription, setNewCollectionDescription] = useState('');
-  
-  // Profile editing state
-  const [profileUri, setProfileUri] = useState<string | undefined>(undefined);
-  const [name, setName] = useState('John Doe');
-  const [tagline, setTagline] = useState('Always up for an adventure!');
 
   /* =========================
      Hooks and Data
      ========================= */
   
   const { user, auth } = useAuth();
+  const { name, tagline, profileUri, isLoading: profileLoading, updateProfileData, refreshProfile } = useProfileData(user);
   const { 
     likedActivities, 
     collections, 
@@ -291,7 +439,7 @@ function ProfileScreen() {
   /**
    * Get the base data for the current tab
    */
-  const getBaseData = (): (Activity | Collection)[] => {
+  const getBaseData = (): (SharedActivity | SharedCollection)[] => {
     if (activeTab === 'Collections') {
       return selectedCollection ? selectedCollection.activities : collections;
     }
@@ -304,6 +452,9 @@ function ProfileScreen() {
     searchQuery, 
     activeTab === 'Collections' && !selectedCollection ? 'Collections' : 'Activities'
   );
+
+  // Check if search is active
+  const isSearchActive = searchQuery.trim().length > 0;
 
   /* =========================
      Side Effects
@@ -394,7 +545,7 @@ function ProfileScreen() {
   /**
    * Handle deleting a collection
    */
-  const handleDeleteCollection = async (collection: Collection) => {
+  const handleDeleteCollection = async (collection: SharedCollection) => {
     if (!user || !collection.id) return;
     
     try {
@@ -457,11 +608,12 @@ function ProfileScreen() {
   /**
    * Handle opening collection selection modal for an activity
    */
-  const handleAddActivityToCollection = (activity: Activity) => {
+  const handleAddActivityToCollection = (activity: SharedActivity) => {
     setSelectedActivity(activity);
     setIsCollectionModalVisible(true);
   };
 
+  
   /**
    * Handle saving profile edits
    */
@@ -475,9 +627,14 @@ function ProfileScreen() {
         email: user?.email || '',
         username: user?.email || ''
       });
+      
       setIsEditingProfile(false);
+      
+      // Force refresh profile data after saving
+      refreshProfile();
     } catch (error) {
       console.error("Error saving profile:", error);
+      Alert.alert('Error', 'Failed to save profile changes. Please try again.');
     }
   };
 
@@ -496,7 +653,10 @@ function ProfileScreen() {
     return (
       <View style={profileInfoStyles.fullProfileSection}>
         <View style={profileInfoStyles.profileHeader}>
-          <ProfilePicture imageUri={profileUri} onChangeImage={setProfileUri} />
+          <ProfilePicture 
+            imageUri={profileUri} 
+            onChangeImage={(uri) => updateProfileData({ profileUri: uri })} 
+          />
           <View style={profileInfoStyles.profileDetails}>
             <View style={profileInfoStyles.nameRow}>
               <Text style={profileInfoStyles.name}>{displayName}</Text>
@@ -523,14 +683,32 @@ function ProfileScreen() {
   };
 
   /**
+   * Render search results header
+   */
+  const renderSearchHeader = () => {
+    if (!isSearchActive) return null;
+    
+    return (
+      <View style={searchHeaderStyles.container}>
+        <Text style={searchHeaderStyles.text}>
+          {filteredData.length === 0 
+            ? `No ${activeTab.toLowerCase()} match "${searchQuery}"`
+            : `Showing ${filteredData.length} ${activeTab.toLowerCase()} for "${searchQuery}"`
+          }
+        </Text>
+      </View>
+    );
+  };
+
+  /**
    * Render individual list items (activities or collections)
    */
-  const renderItem = ({ item }: { item: Activity | Collection }) => {
+  const renderItem = ({ item }: { item: SharedActivity | SharedCollection }) => {
     if (activeTab === 'Collections' && !selectedCollection) {
       return (
         <CollectionCard 
-          collection={item as Collection} 
-          onPress={() => setSelectedCollection(item as Collection)}
+          collection={item as SharedCollection} 
+          onPress={() => setSelectedCollection(item as SharedCollection)}
           onDelete={handleDeleteCollection}
         />
       );
@@ -538,7 +716,7 @@ function ProfileScreen() {
     
     return (
       <ActivityCard
-        item={item as Activity}
+        item={item as SharedActivity}
         isInCollection={!!selectedCollection}
         onRemoveFromCollection={(id: string) => removeFromCollection(selectedCollection?.id!, id)}
         onRemoveFromLiked={handleUnlikeActivity}
@@ -560,12 +738,12 @@ function ProfileScreen() {
      Main Render
      ========================= */
 
-  // Show loading state if user is not authenticated
-  if (!user) {
+  // Show loading state if user is not authenticated or profile is loading
+  if (!user || profileLoading) {
     return (
       <SafeAreaView style={styles.container}>
         <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-          <Text style={{ color: 'white', fontSize: 18 }}>Loading user...</Text>
+          <Text style={{ color: 'white', fontSize: 18 }}>Loading...</Text>
         </View>
       </SafeAreaView>
     );
@@ -593,7 +771,11 @@ function ProfileScreen() {
               toggleSettingsMenu={() => setIsSettingsMenuVisible(prev => !prev)}
               searchQuery={searchQuery}
               setSearchQuery={setSearchQuery}
+              resultCount={filteredData.length}
             />
+            
+            {/* Search Results Header */}
+            {renderSearchHeader()}
           </View>
         }
         contentContainerStyle={styles.listContainer}
@@ -602,7 +784,10 @@ function ProfileScreen() {
         ListEmptyComponent={() => (
           <View style={styles.emptyContainer}>
             <Text style={styles.emptyText}>
-              No {activeTab.toLowerCase()} found
+              {isSearchActive 
+                ? `No ${activeTab.toLowerCase()} match "${searchQuery}"`
+                : `No ${activeTab.toLowerCase()} found`
+              }
             </Text>
           </View>
         )}
@@ -653,7 +838,7 @@ function ProfileScreen() {
                 <TextInput
                   style={modalStyles.input}
                   value={name}
-                  onChangeText={setName}
+                  onChangeText={(text) => updateProfileData({ name: text })}
                   placeholder="Enter your name"
                   placeholderTextColor={Colors.textMuted}
                 />
@@ -664,7 +849,7 @@ function ProfileScreen() {
                 <TextInput
                   style={modalStyles.input}
                   value={tagline}
-                  onChangeText={setTagline}
+                  onChangeText={(text) => updateProfileData({ tagline: text })}
                   placeholder="Enter your bio"
                   placeholderTextColor={Colors.textMuted}
                 />
@@ -709,6 +894,7 @@ const styles = StyleSheet.create({
   emptyText: {
     color: 'white',
     fontSize: 16,
+    textAlign: 'center',
   },
 });
 
@@ -798,6 +984,22 @@ const profileInfoStyles = StyleSheet.create({
     alignItems: 'center',
     borderWidth: 1,
     borderColor: Colors.border,
+  },
+});
+
+const searchHeaderStyles = StyleSheet.create({
+  container: {
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    backgroundColor: Colors.surfaceLight,
+    borderRadius: 8,
+    marginBottom: 16,
+  },
+  text: {
+    color: Colors.textSecondary,
+    fontSize: 14,
+    fontStyle: 'italic',
+    textAlign: 'center',
   },
 });
 

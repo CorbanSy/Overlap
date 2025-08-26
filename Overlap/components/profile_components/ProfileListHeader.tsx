@@ -1,25 +1,22 @@
-// components/profile_components/ProfileListHeader.tsx - UPDATED
+// components/profile_components/ProfileListHeader.tsx
 import React from 'react';
 import { View, StyleSheet } from 'react-native';
 import CollectionHeader from './headers/CollectionHeader';
 import TabSection from './sections/TabSection';
 import SearchSection from './sections/SearchSection';
 import AddCollectionSection from './sections/AddCollectionSection';
-
-interface Collection {
-  title: string;
-  activities?: any[];
-}
+import { SharedCollection } from './profileTypes';
 
 interface ProfileListHeaderProps {
   activeTab: string;
   setActiveTab: (tab: string) => void;
-  selectedCollection: Collection | null;
+  selectedCollection: SharedCollection | null;
   onClearSelectedCollection: () => void;
   setIsModalVisible: (visible: boolean) => void;
   toggleSettingsMenu: () => void;
   searchQuery: string;
   setSearchQuery: (query: string) => void;
+  resultCount: number; // Added this missing prop
 }
 
 const ProfileListHeader: React.FC<ProfileListHeaderProps> = ({
@@ -31,11 +28,10 @@ const ProfileListHeader: React.FC<ProfileListHeaderProps> = ({
   toggleSettingsMenu,
   searchQuery,
   setSearchQuery,
+  resultCount, // Added this prop
 }) => {
   return (
     <View style={styles.headerContainer}>
-      {/* ProfileHeader is now integrated directly in profile.tsx */}
-      
       {/* Tab selector (Liked Activities / Collections) */}
       <TabSection 
         activeTab={activeTab} 
@@ -46,6 +42,8 @@ const ProfileListHeader: React.FC<ProfileListHeaderProps> = ({
       <SearchSection 
         searchQuery={searchQuery} 
         setSearchQuery={setSearchQuery} 
+        resultCount={resultCount}
+        activeTab={activeTab} // Pass activeTab for dynamic placeholder
       />
       
       {/* Add Collection button - only show when on Collections tab and no collection selected */}

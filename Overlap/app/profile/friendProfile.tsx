@@ -1,3 +1,4 @@
+//app/profile/friendProfile.tsx
 import React, { useEffect, useState } from 'react';
 import {
   SafeAreaView, View, Text, Image, StyleSheet,

@@ -1,4 +1,4 @@
-// friendItem.tsx
+// components/friendItem.tsx
 import React, { useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { getFirestore, doc, onSnapshot } from 'firebase/firestore';

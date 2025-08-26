@@ -33,19 +33,19 @@ const TabBar: React.FC<TabBarProps> = ({ activeTab, onTabPress }) => {
   const [isLayoutReady, setIsLayoutReady] = useState(false);
   
   const tabs = [
-    { 
-      key: 'Liked Activities', 
-      label: 'Liked Activities',
-      icon: 'heart-outline',
-      activeIcon: 'heart'
-    },
-    { 
-      key: 'Collections', 
-      label: 'Collections',
-      icon: 'folder-outline',
-      activeIcon: 'folder'
-    }
-  ];
+  { 
+    key: 'Liked Activities', 
+    label: 'Liked Activities',
+    icon: 'heart-outline' as const,      // ← Added 'as const'
+    activeIcon: 'heart' as const         // ← Added 'as const'
+  },
+  { 
+    key: 'Collections', 
+    label: 'Collections',
+    icon: 'folder-outline' as const,     // ← Added 'as const'
+    activeIcon: 'folder' as const        // ← Added 'as const'
+  }
+];
 
   // Calculate tab width with proper padding
   const tabWidth = containerWidth > 0 ? (containerWidth - 8) / tabs.length : 0; // Account for container padding
