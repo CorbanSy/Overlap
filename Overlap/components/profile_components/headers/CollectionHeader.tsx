@@ -7,6 +7,7 @@ import {
   StyleSheet,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { SharedCollection } from '../profileTypes';
 
 const Colors = {
   primary: '#F5A623',
@@ -19,13 +20,8 @@ const Colors = {
   textMuted: '#888888',
 };
 
-interface Collection {
-  title: string;
-  activities?: any[];
-}
-
 interface CollectionHeaderProps {
-  selectedCollection: Collection;
+  selectedCollection: SharedCollection;
   onBackPress: () => void;
 }
 

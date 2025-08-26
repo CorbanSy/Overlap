@@ -39,25 +39,12 @@ import { unlikePlace, deleteCollection } from '../../_utils/storage/likesCollect
 import { saveProfileData, getProfileData } from '../../_utils/storage/userProfile';
 import { Colors } from '../../constants/colors';
 
+// Import shared types
+import { SharedActivity, SharedCollection } from '../../components/profile_components/profileTypes';
+
 /* =========================
    Types and Interfaces
    ========================= */
-
-interface Collection {
-  id: string;
-  title: string;
-  description?: string;
-  activities: Activity[];
-  createdAt: Date;
-}
-
-interface Activity {
-  id: string;
-  title?: string;
-  name?: string;
-  description?: string;
-  [key: string]: any;
-}
 
 interface ProfilePictureProps {
   imageUri?: string;
@@ -218,8 +205,8 @@ const useProfileData = (user: User | null) => {
  * Hook for managing Firestore data (likes and collections)
  */
 const useFirestoreData = (user: User | null) => {
-  const [likedActivities, setLikedActivities] = useState<Activity[]>([]);
-  const [collections, setCollections] = useState<Collection[]>([]);
+  const [likedActivities, setLikedActivities] = useState<SharedActivity[]>([]);
+  const [collections, setCollections] = useState<SharedCollection[]>([]);
   const firestore: Firestore = getFirestore();
   const unsubscribeLikesRef = useRef<(() => void) | null>(null);
   const unsubscribeCollectionsRef = useRef<(() => void) | null>(null);
@@ -232,7 +219,19 @@ const useFirestoreData = (user: User | null) => {
     const unsubscribe = onSnapshot(
       likesRef,
       (snapshot) => {
-        setLikedActivities(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Activity)));
+        setLikedActivities(snapshot.docs.map(doc => {
+          const data = doc.data();
+          return {
+            id: doc.id,
+            name: data.name || data.title || 'Unnamed Activity',
+            title: data.title,
+            description: data.description,
+            rating: data.rating,
+            photos: data.photos,
+            photoUrls: data.photoUrls,
+            ...data
+          } as SharedActivity;
+        }));
       },
       (error) => console.error("Likes listener error:", error)
     );
@@ -255,11 +254,25 @@ const useFirestoreData = (user: User | null) => {
       collectionsRef,
       (snapshot) => {
         setCollections(
-          snapshot.docs.map(doc => ({
-            id: doc.id,
-            ...doc.data(),
-            activities: doc.data().activities || [],
-          } as Collection))
+          snapshot.docs.map(doc => {
+            const data = doc.data();
+            return {
+              id: doc.id,
+              title: data.title || 'Untitled Collection',
+              description: data.description,
+              activities: (data.activities || []).map((activity: any) => ({
+                id: activity.id,
+                name: activity.name || activity.title || 'Unnamed Activity',
+                title: activity.title,
+                description: activity.description,
+                rating: activity.rating,
+                photos: activity.photos,
+                photoUrls: activity.photoUrls,
+                ...activity
+              })),
+              createdAt: data.createdAt?.toDate?.() || new Date(),
+            } as SharedCollection;
+          })
         );
       },
       (error) => console.error("Collections listener error:", error)
@@ -292,7 +305,7 @@ const useFirestoreData = (user: User | null) => {
 /**
  * Hook for filtering and sorting data based on search query with relevance scoring
  */
-const useSearchFilter = (data: (Activity | Collection)[], searchQuery: string, activeTab: string) => {
+const useSearchFilter = (data: (SharedActivity | SharedCollection)[], searchQuery: string, activeTab: string) => {
   return useMemo(() => {
     if (!searchQuery.trim()) {
       // No search query - return original order
@@ -314,7 +327,7 @@ const useSearchFilter = (data: (Activity | Collection)[], searchQuery: string, a
           description = item.description || '';
         } else {
           // Activities
-          const activity = item as Activity;
+          const activity = item as SharedActivity;
           title = activity.title || activity.name || '';
           description = activity.description || '';
         }
@@ -359,7 +372,7 @@ const useSearchFilter = (data: (Activity | Collection)[], searchQuery: string, a
           score += 10;
         }
         
-        return { item, score };
+        return { item, score, title }; // Include title in return for sorting
       })
       .filter(({ score }) => score > 0) // Only include items with matches
       .sort((a, b) => {
@@ -369,14 +382,8 @@ const useSearchFilter = (data: (Activity | Collection)[], searchQuery: string, a
         }
         
         // Secondary sort: by title length (shorter first)
-        const aTitle = activeTab === 'Collections' && 'title' in a.item 
-          ? a.item.title 
-          : (a.item as Activity).title || (a.item as Activity).name || '';
-        const bTitle = activeTab === 'Collections' && 'title' in b.item 
-          ? b.item.title 
-          : (b.item as Activity).title || (b.item as Activity).name || '';
-        
-        return aTitle.length - bTitle.length;
+        // Now we can safely use the title we already extracted
+        return a.title.length - b.title.length;
       })
       .map(({ item }) => item);
     
@@ -396,8 +403,8 @@ function ProfileScreen() {
   // UI state
   const [activeTab, setActiveTab] = useState('Liked Activities');
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCollection, setSelectedCollection] = useState<Collection | null>(null);
-  const [selectedActivity, setSelectedActivity] = useState<Activity | null>(null);
+  const [selectedCollection, setSelectedCollection] = useState<SharedCollection | null>(null);
+  const [selectedActivity, setSelectedActivity] = useState<SharedActivity | null>(null);
   
   // Modal visibility states
   const [isModalVisible, setIsModalVisible] = useState(false);
@@ -432,7 +439,7 @@ function ProfileScreen() {
   /**
    * Get the base data for the current tab
    */
-  const getBaseData = (): (Activity | Collection)[] => {
+  const getBaseData = (): (SharedActivity | SharedCollection)[] => {
     if (activeTab === 'Collections') {
       return selectedCollection ? selectedCollection.activities : collections;
     }
@@ -538,7 +545,7 @@ function ProfileScreen() {
   /**
    * Handle deleting a collection
    */
-  const handleDeleteCollection = async (collection: Collection) => {
+  const handleDeleteCollection = async (collection: SharedCollection) => {
     if (!user || !collection.id) return;
     
     try {
@@ -601,7 +608,7 @@ function ProfileScreen() {
   /**
    * Handle opening collection selection modal for an activity
    */
-  const handleAddActivityToCollection = (activity: Activity) => {
+  const handleAddActivityToCollection = (activity: SharedActivity) => {
     setSelectedActivity(activity);
     setIsCollectionModalVisible(true);
   };
@@ -696,12 +703,12 @@ function ProfileScreen() {
   /**
    * Render individual list items (activities or collections)
    */
-  const renderItem = ({ item }: { item: Activity | Collection }) => {
+  const renderItem = ({ item }: { item: SharedActivity | SharedCollection }) => {
     if (activeTab === 'Collections' && !selectedCollection) {
       return (
         <CollectionCard 
-          collection={item as Collection} 
-          onPress={() => setSelectedCollection(item as Collection)}
+          collection={item as SharedCollection} 
+          onPress={() => setSelectedCollection(item as SharedCollection)}
           onDelete={handleDeleteCollection}
         />
       );
@@ -709,7 +716,7 @@ function ProfileScreen() {
     
     return (
       <ActivityCard
-        item={item as Activity}
+        item={item as SharedActivity}
         isInCollection={!!selectedCollection}
         onRemoveFromCollection={(id: string) => removeFromCollection(selectedCollection?.id!, id)}
         onRemoveFromLiked={handleUnlikeActivity}

@@ -1,3 +1,4 @@
+//app/(tabs)/meetupHome.tsx
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
@@ -43,7 +44,7 @@ const SPACING = {
   xxl: 40,
 } as const;
 
-export default function MeetupHome(): JSX.Element {
+export default function MeetupHome() {
   // State management
   const [currentScreen, setCurrentScreen] = useState<'home' | 'create' | 'myMeetups' | 'join'>('home');
   const [pendingInvites, setPendingInvites] = useState<PendingInvite[]>([]);

@@ -17,6 +17,7 @@ import { useRouter } from 'expo-router';
 
 // Import auth from your config instead of using getAuth
 import { auth } from '../../FirebaseConfig';
+import { User } from 'firebase/auth';
 import {
   getFirestore,
   collection,
@@ -31,7 +32,6 @@ import {
 import {
   sendFriendRequest,
   removeFriend,
-  acceptFriendRequest,
   debugFirebaseSetup,
   sendFriendRequestDebug,
   acceptFriendRequestDebug
@@ -88,7 +88,7 @@ function FriendsScreen() {
 
   // Updated useAuth hook to use the imported auth
   const useAuth = () => {
-    const [user, setUser] = useState(null);
+    const [user, setUser] = useState<User | null>(null); // Now properly typed
 
     useEffect(() => {
       const unsubscribeAuth = auth.onAuthStateChanged((currentUser) => {
@@ -318,39 +318,50 @@ function FriendsScreen() {
       setSearchEmail('');
       fetchSentRequests();
 
-    } catch (error) {
+    } catch (error: unknown) {
       console.log('🔍 =================================');
       console.error('❌ Error in handleSearchAndSendFriendRequest:');
-      console.error('❌ Error type:', error.constructor.name);
-      console.error('❌ Error message:', error.message);
-      console.error('❌ Error code:', error.code);
-      console.error('❌ Full error:', error);
-      console.log('🔍 =================================');
       
-      let userMessage = 'Error sending friend request.';
-      if (error.code === 'permission-denied') {
-        userMessage = 'Permission denied. Please check your account settings.';
-      } else if (error.message.includes('network')) {
-        userMessage = 'Network error. Please check your connection.';
-      } else if (error.message.includes('auth')) {
-        userMessage = 'Authentication error. Please sign in again.';
+      // Type guard to safely access error properties
+      if (error instanceof Error) {
+        console.error('❌ Error type:', error.constructor.name);
+        console.error('❌ Error message:', error.message);
+        console.error('❌ Full error:', error);
       }
       
+      // For Firebase errors, check if it has a code property
+      let userMessage = 'Error sending friend request.';
+      if (error && typeof error === 'object' && 'code' in error) {
+        const firebaseError = error as { code: string; message?: string };
+        if (firebaseError.code === 'permission-denied') {
+          userMessage = 'Permission denied. Please check your account settings.';
+        }
+        console.error('❌ Error code:', firebaseError.code);
+      } else if (error instanceof Error) {
+        if (error.message.includes('network')) {
+          userMessage = 'Network error. Please check your connection.';
+        } else if (error.message.includes('auth')) {
+          userMessage = 'Authentication error. Please sign in again.';
+        }
+      }
+      
+      console.log('🔍 =================================');
       Alert.alert('Error', userMessage);
     }
   };
 
   const handleAccept = async (requestId: string, fromUserId: string) => {
-  try {
-    // Use the debug version to see where it fails
-    await acceptFriendRequestDebug(requestId, fromUserId);
-    Alert.alert('Friend request accepted!');
-    await Promise.all([fetchReceivedRequests(), fetchFriends()]);
-  } catch (error) {
-    console.error('Accept error:', error);
-    Alert.alert('Error accepting friend request:', error.message);
-  }
-};
+    try {
+      // Use the debug version to see where it fails
+      await acceptFriendRequestDebug(requestId, fromUserId);
+      Alert.alert('Friend request accepted!');
+      await Promise.all([fetchReceivedRequests(), fetchFriends()]);
+    } catch (error: unknown) {
+      console.error('Accept error:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      Alert.alert('Error accepting friend request:', errorMessage);
+    }
+  };
 
   const handleReject = async (requestId: string) => {
     try {
@@ -360,6 +371,7 @@ function FriendsScreen() {
       fetchReceivedRequests();
     } catch (error) {
       console.error('Reject error:', error);
+      Alert.alert('Error', 'Failed to reject friend request');
     }
   };
 
@@ -494,9 +506,10 @@ function FriendsScreen() {
                 console.log('🔍 Testing Firebase setup...');
                 const result = await debugFirebaseSetup();
                 Alert.alert('Success', result);
-              } catch (error) {
+              } catch (error: unknown) {
                 console.error('Setup test failed:', error);
-                Alert.alert('Setup Test Failed', error.message);
+                const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+                Alert.alert('Setup Test Failed', errorMessage);
               }
             }}
           >
