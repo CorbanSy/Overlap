@@ -1,3 +1,4 @@
+//app/meetupFolder/join.tsx
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
@@ -183,8 +184,8 @@ const JoinMeetupsScreen: React.FC<Props> = ({ onBack }) => {
       setJoiningCode(true);
       Keyboard.dismiss();
       
-      const result = await joinMeetupByCode(inviteCode.trim());
-      const meetupId = typeof result === 'object' ? result.meetupId : result;
+      const meetupId = await joinMeetupByCode(inviteCode.trim());
+      // Since joinMeetupByCode returns a string (meetupId), no need to check for object
       
       setInviteCode('');
       router.push({ pathname: '/meetupFolder/startMeetUp', params: { meetupId } });

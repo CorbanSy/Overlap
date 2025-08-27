@@ -1,7 +1,12 @@
-import { doc, setDoc, getDoc, collection, getDocs, addDoc, query, where, updateDoc } from 'firebase/firestore';
+// _utils/storage/meetupInvites.js
+import { 
+  doc, setDoc, getDoc, collection, getDocs, addDoc, query, where, 
+  updateDoc, writeBatch 
+} from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
 import { db } from '../../FirebaseConfig';
 import { exportMyLikesToMeetup } from './meetupActivities';
+
 export async function sendMeetupInvite(meetupId, friend) {
   const auth = getAuth();
   const user = auth.currentUser;
@@ -30,24 +35,57 @@ export async function getPendingMeetupInvites() {
   return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 }
 
+// UNIFIED: Single acceptMeetupInvite function using batches for atomic operations
 export async function acceptMeetupInvite(inviteId, meetupId) {
-  // Update the invite document's status
-  const inviteRef = doc(db, "meetupInvites", inviteId);
-  await updateDoc(inviteRef, { status: "accepted" });
+  const auth = getAuth();
+  const user = auth.currentUser;
+  if (!user) throw new Error('No user is signed in');
 
-  // Update the corresponding meetup document to ensure the user is in the participants
+  // Get meetup data first
   const meetupRef = doc(db, "meetups", meetupId);
   const meetupSnap = await getDoc(meetupRef);
-  if (meetupSnap.exists()) {
-    const meetupData = meetupSnap.data();
-    const auth = getAuth();
-    const user = auth.currentUser;
-    if (!meetupData.participants.includes(user.uid)) {
-      await updateDoc(meetupRef, {
-        participants: [...meetupData.participants, user.uid]
-      });
-    }
+  if (!meetupSnap.exists()) {
+    throw new Error("Meetup not found");
   }
+
+  const meetupData = meetupSnap.data();
+
+  // Check if user is already a participant
+  if (meetupData.participants && meetupData.participants.includes(user.uid)) {
+    // Just update the invite status and return
+    const inviteRef = doc(db, "meetupInvites", inviteId);
+    await updateDoc(inviteRef, { status: "accepted" });
+    return;
+  }
+
+  // Use a batch for atomic operations
+  const batch = writeBatch(db);
+
+  // 1. Update the invite document's status
+  const inviteRef = doc(db, "meetupInvites", inviteId);
+  batch.update(inviteRef, { status: "accepted" });
+
+  // 2. Add user to meetup participants
+  const updatedParticipants = [...(meetupData.participants || []), user.uid];
+  batch.update(meetupRef, { participants: updatedParticipants });
+
+  // 3. Add meetup reference to user's subcollection
+  const userMeetupRef = doc(db, 'users', user.uid, 'meetups', meetupId);
+  batch.set(userMeetupRef, {
+    meetupId,
+    eventName: meetupData.eventName || '',
+    createdAt: meetupData.createdAt || new Date(),
+    isCreator: false,
+    role: 'participant',
+    ongoing: meetupData.ongoing || false,
+    category: meetupData.category,
+    date: meetupData.date,
+    time: meetupData.time,
+    location: meetupData.location,
+  });
+
+  // Commit all operations atomically
+  await batch.commit();
 }
 
 export async function declineMeetupInvite(inviteId) {
@@ -62,16 +100,25 @@ export async function joinMeetup(inviteId) {
   const inviteData = inviteSnap.data();
   if (!inviteData.meetupId) throw new Error("Meetup ID missing in invite");
 
-  // mark accepted + add participant if needed
+  // Accept the invite (this handles all the participant logic)
   await acceptMeetupInvite(inviteId, inviteData.meetupId);
 
-  // immediately mirror my likes into the meetup
-  await exportMyLikesToMeetup(inviteData.meetupId);
+  // Export user's likes to the meetup
+  try {
+    await exportMyLikesToMeetup(inviteData.meetupId);
+  } catch (error) {
+    console.warn('Failed to export likes to meetup:', error);
+    // Don't fail the join operation if likes export fails
+  }
 
   return inviteData.meetupId;
 }
 
 export async function joinMeetupByCode(inviteCode) {
+  const auth = getAuth();
+  const user = auth.currentUser;
+  if (!user) throw new Error("No user is signed in");
+
   const meetupsColRef = collection(db, "meetups");
   const q = query(meetupsColRef, where("code", "==", inviteCode));
   const snap = await getDocs(q);
@@ -79,18 +126,47 @@ export async function joinMeetupByCode(inviteCode) {
 
   const meetupDoc = snap.docs[0];
   const meetupData = meetupDoc.data();
+  const meetupId = meetupDoc.id;
 
-  const auth = getAuth();
-  const user = auth.currentUser;
-  if (!user) throw new Error("No user is signed in");
-
-  if (!meetupData.participants.includes(user.uid)) {
-    await updateDoc(doc(db, "meetups", meetupDoc.id), {
-      participants: [...meetupData.participants, user.uid],
-    });
+  // Check if user is already a participant
+  if (meetupData.participants && meetupData.participants.includes(user.uid)) {
+    throw new Error('You are already a participant in this meetup');
   }
-  await exportMyLikesToMeetup(meetupDoc.id);
-  return meetupDoc.id;
+
+  // Use a batch for atomic operations
+  const batch = writeBatch(db);
+
+  // 1. Add user to meetup participants
+  const updatedParticipants = [...(meetupData.participants || []), user.uid];
+  batch.update(doc(db, "meetups", meetupId), { participants: updatedParticipants });
+
+  // 2. Add meetup reference to user's subcollection
+  const userMeetupRef = doc(db, 'users', user.uid, 'meetups', meetupId);
+  batch.set(userMeetupRef, {
+    meetupId,
+    eventName: meetupData.eventName || '',
+    createdAt: meetupData.createdAt || new Date(),
+    isCreator: false,
+    role: 'participant',
+    ongoing: meetupData.ongoing || false,
+    category: meetupData.category,
+    date: meetupData.date,
+    time: meetupData.time,
+    location: meetupData.location,
+  });
+
+  // Commit all operations atomically
+  await batch.commit();
+
+  // Export user's likes to the meetup
+  try {
+    await exportMyLikesToMeetup(meetupId);
+  } catch (error) {
+    console.warn('Failed to export likes to meetup:', error);
+    // Don't fail the join operation if likes export fails
+  }
+
+  return meetupId;
 }
 
 export async function declineMeetup(inviteId) {

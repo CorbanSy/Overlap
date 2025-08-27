@@ -510,7 +510,7 @@ const styles = StyleSheet.create({
   // New styles for participants container
   participantsContainer: {
     position: 'absolute',
-    top: SPACING.xl + 40, // Position below progress bar
+    top: SPACING.xl + 20, // Reduced from +40 to position it between header buttons
     left: 0,
     right: 0,
     zIndex: 10,

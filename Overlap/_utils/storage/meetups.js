@@ -16,7 +16,6 @@ async function addMeetupToUser(userId, meetupId, meetupData) {
     isCreator: userId === meetupData.creatorId,
     role: userId === meetupData.creatorId ? 'creator' : 'participant',
     ongoing: meetupData.ongoing || false,
-    // Store basic meetup info for quick access
     category: meetupData.category,
     date: meetupData.date,
     time: meetupData.time,
@@ -62,19 +61,19 @@ export async function createMeetup(meetupData) {
     code: meetupData.code,
   };
 
-  // Build additional fields
-  const invitedFriends = cleanedData.friends;
+  // Build additional fields - only include creator in participants initially
   const data = {
     ...cleanedData,
     creatorId: user.uid,
-    participants: [user.uid, ...invitedFriends.map(friend => friend.uid)],
+    participants: [user.uid], // Only creator initially
+    invitedFriends: cleanedData.friends, // Store invited friends separately
     createdAt: new Date(),
     ongoing: false,
   };
 
   console.log("Final meetup data sent to Firestore:", data);
 
-  // Use a batch to create meetup and user references atomically
+  // Use a batch to create meetup and creator reference atomically
   const batch = writeBatch(db);
   
   // Create the meetup document
@@ -85,7 +84,7 @@ export async function createMeetup(meetupData) {
   data.meetupId = meetupId;
   batch.set(meetupRef, data);
   
-  // Add meetup reference to creator's meetups subcollection
+  // Add meetup reference ONLY to creator's meetups subcollection
   const creatorMeetupRef = doc(db, 'users', user.uid, 'meetups', meetupId);
   batch.set(creatorMeetupRef, {
     meetupId,
@@ -98,23 +97,6 @@ export async function createMeetup(meetupData) {
     date: data.date,
     time: data.time,
     location: data.location,
-  });
-  
-  // Add meetup references to all participants' meetups subcollections
-  invitedFriends.forEach(friend => {
-    const participantMeetupRef = doc(db, 'users', friend.uid, 'meetups', meetupId);
-    batch.set(participantMeetupRef, {
-      meetupId,
-      eventName: data.eventName,
-      createdAt: data.createdAt,
-      isCreator: false,
-      role: 'participant',
-      ongoing: false,
-      category: data.category,
-      date: data.date,
-      time: data.time,
-      location: data.location,
-    });
   });
   
   // Commit the batch
@@ -279,48 +261,9 @@ export async function removeMeetup(meetupId) {
   await batch.commit();
 }
 
-// New function to add a user to an existing meetup (for joining via invite)
-export async function addUserToMeetup(meetupId, userId) {
-  const meetupRef = doc(db, 'meetups', meetupId);
-  const meetupSnapshot = await getDoc(meetupRef);
-  
-  if (!meetupSnapshot.exists()) {
-    throw new Error('Meetup not found');
-  }
-  
-  const meetupData = meetupSnapshot.data();
-  
-  // Check if user is already a participant
-  if (meetupData.participants.includes(userId)) {
-    return; // User is already a participant
-  }
-  
-  // Use a batch to update both the meetup and user references
-  const batch = writeBatch(db);
-  
-  // Add user to participants array
-  const updatedParticipants = [...meetupData.participants, userId];
-  batch.update(meetupRef, { participants: updatedParticipants });
-  
-  // Add meetup reference to user's subcollection
-  const userMeetupRef = doc(db, 'users', userId, 'meetups', meetupId);
-  batch.set(userMeetupRef, {
-    meetupId,
-    eventName: meetupData.eventName || '',
-    createdAt: meetupData.createdAt || new Date(),
-    isCreator: false,
-    role: 'participant',
-    ongoing: meetupData.ongoing || false,
-    category: meetupData.category,
-    date: meetupData.date,
-    time: meetupData.time,
-    location: meetupData.location,
-  });
-  
-  await batch.commit();
-}
+// REMOVED: acceptMeetupInvite function - use the one in meetupInvites.js instead
 
-// New function to remove a user from a meetup (for leaving)
+// Function to remove a user from a meetup (for leaving)
 export async function removeUserFromMeetup(meetupId, userId) {
   const meetupRef = doc(db, 'meetups', meetupId);
   const meetupSnapshot = await getDoc(meetupRef);
@@ -340,7 +283,7 @@ export async function removeUserFromMeetup(meetupId, userId) {
   const batch = writeBatch(db);
   
   // Remove user from participants array
-  const updatedParticipants = meetupData.participants.filter(id => id !== userId);
+  const updatedParticipants = (meetupData.participants || []).filter(id => id !== userId);
   batch.update(meetupRef, { participants: updatedParticipants });
   
   // Remove meetup reference from user's subcollection

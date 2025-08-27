@@ -84,6 +84,11 @@ const FriendSelectionModal: React.FC<FriendSelectionModalProps> = ({
     }
   }, [visible]);
 
+  // Helper function to check if avatar URL is valid
+  const hasValidAvatar = (avatarUrl?: string) => {
+    return avatarUrl && avatarUrl.trim() !== '';
+  };
+
   return (
     <Modal animationType="fade" transparent visible={visible} onRequestClose={onClose}>
       <View style={styles.overlay}>
@@ -129,15 +134,19 @@ const FriendSelectionModal: React.FC<FriendSelectionModalProps> = ({
                     style={styles.friendCardWrapper}
                   >
                     <View style={[styles.friendCard, isSelected && styles.friendCardSelected]}>
-                      {/* Avatar */}
-                      <Image
-                        source={
-                          friend.avatarUrl
-                            ? { uri: friend.avatarUrl }
-                            : require('../../../assets/images/profile.png')
-                        }
-                        style={styles.avatar}
-                      />
+                      {/* Avatar - Fixed to properly handle empty avatarUrl */}
+                      {hasValidAvatar(friend.avatarUrl) ? (
+                        <Image 
+                          source={{ uri: friend.avatarUrl }} 
+                          style={styles.avatar}
+                          onError={(e) => console.log('Avatar load failed:', e.nativeEvent.error)}
+                        />
+                      ) : (
+                        <Image
+                          source={require('../../../assets/images/profile.png')}
+                          style={styles.avatar}
+                        />
+                      )}
                       
                       {/* Friend Name */}
                       <Text style={styles.friendName} numberOfLines={1}>

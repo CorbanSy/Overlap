@@ -81,15 +81,16 @@ const InviteFriendsCard: React.FC<InviteFriendsCardProps> = ({
             {selectedFriends.map((friend) => (
               <View key={friend.uid} style={styles.friendItem}>
                 <View style={styles.friendInfo}>
-                  {friend.avatarUrl ? (
+                  {friend.avatarUrl && friend.avatarUrl.trim() !== '' ? (
                     <Image 
                       source={{ uri: friend.avatarUrl }} 
                       style={styles.friendAvatar}
                     />
                   ) : (
-                    <View style={styles.defaultAvatar}>
-                      <Ionicons name="person" size={18} color={Colors.textMuted} />
-                    </View>
+                    <Image
+                      source={require('../../assets/images/profile.png')}
+                      style={styles.friendAvatar}
+                    />
                   )}
                   <Text style={styles.friendName} numberOfLines={1}>
                     {friend.name || friend.email || friend.uid}
