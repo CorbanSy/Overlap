@@ -1,4 +1,4 @@
-//app/moreInfo.tsx
+//app/moreInfo.tsx (Fixed SafeArea)
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   SafeAreaView,
@@ -28,6 +28,7 @@ import {
   getDocs,
 } from 'firebase/firestore';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { fetchPlaceDetails, fetchPlacePhotos } from '../_utils/storage/places';
 import { likePlace, unlikePlace } from '../_utils/storage/likesCollections';
@@ -35,7 +36,8 @@ import { storeReviewsForPlace } from '../_utils/storage/reviews';
 
 // Types
 interface PlaceDetails {
-  name: string;
+  id: string; 
+  name?: string;
   rating?: number;
   userRatingsTotal?: number;
   address?: string;
@@ -67,6 +69,7 @@ export default function MoreInfoScreen() {
   const auth = getAuth();
   const user = auth.currentUser;
   const db = getFirestore();
+  const insets = useSafeAreaInsets(); // Get safe area insets
 
   // Core state
   const [details, setDetails] = useState<PlaceDetails | null>(null);
@@ -112,6 +115,12 @@ export default function MoreInfoScreen() {
         setError(null);
         
         const placeDetails = await fetchPlaceDetails(placeId);
+        console.log('Fetched place details:', placeDetails);
+        
+        if (!placeDetails.name) {
+          console.warn('Place missing name:', placeDetails);
+        }
+        
         setDetails(placeDetails);
         
         // Load photos
@@ -509,40 +518,42 @@ export default function MoreInfoScreen() {
   // Loading state
   if (loading) {
     return (
-      <SafeAreaView style={styles.loadingContainer}>
+      <View style={[styles.loadingContainer, { paddingTop: insets.top }]}>
+        <StatusBar backgroundColor="#0D1117" barStyle="light-content" />
         <ActivityIndicator size="large" color="#F5A623" />
         <Text style={styles.loadingText}>Loading place details...</Text>
-      </SafeAreaView>
+      </View>
     );
   }
 
   // Error state
   if (error) {
     return (
-      <SafeAreaView style={styles.errorContainer}>
+      <View style={[styles.errorContainer, { paddingTop: insets.top }]}>
+        <StatusBar backgroundColor="#0D1117" barStyle="light-content" />
         <Ionicons name="alert-circle-outline" size={48} color="#FF6B6B" />
         <Text style={styles.errorText}>{error}</Text>
         <TouchableOpacity style={styles.retryButton} onPress={() => router.back()}>
           <Text style={styles.retryButtonText}>Go Back</Text>
         </TouchableOpacity>
-      </SafeAreaView>
+      </View>
     );
   }
 
   if (!details) return null;
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <View style={styles.container}>
       <StatusBar backgroundColor="#0D1117" barStyle="light-content" />
       
-      {/* Header */}
-      <View style={styles.header}>
+      {/* Header with proper safe area */}
+      <View style={[styles.header, { paddingTop: insets.top }]}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
           <Ionicons name="chevron-back" size={24} color="#F5A623" />
           <Text style={styles.backButtonText}>Back</Text>
         </TouchableOpacity>
         <Text style={styles.headerTitle} numberOfLines={1}>
-          {details.name}
+          {details.name || 'Place Details'}
         </Text>
         <View style={styles.headerSpacer} />
       </View>
@@ -559,7 +570,7 @@ export default function MoreInfoScreen() {
 
         {/* Main Content */}
         <View style={styles.content}>
-          <Text style={styles.title}>{details.name}</Text>
+          <Text style={styles.title}>{details.name || 'Unknown Place'}</Text>
           
           <View style={styles.metaRow}>
             {details.rating && (
@@ -612,12 +623,12 @@ export default function MoreInfoScreen() {
       {/* Modals */}
       {renderCollectionModal()}
       {renderPhotoModal()}
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  safeArea: {
+  container: {
     flex: 1,
     backgroundColor: '#0D1117',
   },
@@ -660,9 +671,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingBottom: 12,
     borderBottomColor: '#232533',
     borderBottomWidth: 1,
+    backgroundColor: '#0D1117',
   },
   backButton: {
     flexDirection: 'row',

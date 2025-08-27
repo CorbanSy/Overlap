@@ -1,4 +1,4 @@
-// app/profile/notifications.jsx
+// app/profile/notifications.jsx (Fixed SafeArea)
 import React, { useState } from 'react';
 import {
   SafeAreaView,
@@ -11,9 +11,11 @@ import {
   TextInput,
   Alert,
   Platform,
+  StatusBar,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const BG = '#0D1117';
 const CARD = '#1B1F24';
@@ -23,6 +25,7 @@ const ACCENT = '#FFA500';
 
 export default function Notifications() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
 
   // Global channels
   const [pushEnabled, setPushEnabled] = useState(true);
@@ -52,7 +55,10 @@ export default function Notifications() {
   };
 
   return (
-    <SafeAreaView style={styles.safe}>
+    <View style={styles.safe}>
+      <StatusBar backgroundColor={BG} barStyle="light-content" />
+      <View style={[styles.safeAreaTop, { height: insets.top }]} />
+      
       {/* Header */}
       <View style={styles.headerRow}>
         <TouchableOpacity style={styles.iconBtn} onPress={() => router.back()}>
@@ -198,7 +204,7 @@ export default function Notifications() {
 
         <View style={{ height: 20 }} />
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -221,7 +227,13 @@ function Row({ title, sub, value, onValueChange }) {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: BG },
+  safe: { 
+    flex: 1, 
+    backgroundColor: BG 
+  },
+  safeAreaTop: {
+    backgroundColor: BG,
+  },
 
   headerRow: {
     flexDirection: 'row',

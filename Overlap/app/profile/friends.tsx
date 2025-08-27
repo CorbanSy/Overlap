@@ -1,4 +1,4 @@
-// app/profile/friends.tsx
+// app/profile/friends.tsx (Fixed SafeArea)
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   SafeAreaView,
@@ -11,9 +11,11 @@ import {
   Alert,
   RefreshControl,
   ActivityIndicator,
+  StatusBar,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 // Import auth from your config instead of using getAuth
 import { auth } from '../../FirebaseConfig';
@@ -75,6 +77,7 @@ const ACCENT = '#FFA500';
 const LINK = '#4dabf7';
 
 function FriendsScreen() {
+  const insets = useSafeAreaInsets();
   const [friends, setFriends] = useState<FriendData[]>([]);
   const [sentRequests, setSentRequests] = useState<FriendRequestData[]>([]);
   const [receivedRequests, setReceivedRequests] = useState<FriendRequestData[]>([]);
@@ -464,7 +467,10 @@ function FriendsScreen() {
   );
 
   return (
-    <SafeAreaView style={styles.safe}>
+    <View style={styles.safe}>
+      <StatusBar backgroundColor={BG} barStyle="light-content" />
+      <View style={[styles.safeAreaTop, { height: insets.top }]} />
+      
       {/* Header */}
       <View style={styles.header}>
         <TouchableOpacity style={styles.iconBtn} onPress={() => router.back()}>
@@ -573,12 +579,18 @@ function FriendsScreen() {
           }
         />
       )}
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: BG },
+  safe: { 
+    flex: 1, 
+    backgroundColor: BG 
+  },
+  safeAreaTop: {
+    backgroundColor: BG,
+  },
 
   header: {
     flexDirection: 'row',

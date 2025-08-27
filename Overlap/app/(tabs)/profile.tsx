@@ -1,4 +1,4 @@
-// app/(tabs)/profile.tsx
+// app/(tabs)/profile.tsx (Fixed SafeArea)
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   SafeAreaView,
@@ -11,6 +11,7 @@ import {
   Alert,
   Modal,
   TextInput,
+  StatusBar,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { getAuth, signOut, onAuthStateChanged, User } from 'firebase/auth';
@@ -25,6 +26,7 @@ import {
 } from 'firebase/firestore';
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 // Component imports
 import ProfileListHeader from '../../components/profile_components/ProfileListHeader';
@@ -396,6 +398,8 @@ const useSearchFilter = (data: (SharedActivity | SharedCollection)[], searchQuer
    ========================= */
 
 function ProfileScreen() {
+  const insets = useSafeAreaInsets();
+  
   /* =========================
      State Management
      ========================= */
@@ -741,16 +745,20 @@ function ProfileScreen() {
   // Show loading state if user is not authenticated or profile is loading
   if (!user || profileLoading) {
     return (
-      <SafeAreaView style={styles.container}>
+      <View style={[styles.container, { paddingTop: insets.top }]}>
+        <StatusBar backgroundColor={Colors.background} barStyle="light-content" />
         <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
           <Text style={{ color: 'white', fontSize: 18 }}>Loading...</Text>
         </View>
-      </SafeAreaView>
+      </View>
     );
   }
 
   return (
-    <SafeAreaView style={styles.container}>
+    <View style={styles.container}>
+      <StatusBar backgroundColor={Colors.background} barStyle="light-content" />
+      <View style={[styles.safeAreaTop, { height: insets.top }]} />
+      
       <FlatList
         key={getListKey()}
         keyExtractor={(item) => item.id}
@@ -870,7 +878,7 @@ function ProfileScreen() {
           </View>
         </View>
       </Modal>
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -881,6 +889,9 @@ function ProfileScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+    backgroundColor: Colors.background,
+  },
+  safeAreaTop: {
     backgroundColor: Colors.background,
   },
   listContainer: {

@@ -20,7 +20,7 @@
     "@gorhom/portal": "^1.0.14",
     "@react-native-async-storage/async-storage": "2.1.2",
     "@react-native-community/datetimepicker": "8.4.1",
-    "@react-native-community/slider": "4.5.6",
+    "@react-native-community/slider": "^4.5.6",
     "@react-native-firebase/app": "^23.0.0",
     "@react-native-picker/picker": "^2.11.1",
     "@react-navigation/bottom-tabs": "^7.3.10",
@@ -48,7 +48,7 @@
     "firebase-admin": "^13.4.0",
     "fuse.js": "^7.1.0",
     "nativewind": "^4.1.23",
-    "react": "^19.0.0",
+    "react": "19.0.0",
     "react-native": "0.79.5",
     "react-native-css-interop": "^0.1.22",
     "react-native-gesture-handler": "~2.24.0",
@@ -58,7 +58,8 @@
     "react-native-svg": "15.11.2",
     "react-native-svg-transformer": "^1.5.1",
     "react-native-tab-view": "^4.1.2",
-    "react-native-webview": "13.13.5"
+    "react-native-webview": "13.13.5",
+    "react-test-renderer": "19.0.0"
   },
   "devDependencies": {
     "@babel/core": "^7.28.3",

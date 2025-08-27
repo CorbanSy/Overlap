@@ -1,4 +1,4 @@
-// app/profile/help.jsx
+// app/profile/help.jsx (Fixed SafeArea)
 import React, { useState } from 'react';
 import {
   SafeAreaView,
@@ -9,9 +9,11 @@ import {
   ScrollView,
   Alert,
   Linking,
+  StatusBar,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const BG = '#0D1117';
 const CARD = '#1B1F24';
@@ -41,6 +43,7 @@ const FAQItem = ({ q, a }) => {
 
 export default function Help() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
 
   const contactSupport = async () => {
     const email = 'support@overlap.app';
@@ -75,7 +78,10 @@ export default function Help() {
   };
 
   return (
-    <SafeAreaView style={styles.safe}>
+    <View style={styles.safe}>
+      <StatusBar backgroundColor={BG} barStyle="light-content" />
+      <View style={[styles.safeAreaTop, { height: insets.top }]} />
+      
       {/* Header */}
       <View style={styles.headerRow}>
         <TouchableOpacity style={styles.iconBtn} onPress={() => router.back()}>
@@ -109,20 +115,20 @@ export default function Help() {
           <Text style={styles.cardTitle}>FAQs</Text>
 
           <FAQItem
-            q="I can’t log in — what should I try?"
-            a="Double-check your email and password. If you still can’t log in, tap “Forgot Password” to reset, or contact Support with the email you used to sign up."
+            q="I can't log in — what should I try?"
+            a="Double-check your email and password. If you still can't log in, tap 'Forgot Password' to reset, or contact Support with the email you used to sign up."
           />
           <FAQItem
             q="How do I edit my profile?"
-            a="Go to your Profile, tap the settings icon, then choose “Edit Profile.” You can change your name, username, email, and bio."
+            a="Go to your Profile, tap the settings icon, then choose 'Edit Profile.' You can change your name, username, email, and bio."
           />
           <FAQItem
             q="How do I manage privacy?"
             a="From Profile → Settings → Privacy, you can toggle profile visibility, control who can send friend requests, and manage blocked users."
           />
           <FAQItem
-            q="Why can’t I see my friend’s profile?"
-            a="They might have a private profile, or you’re no longer friends. Send a friend request, or ask them to check their privacy settings."
+            q="Why can't I see my friend's profile?"
+            a="They might have a private profile, or you're no longer friends. Send a friend request, or ask them to check their privacy settings."
           />
         </View>
 
@@ -145,12 +151,18 @@ export default function Help() {
 
         <View style={{ height: 20 }} />
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: BG },
+  safe: { 
+    flex: 1, 
+    backgroundColor: BG 
+  },
+  safeAreaTop: {
+    backgroundColor: BG,
+  },
 
   headerRow: {
     flexDirection: 'row',

@@ -1,4 +1,4 @@
-// home.tsx (improved)
+// home.tsx (with functional filters)
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { View, StyleSheet, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -30,6 +30,14 @@ import {
   CollectionModal
 } from '../../components/home_components';
 
+// Import filter modals
+import {
+  DistanceFilterModal,
+  RatingFilterModal,
+  TypesFilterModal,
+  PriceFilterModal,
+} from '../../components/home_components/FilterModals';
+
 // Types
 interface UserLocation {
   lat: number;
@@ -48,6 +56,7 @@ interface Place {
   saved?: boolean;
   preferenceScore?: number;
   openingHours?: string[];
+  priceLevel?: number;
 }
 
 // Constants
@@ -108,6 +117,26 @@ const calculatePlaceScore = (place: Place, currentCategory: string): number => {
   return score;
 };
 
+const checkIfPlaceIsOpen = (place: Place): boolean => {
+  if (!place.openingHours?.length) return true; // Assume open if no hours data
+  
+  const now = new Date();
+  const currentDay = now.getDay();
+  const todayHours = place.openingHours[currentDay];
+  
+  if (!todayHours || todayHours.includes('Closed')) return false;
+  
+  // Simplified - in production, you'd parse actual times
+  return true;
+};
+
+const matchesPriceLevel = (place: Place, priceRange: string): boolean => {
+  if (!priceRange || !place.priceLevel) return true;
+  
+  const targetLevel = priceRange.length;
+  return place.priceLevel === targetLevel;
+};
+
 export default function HomeScreen() {
   const router = useRouter();
   const auth = getAuth();
@@ -132,6 +161,12 @@ export default function HomeScreen() {
   const [collectionModalVisible, setCollectionModalVisible] = useState(false);
   const [selectedPlaceForCollection, setSelectedPlaceForCollection] = useState<Place | null>(null);
   
+  // Filter modal states
+  const [distanceModalVisible, setDistanceModalVisible] = useState(false);
+  const [ratingModalVisible, setRatingModalVisible] = useState(false);
+  const [typesModalVisible, setTypesModalVisible] = useState(false);
+  const [priceModalVisible, setPriceModalVisible] = useState(false);
+  
   // Refs
   const fuseRef = useRef<Fuse<Place> | null>(null);
   const flatListRef = useRef<any>(null);
@@ -145,6 +180,7 @@ export default function HomeScreen() {
       filterState.maxDistance ||
       filterState.minRating ||
       filterState.selectedTypes?.length ||
+      filterState.priceRange ||
       (filterState.sort && filterState.sort !== 'recommended')
     );
   }, [filterState]);
@@ -271,8 +307,31 @@ export default function HomeScreen() {
 
   // Fetch places when dependencies change
   useEffect(() => {
-    fetchPlaces();
-  }, [fetchPlaces]);
+    const fetchPlaces = async () => {
+      if (loading) return;
+      
+      setLoading(true);
+      setError(null);
+      
+      try {
+        const snap = await getDocs(collection(db, 'places'));
+        const allPlaces = snap.docs.map(d => ({ 
+          id: d.id, 
+          ...d.data() 
+        } as Place));
+        
+        setPlaces(allPlaces);
+        console.log('[fetchPlaces] loaded places:', allPlaces.length);
+      } catch (error) {
+        console.error('Error fetching places:', error);
+        setError('Failed to load places. Please try again.');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+  fetchPlaces();
+}, []); // ← Empty dependency array - only runs once on mount
 
   // Setup search with improved options
   useEffect(() => {
@@ -283,9 +342,23 @@ export default function HomeScreen() {
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await fetchPlaces();
-    setRefreshing(false);
-  }, [fetchPlaces]);
+    setError(null);
+    
+    try {
+      const snap = await getDocs(collection(db, 'places'));
+      const allPlaces = snap.docs.map(d => ({ 
+        id: d.id, 
+        ...d.data() 
+      } as Place));
+      
+      setPlaces(allPlaces);
+    } catch (error) {
+      console.error('Error fetching places:', error);
+      setError('Failed to load places. Please try again.');
+    } finally {
+      setRefreshing(false);
+    }
+  }, []);
 
   // Enhanced filtering and sorting logic
   const getDisplayedPlaces = useCallback(() => {
@@ -298,7 +371,7 @@ export default function HomeScreen() {
     }
 
     // Apply filters
-    if (filterState.minRating) {
+    if (filterState.minRating && filterState.minRating > 0) {
       filteredPlaces = filteredPlaces.filter(place => 
         place.rating >= filterState.minRating!
       );
@@ -322,18 +395,14 @@ export default function HomeScreen() {
       );
     }
 
-    if (filterState.openNow) {
-      const now = new Date();
-      const currentDay = now.getDay();
+    if (filterState.priceRange) {
+      filteredPlaces = filteredPlaces.filter(place =>
+        matchesPriceLevel(place, filterState.priceRange!)
+      );
+    }
 
-      filteredPlaces = filteredPlaces.filter(place => {
-        if (!place.openingHours?.length) return true;
-        
-        const todayHours = place.openingHours[currentDay];
-        if (!todayHours || todayHours.includes('Closed')) return false;
-        
-        return true; // Simplified for now - could implement proper time parsing
-      });
+    if (filterState.openNow) {
+      filteredPlaces = filteredPlaces.filter(place => checkIfPlaceIsOpen(place));
     }
 
     // Apply sorting
@@ -471,23 +540,39 @@ export default function HomeScreen() {
     updateFilters({ openNow: !filterState.openNow });
   }, [filterState.openNow, updateFilters]);
 
+  // Filter modal handlers
   const handleDistanceFilter = useCallback(() => {
-    // This would typically open a modal or sheet for distance selection
-    console.log('Distance filter - implement modal');
+    setDistanceModalVisible(true);
   }, []);
 
   const handleRatingFilter = useCallback(() => {
-    // This would typically open a modal or sheet for rating selection
-    console.log('Rating filter - implement modal');
-  }, []);
-
-  const handlePriceFilter = useCallback(() => {
-    console.log('Price filter - implement modal');
+    setRatingModalVisible(true);
   }, []);
 
   const handleTypesFilter = useCallback(() => {
-    console.log('Types filter - implement modal');
+    setTypesModalVisible(true);
   }, []);
+
+  const handlePriceFilter = useCallback(() => {
+    setPriceModalVisible(true);
+  }, []);
+
+  // Filter modal apply handlers
+  const applyDistanceFilter = useCallback((distance: number) => {
+    updateFilters({ maxDistance: distance });
+  }, [updateFilters]);
+
+  const applyRatingFilter = useCallback((rating: number) => {
+    updateFilters({ minRating: rating > 0 ? rating : undefined });
+  }, [updateFilters]);
+
+  const applyTypesFilter = useCallback((types: string[]) => {
+    updateFilters({ selectedTypes: types.length > 0 ? types : undefined });
+  }, [updateFilters]);
+
+  const applyPriceFilter = useCallback((priceRange: string) => {
+    updateFilters({ priceRange: priceRange || undefined });
+  }, [updateFilters]);
 
   const handleClearSearch = useCallback(() => {
     setSearchQuery('');
@@ -552,6 +637,35 @@ export default function HomeScreen() {
           <VennLoader size={120} />
         </View>
       )}
+
+      {/* Filter Modals */}
+      <DistanceFilterModal
+        visible={distanceModalVisible}
+        onClose={() => setDistanceModalVisible(false)}
+        currentDistance={filterState.maxDistance}
+        onApply={applyDistanceFilter}
+      />
+
+      <RatingFilterModal
+        visible={ratingModalVisible}
+        onClose={() => setRatingModalVisible(false)}
+        currentRating={filterState.minRating}
+        onApply={applyRatingFilter}
+      />
+
+      <TypesFilterModal
+        visible={typesModalVisible}
+        onClose={() => setTypesModalVisible(false)}
+        currentTypes={filterState.selectedTypes}
+        onApply={applyTypesFilter}
+      />
+
+      <PriceFilterModal
+        visible={priceModalVisible}
+        onClose={() => setPriceModalVisible(false)}
+        currentPriceRange={filterState.priceRange}
+        onApply={applyPriceFilter}
+      />
 
       <CollectionModal
         visible={collectionModalVisible}

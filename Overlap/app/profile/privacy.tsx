@@ -1,11 +1,12 @@
-// app/profile/privacy.tsx
+// app/profile/privacy.tsx (Fixed SafeArea)
 import React, { useEffect, useState } from 'react';
 import {
   SafeAreaView, View, Text, StyleSheet, Switch, TouchableOpacity,
-  ScrollView, TextInput, Alert, Modal, FlatList, ActivityIndicator
+  ScrollView, TextInput, Alert, Modal, FlatList, ActivityIndicator, StatusBar
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getPrivacySettings, setPrivacySettings } from '../../_utils/storage/userProfile';
 import { 
   blockUser, 
@@ -35,6 +36,7 @@ interface PrivacyState {
 
 export default function Privacy() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
 
   // Privacy settings state
   const [loading, setLoading] = useState(true);
@@ -245,17 +247,21 @@ export default function Privacy() {
 
   if (loading) {
     return (
-      <SafeAreaView style={styles.safe}>
+      <View style={[styles.safe, { paddingTop: insets.top }]}>
+        <StatusBar backgroundColor={BG} barStyle="light-content" />
         <View style={styles.loadingContainer}>
           <ActivityIndicator size="large" color={ACCENT} />
           <Text style={styles.loadingText}>Loading privacy settings...</Text>
         </View>
-      </SafeAreaView>
+      </View>
     );
   }
 
   return (
-    <SafeAreaView style={styles.safe}>
+    <View style={styles.safe}>
+      <StatusBar backgroundColor={BG} barStyle="light-content" />
+      <View style={[styles.safeAreaTop, { height: insets.top }]} />
+      
       {/* Header */}
       <View style={styles.headerRow}>
         <TouchableOpacity style={styles.iconBtn} onPress={() => router.back()}>
@@ -530,12 +536,18 @@ export default function Privacy() {
           </View>
         </View>
       </Modal>
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: BG },
+  safe: { 
+    flex: 1, 
+    backgroundColor: BG 
+  },
+  safeAreaTop: {
+    backgroundColor: BG,
+  },
   headerRow: {
     flexDirection: 'row', 
     alignItems: 'center', 
