@@ -1,5 +1,5 @@
-// ExploreMoreCard.tsx
-import React, { useEffect, useState } from 'react';
+// components/ExploreMoreCard.tsx
+import React, { useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -7,99 +7,174 @@ import {
   StyleSheet,
   ScrollView,
   ImageBackground,
-  LayoutAnimation,
-  UIManager,
-  Platform,
+  Dimensions,
 } from 'react-native';
-import { PLACE_CATEGORIES } from '../app/_utils/placeCategories';
+import { Ionicons } from '@expo/vector-icons';
 
-type Props = {
+interface SubCategory {
+  key: string;
+  label: string;
+}
+
+interface BroadCategory {
+  key: string;
+  label: string;
+  image?: any;
+  description?: string;
+}
+
+interface ExploreMoreCardProps {
   style?: any;
   onSubCategoryPress?: (subKey: string) => void;
   onBroadCategoryPress?: (catKey: string) => void;
-  currentSubCategories: { key: string; label: string }[];
-  otherBroadCategories: { key: string; label: string; image?: any }[];
-};
-
-if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
-  UIManager.setLayoutAnimationEnabledExperimental(true);
+  currentSubCategories: SubCategory[];
+  otherBroadCategories: BroadCategory[];
+  currentCategoryLabel?: string;
 }
 
-const ExploreMoreCard: React.FC<Props> = ({
+const ExploreMoreCard: React.FC<ExploreMoreCardProps> = ({
   style,
   onSubCategoryPress,
   onBroadCategoryPress,
   currentSubCategories,
   otherBroadCategories,
+  currentCategoryLabel,
 }) => {
-  const [expandedCategoryKey, setExpandedCategoryKey] = useState<string | null>(null);
+  const screenWidth = Dimensions.get('window').width;
+  const cardWidth = Math.min(150, (screenWidth - 64) / 2.5);
 
-  function handleExpandToggle(catKey: string) {
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setExpandedCategoryKey((prev) => (prev === catKey ? null : catKey));
-  }
-
-  // Wrap sub‑categories in a View to avoid returning a “bare” array
-  const renderNarrowDown = () => {
+  // Memoize subcategories for better performance
+  const renderSubCategories = useMemo(() => {
     if (currentSubCategories.length === 0) {
-      return <Text style={styles.loadingText}>No subcategories defined</Text>;
+      return (
+        <View style={styles.emptyState}>
+          <Ionicons name="options-outline" size={24} color="#666" />
+          <Text style={styles.emptyStateText}>
+            No subcategories available for this category
+          </Text>
+        </View>
+      );
     }
+
     return (
-      <View style={styles.subCategoriesContainer}>
-        {currentSubCategories.map((sub, idx) => (
+      <View style={styles.subCategoriesGrid}>
+        {currentSubCategories.map((sub) => (
           <TouchableOpacity
-            key={sub.key ?? `sub-${idx}`}               // ensure string key
+            key={sub.key}
             style={styles.subCategoryButton}
-            onPress={() => onSubCategoryPress?.(sub.key)} // pass sub.key not label
+            onPress={() => onSubCategoryPress?.(sub.key)}
+            activeOpacity={0.7}
           >
             <Text style={styles.subCategoryButtonText}>{sub.label}</Text>
           </TouchableOpacity>
         ))}
       </View>
     );
-  };
+  }, [currentSubCategories, onSubCategoryPress]);
 
-  const renderExpand = () => (
-    <ScrollView
-      horizontal
-      showsHorizontalScrollIndicator={false}
-      contentContainerStyle={styles.categoriesContainer}
+  // Memoize category card renderer
+  const renderCategoryCard = useCallback((category: BroadCategory) => (
+    <TouchableOpacity
+      key={category.key}
+      style={[styles.categoryCard, { width: cardWidth }]}
+      onPress={() => onBroadCategoryPress?.(category.key)}
+      activeOpacity={0.8}
     >
-      {otherBroadCategories.map((cat, idx) => (
-        <TouchableOpacity
-          key={cat.key ?? `cat-${idx}`}                  // fallback in case key is missing
-          style={styles.categoryCard}
-          onPress={() => onBroadCategoryPress?.(cat.key)}
+      {category.image ? (
+        <ImageBackground
+          source={category.image}
+          style={styles.categoryImage}
+          imageStyle={styles.categoryImageStyle}
+          resizeMode="cover"
         >
-          <ImageBackground
-            source={cat.image}
-            style={styles.categoryImage}
-            imageStyle={{ borderRadius: 8 }}
-          >
-            <View style={styles.categoryOverlay}>
-              <Text style={styles.categoryLabel}>{cat.label}</Text>
-            </View>
-          </ImageBackground>
-        </TouchableOpacity>
-      ))}
-    </ScrollView>
-  );
+          <View style={styles.categoryOverlay}>
+            <Text style={styles.categoryLabel} numberOfLines={2}>
+              {category.label}
+            </Text>
+            {category.description && (
+              <Text style={styles.categoryDescription} numberOfLines={1}>
+                {category.description}
+              </Text>
+            )}
+          </View>
+        </ImageBackground>
+      ) : (
+        <View style={[styles.categoryImage, styles.categoryImageFallback]}>
+          <Ionicons name="location-outline" size={32} color="#666" />
+          <View style={styles.categoryOverlay}>
+            <Text style={styles.categoryLabel} numberOfLines={2}>
+              {category.label}
+            </Text>
+            {category.description && (
+              <Text style={styles.categoryDescription} numberOfLines={1}>
+                {category.description}
+              </Text>
+            )}
+          </View>
+        </View>
+      )}
+    </TouchableOpacity>
+  ), [cardWidth, onBroadCategoryPress]);
+
+  const renderBroadCategories = useMemo(() => {
+    if (otherBroadCategories.length === 0) {
+      return (
+        <View style={styles.emptyState}>
+          <Ionicons name="grid-outline" size={24} color="#666" />
+          <Text style={styles.emptyStateText}>
+            No other categories available
+          </Text>
+        </View>
+      );
+    }
+
+    return (
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.categoriesContainer}
+        decelerationRate="fast"
+        snapToInterval={cardWidth + 12}
+        snapToAlignment="start"
+      >
+        {otherBroadCategories.map(renderCategoryCard)}
+      </ScrollView>
+    );
+  }, [otherBroadCategories, renderCategoryCard, cardWidth]);
 
   return (
     <View style={[styles.container, style]}>
-      <Text style={styles.title}>Explore More</Text>
-      <Text style={styles.subtitle}>
-        Narrow down your search with subcategories or switch to a different category.
-      </Text>
-
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Narrow Down</Text>
-        {renderNarrowDown()}
+      {/* Header */}
+      <View style={styles.header}>
+        <View style={styles.headerContent}>
+          <Ionicons name="compass" size={24} color="#F5A623" />
+          <Text style={styles.title}>Explore More</Text>
+        </View>
+        <Text style={styles.subtitle}>
+          Refine your search or discover new categories
+        </Text>
       </View>
 
+      {/* Narrow Down Section */}
+      {currentSubCategories.length > 0 && (
+        <View style={styles.section}>
+          <View style={styles.sectionHeader}>
+            <Ionicons name="filter" size={18} color="#F5A623" />
+            <Text style={styles.sectionTitle}>
+              Refine {currentCategoryLabel ? `"${currentCategoryLabel}"` : 'Search'}
+            </Text>
+          </View>
+          {renderSubCategories}
+        </View>
+      )}
+
+      {/* Expand Section */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Expand Your Search</Text>
-        {renderExpand()}
+        <View style={styles.sectionHeader}>
+          <Ionicons name="grid" size={18} color="#F5A623" />
+          <Text style={styles.sectionTitle}>Browse Categories</Text>
+        </View>
+        {renderBroadCategories}
       </View>
     </View>
   );
@@ -110,75 +185,126 @@ export default ExploreMoreCard;
 const styles = StyleSheet.create({
   container: {
     backgroundColor: '#1B1F24',
-    borderRadius: 12,
-    paddingVertical: 16,
-    paddingHorizontal: 12,
+    borderRadius: 16,
+    paddingVertical: 20,
+    paddingHorizontal: 16,
     marginHorizontal: 16,
-    marginVertical: 10,
+    marginVertical: 12,
+    borderWidth: 1,
+    borderColor: '#2A2E35',
   },
-  title: {
-    color: '#fff',
-    fontSize: 24,
-    fontWeight: 'bold',
-    textAlign: 'center',
-    marginBottom: 4,
+  header: {
+    marginBottom: 20,
   },
-  subtitle: {
-    color: '#ccc',
-    fontSize: 14,
-    textAlign: 'center',
-    marginBottom: 12,
-  },
-  section: {
-    marginVertical: 8,
-  },
-  sectionTitle: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: '600',
+  headerContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
     marginBottom: 8,
   },
+  title: {
+    color: '#FFFFFF',
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginLeft: 8,
+  },
+  subtitle: {
+    color: '#AAAAAA',
+    fontSize: 14,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  section: {
+    marginBottom: 16,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  sectionTitle: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+    marginLeft: 8,
+  },
+  subCategoriesGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
   subCategoryButton: {
-    backgroundColor: '#333',
-    paddingVertical: 6,
-    paddingHorizontal: 10,
-    borderRadius: 6,
+    backgroundColor: '#2A2E35',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#3A3E45',
     marginBottom: 4,
-    marginRight: 6,
   },
   subCategoryButtonText: {
-    color: '#fff',
+    color: '#FFFFFF',
     fontSize: 14,
+    fontWeight: '500',
   },
   categoriesContainer: {
-    flexDirection: 'row',
-    paddingHorizontal: 8,
+    paddingHorizontal: 4,
+    paddingRight: 16,
   },
   categoryCard: {
-    width: 140,
-    height: 140,
-    borderRadius: 8,
+    height: 120,
+    borderRadius: 12,
     overflow: 'hidden',
-    marginRight: 10,
-    backgroundColor: '#333',
+    marginRight: 12,
+    backgroundColor: '#2A2E35',
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 1,
+    },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
   },
   categoryImage: {
     width: '100%',
     height: '100%',
     justifyContent: 'flex-end',
   },
+  categoryImageStyle: {
+    borderRadius: 12,
+  },
+  categoryImageFallback: {
+    backgroundColor: '#2A2E35',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   categoryOverlay: {
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    padding: 6,
-    borderBottomLeftRadius: 8,
-    borderBottomRightRadius: 8,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    padding: 8,
+    borderBottomLeftRadius: 12,
+    borderBottomRightRadius: 12,
   },
   categoryLabel: {
-    color: '#fff',
-    fontSize: 14,
+    color: '#FFFFFF',
+    fontSize: 13,
     fontWeight: 'bold',
+    lineHeight: 16,
   },
-  loadingText: {
-    color: '#ccc',
+  categoryDescription: {
+    color: '#CCCCCC',
+    fontSize: 11,
+    marginTop: 2,
+  },
+  emptyState: {
+    alignItems: 'center',
+    paddingVertical: 20,
+  },
+  emptyStateText: {
+    color: '#666',
+    fontSize: 14,
+    textAlign: 'center',
+    marginTop: 8,
+    lineHeight: 18,
   },
 });
