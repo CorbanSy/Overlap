@@ -33,7 +33,7 @@ import ProfileListHeader from '../../components/profile_components/ProfileListHe
 import NewCollectionModal from '../../components/profile_components/modals/NewCollectionModal';
 import CollectionSelectionModal from '../../components/profile_components/modals/CollectionSelectionModal';
 import SettingsDropdown from '../../components/profile_components/modals/SettingsDropdown';
-import ActivityCard from '../../components/ActivityCard';
+import ActivityCard from '../../components/profile_components/ActivityCard';
 import CollectionCard from '../../components/CollectionCard';
 
 // Utility imports
