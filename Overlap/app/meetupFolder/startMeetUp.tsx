@@ -1,4 +1,4 @@
-// app/meetupFolder/startMeetUp.tsx - Updated to pass category prop
+// app/meetupFolder/startMeetUp.tsx - Fixed layout to prevent button overlap
 import React, { useState, useRef, useMemo, useEffect } from 'react';
 import {
   SafeAreaView,
@@ -25,6 +25,7 @@ import { Ionicons } from '@expo/vector-icons';
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 const BUTTON_SIZE = 60;
+const CONTROL_BAR_HEIGHT = 100; // Fixed height for control bar
 const COLORS = {
   bg: '#0D1117',
   surface: '#1B1F24',
@@ -42,8 +43,8 @@ export default function StartMeetupScreen() {
   const [showLeaderboardModal, setShowLeaderboardModal] = useState(false);
   const [showTurboMode, setShowTurboMode] = useState(false);
   const [turboSessionId, setTurboSessionId] = useState<string | null>(null);
-  const [currentCategory, setCurrentCategory] = useState<string>('Dining'); // Track current category
-  const [meetupData, setMeetupData] = useState<any>(null); // Track meetup data
+  const [currentCategory, setCurrentCategory] = useState<string>('Dining');
+  const [meetupData, setMeetupData] = useState<any>(null);
   const [refreshKey, setRefreshKey] = useState(0);
 
   const deckRef = useRef<SwipingHandle>(null);
@@ -69,21 +70,17 @@ export default function StartMeetupScreen() {
     loadMeetupData();
   }, [meetupId]);
 
-  // Handle category change - Updated to be more reliable
+  // Handle category change
   const handleCategoryChange = async (newCategory: string) => {
     if (!meetupId) return;
 
     try {
       console.log(`[handleCategoryChange] Changing category from ${currentCategory} to ${newCategory}`);
       
-      // Update local state FIRST to immediately reflect the change
       setCurrentCategory(newCategory);
       setMeetupData(prev => ({ ...prev, category: newCategory }));
-      
-      // Then increment refresh key to trigger SwipingScreen reload
       setRefreshKey(prev => prev + 1);
       
-      // Update the database in the background
       await updateMeetup({
         id: meetupId,
         category: newCategory,
@@ -94,7 +91,6 @@ export default function StartMeetupScreen() {
     } catch (error) {
       console.error('Error updating meetup category:', error);
       
-      // Revert local state if database update fails
       const originalData = await getMeetupData(meetupId);
       setCurrentCategory(originalData.category || 'Dining');
       setMeetupData(originalData);
@@ -133,10 +129,8 @@ export default function StartMeetupScreen() {
   const openLeaderboard = () => {
     console.log('Opening leaderboard...');
     setShowLeaderboardModal(true);
-    // Reset animations
     slideAnim.setValue(SCREEN_WIDTH);
     panX.setValue(0);
-    // Animate slide in from right
     Animated.spring(slideAnim, {
       toValue: 0,
       useNativeDriver: true,
@@ -167,16 +161,14 @@ export default function StartMeetupScreen() {
           panX.setValue(0);
         },
         onPanResponderMove: (_, gestureState) => {
-          // Only allow swiping to the right (positive dx)
           if (gestureState.dx > 0) {
             panX.setValue(gestureState.dx);
           }
         },
         onPanResponderRelease: (_, gestureState) => {
-          const threshold = SCREEN_WIDTH * 0.3; // 30% of screen width
+          const threshold = SCREEN_WIDTH * 0.3;
           
           if (gestureState.dx > threshold || gestureState.vx > 0.5) {
-            // Close the modal
             Animated.timing(panX, {
               toValue: SCREEN_WIDTH,
               duration: 200,
@@ -186,7 +178,6 @@ export default function StartMeetupScreen() {
               panX.setValue(0);
             });
           } else {
-            // Snap back to original position
             Animated.spring(panX, {
               toValue: 0,
               useNativeDriver: true,
@@ -207,7 +198,6 @@ export default function StartMeetupScreen() {
     );
   }
 
-  // Render Turbo Mode if active
   if (showTurboMode) {
     return (
       <TurboModeScreen
@@ -230,7 +220,6 @@ export default function StartMeetupScreen() {
             <Text style={styles.headerButton}>Leave Meetup</Text>
           </TouchableOpacity>
 
-          {/* Category Display */}
           <View style={styles.categoryDisplay}>
             <Text style={styles.categoryText}>{currentCategory}</Text>
           </View>
@@ -241,7 +230,7 @@ export default function StartMeetupScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* TURBO MODE BUTTON - Moved below header */}
+        {/* TURBO MODE BUTTON */}
         <View style={styles.turboContainer}>
           <TouchableOpacity 
             style={styles.turboButton} 
@@ -256,17 +245,19 @@ export default function StartMeetupScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* SWIPE DECK - Pass category prop to avoid race condition */}
-        <SwipingScreen 
-          key={`${meetupId}-${currentCategory}-${refreshKey}`}
-          ref={deckRef} 
-          meetupId={String(meetupId)} 
-          category={currentCategory} // Pass current category directly
-          showInternalButtons={false} 
-          forceRefresh={refreshKey}
-        />
+        {/* SWIPE DECK - Now contained within available space */}
+        <View style={styles.swipeDeckContainer}>
+          <SwipingScreen 
+            key={`${meetupId}-${currentCategory}-${refreshKey}`}
+            ref={deckRef} 
+            meetupId={String(meetupId)} 
+            category={currentCategory}
+            showInternalButtons={false} 
+            forceRefresh={refreshKey}
+          />
+        </View>
 
-        {/* CONTROLS (single source of truth) */}
+        {/* CONTROLS - Fixed at bottom with proper spacing */}
         <View style={styles.controlBar}>
           <TouchableOpacity
             style={[styles.controlButton, { backgroundColor: COLORS.danger }]}
@@ -331,7 +322,6 @@ export default function StartMeetupScreen() {
               ]}
               {...panResponder.panHandlers}
             >
-              {/* Header with close button and swipe indicator */}
               <View style={styles.slideModalHeader}>
                 <View style={styles.swipeIndicator} />
                 <View style={styles.headerContent}>
@@ -351,7 +341,6 @@ export default function StartMeetupScreen() {
                 </View>
               </View>
               
-              {/* Leaderboard content */}
               <View style={styles.slideModalBody}>
                 <Leader meetupId={String(meetupId)} />
               </View>
@@ -368,6 +357,7 @@ const styles = StyleSheet.create({
     flex: 1, 
     backgroundColor: COLORS.bg 
   },
+  
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -388,7 +378,6 @@ const styles = StyleSheet.create({
     fontWeight: '600' 
   },
 
-  // Category Display
   categoryDisplay: {
     backgroundColor: COLORS.surface,
     paddingHorizontal: 16,
@@ -403,7 +392,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 
-  // Turbo Mode Button - Repositioned
   turboContainer: {
     alignItems: 'center',
     paddingVertical: 12,
@@ -438,14 +426,25 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 
+  // NEW: Container for swipe deck that respects control bar space
+  swipeDeckContainer: {
+    flex: 1,
+    marginBottom: CONTROL_BAR_HEIGHT, // Reserve space for control bar
+  },
+
+  // UPDATED: Control bar with fixed positioning and proper spacing
   controlBar: {
     position: 'absolute',
-    bottom: 20,
+    bottom: 0,
     left: 0,
     right: 0,
+    height: CONTROL_BAR_HEIGHT,
     flexDirection: 'row',
     justifyContent: 'space-around',
+    alignItems: 'center',
     paddingHorizontal: 40,
+    paddingBottom: 20, // Safe area padding
+    backgroundColor: COLORS.bg, // Ensure background doesn't show through
   },
   controlButton: {
     width: BUTTON_SIZE,
@@ -464,7 +463,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.accent 
   },
 
-  // Modal styles
+  // Modal styles (unchanged)
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',
@@ -472,7 +471,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
 
-  // Slide-in modal styles (unchanged)
   slideModalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',

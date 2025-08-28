@@ -1,4 +1,4 @@
-// components/swiping.tsx - Fixed layout issues
+// components/swiping.tsx - Fixed to respect parent container bounds
 import React, {
   useRef,
   useState,
@@ -225,11 +225,7 @@ const SwipingScreen = forwardRef<SwipingHandle, SwipingScreenProps>(
 
             Animated.timing(scale, { toValue: 1, duration: 100, useNativeDriver: true }).start();
 
-            if (Math.abs(g.dx) < 15 && Math.abs(g.dy) < 15) {
-              handleCardTap();
-              return;
-            }
-
+            // Remove tap-to-open functionality - only allow swiping
             const config = { duration: 250, useNativeDriver: true } as const;
 
             if (g.dx > SWIPE_THRESHOLD) {
@@ -445,8 +441,8 @@ const SwipingScreen = forwardRef<SwipingHandle, SwipingScreenProps>(
       <View style={styles.container}>
         <StatusBar barStyle="light-content" backgroundColor={COLORS.background} />
         
-        {/* Fixed Header Area - No longer absolute positioned */}
-        <View style={[styles.headerArea, { paddingTop: insets.top }]}>
+        {/* Header Area - Compact for parent container */}
+        <View style={styles.headerArea}>
           {/* Progress Bar */}
           <View style={styles.progressContainer}>
             <View style={styles.progressBar}>
@@ -468,15 +464,15 @@ const SwipingScreen = forwardRef<SwipingHandle, SwipingScreenProps>(
           </View>
         </View>
 
-        {/* Card Area */}
+        {/* Card Area - Properly contained */}
         <View style={styles.cardContainer}>
           {nextCard && renderCard(nextCard, currentCardIndex + 1, true)}
           {currentCard && renderCard(currentCard, currentCardIndex)}
         </View>
 
-        {/* Bottom Controls */}
+        {/* Only show internal buttons if requested */}
         {showInternalButtons && (
-          <View style={[styles.actionButtons, { paddingBottom: insets.bottom + SPACING.xl }]}>
+          <View style={styles.actionButtons}>
             <TouchableOpacity
               style={[styles.actionButton, styles.passButton]}
               onPress={swipeLeft}
@@ -516,10 +512,10 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.background 
   },
   
-  // Fixed header area to prevent overlap
+  // Compact header area
   headerArea: {
     paddingHorizontal: SPACING.lg,
-    paddingBottom: SPACING.md,
+    paddingVertical: SPACING.sm, // Reduced padding
     zIndex: 10,
   },
   
@@ -527,7 +523,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.md,
-    marginBottom: SPACING.sm,
+    marginBottom: SPACING.xs, // Reduced margin
   },
   progressBar: { 
     flex: 1, 
@@ -553,13 +549,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   
-  // Card area with proper spacing
+  // Card area that fills remaining space
   cardContainer: { 
-    flex: 1, 
+    flex: 1,
     justifyContent: 'center', 
     alignItems: 'center', 
     paddingHorizontal: SPACING.lg,
-    paddingBottom: 80, // Space for bottom controls
   },
 
   centerContainer: {
@@ -570,10 +565,12 @@ const styles = StyleSheet.create({
     gap: SPACING.lg,
   },
 
+  // Card styles with proper sizing
   card: {
     position: 'absolute',
     width: SCREEN_WIDTH - SPACING.xl * 2,
-    height: SCREEN_HEIGHT * 0.65, // Reduced height to prevent overlap
+    height: '85%', // Use percentage instead of fixed height
+    maxHeight: 500, // Prevent cards from being too tall
     backgroundColor: COLORS.surface,
     borderRadius: 20,
     overflow: 'hidden',
@@ -633,14 +630,14 @@ const styles = StyleSheet.create({
   },
   moreInfoText: { color: COLORS.background, fontSize: 14, fontWeight: '700' },
 
+  // Internal action buttons (only shown when showInternalButtons = true)
   actionButtons: {
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: SPACING.xl,
-    paddingBottom: SPACING.xl,
+    paddingBottom: SPACING.md,
     gap: SPACING.xl,
-    zIndex: 10,
   },
   actionButton: {
     width: 56,
@@ -652,8 +649,7 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,
-    elevation: 1000,
-    zIndex: 1001,
+    elevation: 6,
   },
   passButton: { backgroundColor: COLORS.danger },
   likeButton: { backgroundColor: COLORS.success },
