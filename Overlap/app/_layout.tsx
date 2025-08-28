@@ -57,6 +57,8 @@ export default function RootLayout() {
             <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
             <Stack.Screen name="morefilters" options={{ title: 'More Filters', headerShown: false }} />
             <Stack.Screen name="moreInfo" options={{ title: 'More Info', headerShown: false }} />
+            {/* Add this line to hide header for meetupFolder */}
+            <Stack.Screen name="meetupFolder" options={{ headerShown: false }} />
           </Stack>
 
           {/* Global loading overlay */}

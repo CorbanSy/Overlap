@@ -66,3 +66,9 @@ export async function clearMeetupSwipes(meetupId) {
   const batchDeletes = snap.docs.map(d => deleteDoc(d.ref));
   await Promise.all(batchDeletes);
 }
+
+// Add this function to meetupSwipes.js
+export async function getTurboMeetupActivityLeaderboard(meetupId) {
+  // This is identical to getMeetupActivityLeaderboard but helps with clarity
+  return getMeetupActivityLeaderboard(meetupId);
+}

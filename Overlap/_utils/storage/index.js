@@ -8,3 +8,4 @@ export * from './meetupActivities';
 export * from './meetupSwipes';
 export * from './places';
 export * from './reviews';
+export * from './turboMeetup';

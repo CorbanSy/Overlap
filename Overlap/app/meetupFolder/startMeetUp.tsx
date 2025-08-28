@@ -1,5 +1,5 @@
-//app/meetupFolder/startMeetUp.tsx
-import React, { useState, useRef, useMemo } from 'react';
+// app/meetupFolder/startMeetUp.tsx - Updated to pass category prop
+import React, { useState, useRef, useMemo, useEffect } from 'react';
 import {
   SafeAreaView,
   StyleSheet,
@@ -10,13 +10,16 @@ import {
   Animated,
   Dimensions,
   PanResponder,
+  Alert,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import SwipingScreen, { SwipingHandle } from '../../components/swiping';
-import ExploreMoreCard from '../../components/ExploreMoreCard';
+import MeetupExploreCard from '../../components/MeetUpExploreCard';
 import Leader from '../../components/leader';
-import { PLACE_CATEGORIES } from '../../_utils/placeCategories';
+import TurboModeScreen from '../../components/turbo/TurboModeScreen';
+import { initializeTurboSession } from '../../_utils/storage/turboMeetup';
+import { getMeetupData, updateMeetup } from '../../_utils/storage/meetups';
 import { Ionicons } from '@expo/vector-icons';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -33,14 +36,99 @@ const COLORS = {
 export default function StartMeetupScreen() {
   const { meetupId } = useLocalSearchParams<{ meetupId?: string }>();
   const router = useRouter();
+  
+  // State management
   const [showDirectionModal, setShowDirectionModal] = useState(false);
   const [showLeaderboardModal, setShowLeaderboardModal] = useState(false);
+  const [showTurboMode, setShowTurboMode] = useState(false);
+  const [turboSessionId, setTurboSessionId] = useState<string | null>(null);
+  const [currentCategory, setCurrentCategory] = useState<string>('Dining'); // Track current category
+  const [meetupData, setMeetupData] = useState<any>(null); // Track meetup data
+  const [refreshKey, setRefreshKey] = useState(0);
 
   const deckRef = useRef<SwipingHandle>(null);
   
   // Animation for slide-in from right
   const slideAnim = useRef(new Animated.Value(SCREEN_WIDTH)).current;
   const panX = useRef(new Animated.Value(0)).current;
+
+  // Load meetup data on mount
+  useEffect(() => {
+    const loadMeetupData = async () => {
+      if (!meetupId) return;
+      
+      try {
+        const data = await getMeetupData(meetupId);
+        setMeetupData(data);
+        setCurrentCategory(data.category || 'Dining');
+      } catch (error) {
+        console.error('Error loading meetup data:', error);
+      }
+    };
+
+    loadMeetupData();
+  }, [meetupId]);
+
+  // Handle category change - Updated to be more reliable
+  const handleCategoryChange = async (newCategory: string) => {
+    if (!meetupId) return;
+
+    try {
+      console.log(`[handleCategoryChange] Changing category from ${currentCategory} to ${newCategory}`);
+      
+      // Update local state FIRST to immediately reflect the change
+      setCurrentCategory(newCategory);
+      setMeetupData(prev => ({ ...prev, category: newCategory }));
+      
+      // Then increment refresh key to trigger SwipingScreen reload
+      setRefreshKey(prev => prev + 1);
+      
+      // Update the database in the background
+      await updateMeetup({
+        id: meetupId,
+        category: newCategory,
+      });
+
+      console.log(`[handleCategoryChange] Category updated successfully. Local: ${newCategory}, RefreshKey: ${refreshKey + 1}`);
+      
+    } catch (error) {
+      console.error('Error updating meetup category:', error);
+      
+      // Revert local state if database update fails
+      const originalData = await getMeetupData(meetupId);
+      setCurrentCategory(originalData.category || 'Dining');
+      setMeetupData(originalData);
+      
+      throw error;
+    }
+  };
+
+  // Turbo Mode Handler
+  const handleStartTurboMode = async () => {
+    if (!meetupId) {
+      Alert.alert('Error', 'No meetup ID found');
+      return;
+    }
+
+    try {
+      const data = meetupData || await getMeetupData(meetupId);
+      const groupSize = data.participants?.length || 1;
+      
+      if (groupSize < 3) {
+        Alert.alert(
+          'Not Enough Participants', 
+          'Turbo Mode requires at least 3 participants. Invite more friends first!'
+        );
+        return;
+      }
+
+      await initializeTurboSession(meetupId, groupSize);
+      setShowTurboMode(true);
+    } catch (error) {
+      console.error('Error starting turbo mode:', error);
+      Alert.alert('Error', 'Failed to start Turbo Mode. Please try again.');
+    }
+  };
 
   const openLeaderboard = () => {
     console.log('Opening leaderboard...');
@@ -111,16 +199,24 @@ export default function StartMeetupScreen() {
     []
   );
 
-  const currentCatKey = PLACE_CATEGORIES[0]?.key;
-  const currentCat =
-    PLACE_CATEGORIES.find((c) => c.key === currentCatKey) || { subCategories: [] };
-  const otherCats = PLACE_CATEGORIES.filter((c) => c.key !== currentCat.key);
-
   if (!meetupId) {
     return (
       <SafeAreaView style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
         <Text style={{ color: '#fff' }}>Missing meetupId</Text>
       </SafeAreaView>
+    );
+  }
+
+  // Render Turbo Mode if active
+  if (showTurboMode) {
+    return (
+      <TurboModeScreen
+        meetupId={String(meetupId)}
+        onExit={() => {
+          setShowTurboMode(false);
+          setTurboSessionId(null);
+        }}
+      />
     );
   }
 
@@ -133,20 +229,49 @@ export default function StartMeetupScreen() {
             <Ionicons name="chevron-back" size={20} color={COLORS.accent} />
             <Text style={styles.headerButton}>Leave Meetup</Text>
           </TouchableOpacity>
+
+          {/* Category Display */}
+          <View style={styles.categoryDisplay}>
+            <Text style={styles.categoryText}>{currentCategory}</Text>
+          </View>
+
           <TouchableOpacity onPress={openLeaderboard} style={styles.headerAction}>
             <Ionicons name="trophy-outline" size={18} color={COLORS.accent} />
             <Text style={styles.headerButton}>Leaderboard</Text>
           </TouchableOpacity>
         </View>
 
-        {/* SWIPE DECK */}
-        <SwipingScreen ref={deckRef} meetupId={String(meetupId)} showInternalButtons={false} />
+        {/* TURBO MODE BUTTON - Moved below header */}
+        <View style={styles.turboContainer}>
+          <TouchableOpacity 
+            style={styles.turboButton} 
+            onPress={handleStartTurboMode}
+            activeOpacity={0.8}
+          >
+            <View style={styles.turboButtonContent}>
+              <Ionicons name="flash" size={20} color={COLORS.accent} />
+              <Text style={styles.turboButtonText}>Turbo Mode</Text>
+              <Text style={styles.turboButtonSubtitle}>2min decision</Text>
+            </View>
+          </TouchableOpacity>
+        </View>
+
+        {/* SWIPE DECK - Pass category prop to avoid race condition */}
+        <SwipingScreen 
+          key={`${meetupId}-${currentCategory}-${refreshKey}`}
+          ref={deckRef} 
+          meetupId={String(meetupId)} 
+          category={currentCategory} // Pass current category directly
+          showInternalButtons={false} 
+          forceRefresh={refreshKey}
+        />
 
         {/* CONTROLS (single source of truth) */}
         <View style={styles.controlBar}>
           <TouchableOpacity
             style={[styles.controlButton, { backgroundColor: COLORS.danger }]}
             onPress={() => deckRef.current?.swipeLeft()}
+            activeOpacity={0.8}
           >
             <Ionicons name="close" size={26} color="#fff" />
           </TouchableOpacity>
@@ -154,19 +279,21 @@ export default function StartMeetupScreen() {
           <TouchableOpacity
             style={[styles.controlButton, styles.centerButton]}
             onPress={() => setShowDirectionModal(true)}
+            activeOpacity={0.8}
           >
-            <Ionicons name="refresh" size={24} color="#0D1117" />
+            <Ionicons name="options" size={24} color="#0D1117" />
           </TouchableOpacity>
 
           <TouchableOpacity
             style={[styles.controlButton, { backgroundColor: COLORS.success }]}
             onPress={() => deckRef.current?.swipeRight()}
+            activeOpacity={0.8}
           >
             <Ionicons name="checkmark" size={26} color="#fff" />
           </TouchableOpacity>
         </View>
 
-        {/* CHANGE-DIRECTION MODAL */}
+        {/* CHANGE-CATEGORY MODAL */}
         <Modal
           animationType="slide"
           transparent
@@ -174,19 +301,15 @@ export default function StartMeetupScreen() {
           onRequestClose={() => setShowDirectionModal(false)}
         >
           <View style={styles.modalOverlay}>
-            <View style={styles.modalContent}>
-              <ExploreMoreCard
-                currentSubCategories={currentCat.subCategories}
-                otherBroadCategories={otherCats}
-                onSubCategoryPress={() => setShowDirectionModal(false)}
-                onBroadCategoryPress={() => setShowDirectionModal(false)}
-              />
-              <TouchableOpacity style={styles.closeButton} onPress={() => setShowDirectionModal(false)}>
-                <Text style={styles.closeText}>Close</Text>
-              </TouchableOpacity>
-            </View>
+            <MeetupExploreCard
+              currentCategory={currentCategory}
+              meetupId={String(meetupId)}
+              onCategoryChange={handleCategoryChange}
+              onClose={() => setShowDirectionModal(false)}
+            />
           </View>
         </Modal>
+
         {/* LEADERBOARD MODAL */}
         <Modal
           animationType="none"
@@ -218,7 +341,11 @@ export default function StartMeetupScreen() {
                       Activity Leaderboard
                     </Text>
                   </View>
-                  <TouchableOpacity onPress={closeLeaderboard} style={styles.closeButton}>
+                  <TouchableOpacity 
+                    onPress={closeLeaderboard} 
+                    style={styles.modalCloseButton}
+                    activeOpacity={0.7}
+                  >
                     <Ionicons name="close" size={24} color="#fff" />
                   </TouchableOpacity>
                 </View>
@@ -237,16 +364,79 @@ export default function StartMeetupScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.bg },
+  container: { 
+    flex: 1, 
+    backgroundColor: COLORS.bg 
+  },
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    alignItems: 'center',
     padding: 16,
     borderBottomWidth: 1,
     borderBottomColor: '#232533',
   },
-  headerAction: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  headerButton: { color: COLORS.accent, fontSize: 16, fontWeight: '600' },
+  headerAction: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    gap: 6,
+    zIndex: 1,
+  },
+  headerButton: { 
+    color: COLORS.accent, 
+    fontSize: 16, 
+    fontWeight: '600' 
+  },
+
+  // Category Display
+  categoryDisplay: {
+    backgroundColor: COLORS.surface,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: COLORS.accent,
+  },
+  categoryText: {
+    color: COLORS.accent,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+
+  // Turbo Mode Button - Repositioned
+  turboContainer: {
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#232533',
+  },
+  turboButton: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 12,
+    padding: 12,
+    borderWidth: 2,
+    borderColor: COLORS.accent,
+    shadowColor: COLORS.accent,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  turboButtonContent: {
+    alignItems: 'center',
+    gap: 2,
+    width: 100,
+  },
+  turboButtonText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#FFFFFF',
+  },
+  turboButtonSubtitle: {
+    fontSize: 10,
+    color: COLORS.accent,
+    fontWeight: '600',
+  },
 
   controlBar: {
     position: 'absolute',
@@ -270,29 +460,19 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 6,
   },
-  centerButton: { backgroundColor: COLORS.accent },
+  centerButton: { 
+    backgroundColor: COLORS.accent 
+  },
 
-  // Original modal styles
+  // Modal styles
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',
     justifyContent: 'center',
     alignItems: 'center',
   },
-  modalContent: {
-    width: '90%',
-    maxHeight: '80%',
-    backgroundColor: COLORS.surface,
-    borderRadius: 12,
-    padding: 20,
-  },
-  closeButton: {
-    padding: 8,
-    borderRadius: 20,
-  },
-  closeText: { color: COLORS.bg, fontWeight: 'bold' },
 
-  // Slide-in modal styles
+  // Slide-in modal styles (unchanged)
   slideModalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',
@@ -302,7 +482,7 @@ const styles = StyleSheet.create({
     right: 0,
     top: 0,
     bottom: 0,
-    width: SCREEN_WIDTH * 0.9, // 90% of screen width
+    width: SCREEN_WIDTH * 0.9,
     backgroundColor: COLORS.surface,
     shadowColor: '#000',
     shadowOffset: { width: -5, height: 0 },
@@ -311,7 +491,7 @@ const styles = StyleSheet.create({
     elevation: 10,
   },
   slideModalHeader: {
-    paddingTop: 50, // Account for status bar
+    paddingTop: 50,
     paddingBottom: 16,
     borderBottomWidth: 1,
     borderBottomColor: '#30363D',
@@ -334,6 +514,9 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 20,
     fontWeight: '700',
+  },
+  modalCloseButton: {
+    padding: 4,
   },
   slideModalBody: {
     flex: 1,

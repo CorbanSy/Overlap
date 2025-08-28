@@ -1,4 +1,4 @@
-// components/swiping.tsx - Updated with participant indicator
+// components/swiping.tsx - Fixed layout issues
 import React, {
   useRef,
   useState,
@@ -24,10 +24,11 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useRouter } from 'expo-router';
-import { getMeetupLikes } from '../_utils/storage/meetupActivities';
+import { getMeetupActivitiesFromPlacesWithCategory } from '../_utils/storage/meetupActivities';
 import { recordSwipe } from '../_utils/storage/meetupSwipes';
 import { getAuth } from 'firebase/auth';
-import MeetupParticipants from './MeetupParticipants'; // Import the new component
+import MeetupParticipants from './MeetupParticipants';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 interface Card {
   id: string;
@@ -48,11 +49,13 @@ export type SwipingHandle = {
 
 interface SwipingScreenProps {
   meetupId: string;
+  category?: string;
   onSwipeLeft?: (card: Card) => void;
   onSwipeRight?: (card: Card) => void;
   onCardTap?: (card: Card) => void;
-  /** show the built-in buttons; keep false so parent renders its own */
   showInternalButtons?: boolean;
+  turboMode?: boolean;
+  forceRefresh?: number;
 }
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -74,9 +77,10 @@ const COLORS = {
 const SPACING = { xs: 4, sm: 8, md: 12, lg: 16, xl: 20, xxl: 24 } as const;
 
 const SwipingScreen = forwardRef<SwipingHandle, SwipingScreenProps>(
-  ({ meetupId, onSwipeLeft, onSwipeRight, onCardTap, showInternalButtons = false }, ref) => {
+  ({ meetupId, category, onSwipeLeft, onSwipeRight, onCardTap, showInternalButtons = false, turboMode = false, forceRefresh }, ref) => {
     const router = useRouter();
-
+    const insets = useSafeAreaInsets();
+    
     const [cards, setCards] = useState<Card[]>([]);
     const [loading, setLoading] = useState(true);
     const [currentCardIndex, setCurrentCardIndex] = useState(0);
@@ -95,22 +99,35 @@ const SwipingScreen = forwardRef<SwipingHandle, SwipingScreenProps>(
         setLoading(false);
         return;
       }
+      
       try {
         setError(null);
         setLoading(true);
-        const likedActivities = await getMeetupLikes(meetupId);
-        if (!likedActivities || likedActivities.length === 0) {
-          setError('No activities found for this meetup');
+        
+        const userLat = 32.7157;
+        const userLng = -117.1611;
+        const targetCategory = category || 'Dining';
+        
+        console.log(`[SwipingScreen] Loading activities for category: ${targetCategory}`);
+        
+        const activities = await getMeetupActivitiesFromPlacesWithCategory(
+          meetupId, userLat, userLng, targetCategory
+        );
+        
+        if (!activities || activities.length === 0) {
+          setError(`No ${targetCategory.toLowerCase()} activities found for this location and preferences`);
         } else {
-          setCards(likedActivities);
+          console.log(`[SwipingScreen] Loaded ${activities.length} activities for category ${targetCategory}`);
+          setCards(activities);
+          setCurrentCardIndex(0);
         }
       } catch (err) {
-        console.error('Error fetching liked activities:', err);
+        console.error('Error fetching activities:', err);
         setError('Failed to load activities. Please try again.');
       } finally {
         setLoading(false);
       }
-    }, [meetupId]);
+    }, [meetupId, category, forceRefresh]);
 
     useEffect(() => {
       loadCards();
@@ -122,14 +139,19 @@ const SwipingScreen = forwardRef<SwipingHandle, SwipingScreenProps>(
         if (!card || isAnimating) return;
 
         setIsAnimating(true);
+        
+        if (direction === 'left' && onSwipeLeft) {
+          onSwipeLeft(card);
+        } else if (direction === 'right' && onSwipeRight) {
+          onSwipeRight(card);
+        }
+
         try {
           const user = getAuth().currentUser;
-          if (user) {
+          if (user && !turboMode) {
             await recordSwipe(meetupId, user.uid, card.id, direction, card.name);
           }
-          direction === 'left' ? onSwipeLeft?.(card) : onSwipeRight?.(card);
 
-          // animate next card lifting
           Animated.parallel([
             Animated.timing(nextCardScale, { toValue: 1, duration: 200, useNativeDriver: true }),
             Animated.timing(nextCardOpacity, { toValue: 1, duration: 200, useNativeDriver: true }),
@@ -149,7 +171,7 @@ const SwipingScreen = forwardRef<SwipingHandle, SwipingScreenProps>(
           setIsAnimating(false);
         }
       },
-      [cards, currentCardIndex, isAnimating, meetupId, onSwipeLeft, onSwipeRight, position, scale, nextCardScale, nextCardOpacity]
+      [cards, currentCardIndex, isAnimating, meetupId, onSwipeLeft, onSwipeRight, turboMode, position, scale, nextCardScale, nextCardOpacity]
     );
 
     const handleCardTap = useCallback(() => {
@@ -159,7 +181,6 @@ const SwipingScreen = forwardRef<SwipingHandle, SwipingScreenProps>(
       router.push(`/moreInfo?placeId=${card.id}`);
     }, [cards, currentCardIndex, onCardTap, router]);
 
-    // Expose controls to parent
     const swipeLeft = useCallback(() => {
       if (isAnimating) return;
       Animated.timing(position, {
@@ -184,7 +205,6 @@ const SwipingScreen = forwardRef<SwipingHandle, SwipingScreenProps>(
       handleCardTap,
     ]);
 
-    // Gestures
     const panResponder = useMemo(
       () =>
         PanResponder.create({
@@ -205,7 +225,6 @@ const SwipingScreen = forwardRef<SwipingHandle, SwipingScreenProps>(
 
             Animated.timing(scale, { toValue: 1, duration: 100, useNativeDriver: true }).start();
 
-            // Tap?
             if (Math.abs(g.dx) < 15 && Math.abs(g.dy) < 15) {
               handleCardTap();
               return;
@@ -299,7 +318,6 @@ const SwipingScreen = forwardRef<SwipingHandle, SwipingScreenProps>(
             </View>
           )}
 
-          {/* swipe hints */}
           {!isNext && (
             <>
               <Animated.View
@@ -336,7 +354,6 @@ const SwipingScreen = forwardRef<SwipingHandle, SwipingScreenProps>(
             </>
           )}
 
-          {/* info */}
           <View style={styles.cardInfo}>
             <View style={styles.cardHeader}>
               <Text style={styles.cardTitle} numberOfLines={2}>
@@ -384,7 +401,7 @@ const SwipingScreen = forwardRef<SwipingHandle, SwipingScreenProps>(
           <StatusBar barStyle="light-content" backgroundColor={COLORS.background} />
           <View style={styles.centerContainer}>
             <ActivityIndicator size="large" color={COLORS.accent} />
-            <Text style={styles.loadingText}>Loading activities...</Text>
+            <Text style={styles.loadingText}>Loading {category?.toLowerCase() || 'activities'}...</Text>
           </View>
         </View>
       );
@@ -414,7 +431,7 @@ const SwipingScreen = forwardRef<SwipingHandle, SwipingScreenProps>(
             <Ionicons name="checkmark-circle-outline" size={64} color={COLORS.success} />
             <Text style={styles.completedTitle}>All Done!</Text>
             <Text style={styles.completedText}>
-              You&apos;ve reviewed all activities. Check the leaderboard to see the results!
+              You've reviewed all {category?.toLowerCase()} activities. Check the leaderboard to see the results!
             </Text>
           </View>
         </View>
@@ -427,8 +444,10 @@ const SwipingScreen = forwardRef<SwipingHandle, SwipingScreenProps>(
     return (
       <View style={styles.container}>
         <StatusBar barStyle="light-content" backgroundColor={COLORS.background} />
-        <View style={styles.cardContainer}>
-          {/* Progress bar */}
+        
+        {/* Fixed Header Area - No longer absolute positioned */}
+        <View style={[styles.headerArea, { paddingTop: insets.top }]}>
+          {/* Progress Bar */}
           <View style={styles.progressContainer}>
             <View style={styles.progressBar}>
               <View
@@ -443,17 +462,21 @@ const SwipingScreen = forwardRef<SwipingHandle, SwipingScreenProps>(
             </Text>
           </View>
 
-          {/* Participants indicator - positioned at top center */}
+          {/* Participants */}
           <View style={styles.participantsContainer}>
             <MeetupParticipants meetupId={meetupId} maxVisible={5} />
           </View>
+        </View>
 
+        {/* Card Area */}
+        <View style={styles.cardContainer}>
           {nextCard && renderCard(nextCard, currentCardIndex + 1, true)}
           {currentCard && renderCard(currentCard, currentCardIndex)}
         </View>
 
+        {/* Bottom Controls */}
         {showInternalButtons && (
-          <View style={styles.actionButtons}>
+          <View style={[styles.actionButtons, { paddingBottom: insets.bottom + SPACING.xl }]}>
             <TouchableOpacity
               style={[styles.actionButton, styles.passButton]}
               onPress={swipeLeft}
@@ -488,7 +511,57 @@ const SwipingScreen = forwardRef<SwipingHandle, SwipingScreenProps>(
 );
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.background },
+  container: { 
+    flex: 1, 
+    backgroundColor: COLORS.background 
+  },
+  
+  // Fixed header area to prevent overlap
+  headerArea: {
+    paddingHorizontal: SPACING.lg,
+    paddingBottom: SPACING.md,
+    zIndex: 10,
+  },
+  
+  progressContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.md,
+    marginBottom: SPACING.sm,
+  },
+  progressBar: { 
+    flex: 1, 
+    height: 4, 
+    backgroundColor: COLORS.border, 
+    borderRadius: 2, 
+    overflow: 'hidden' 
+  },
+  progressFill: { 
+    height: '100%', 
+    backgroundColor: COLORS.accent, 
+    borderRadius: 2 
+  },
+  progressText: { 
+    color: COLORS.textSecondary, 
+    fontSize: 12, 
+    fontWeight: '600', 
+    minWidth: 50, 
+    textAlign: 'right' 
+  },
+  
+  participantsContainer: {
+    alignItems: 'center',
+  },
+  
+  // Card area with proper spacing
+  cardContainer: { 
+    flex: 1, 
+    justifyContent: 'center', 
+    alignItems: 'center', 
+    paddingHorizontal: SPACING.lg,
+    paddingBottom: 80, // Space for bottom controls
+  },
+
   centerContainer: {
     flex: 1,
     justifyContent: 'center',
@@ -496,34 +569,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.xl,
     gap: SPACING.lg,
   },
-  cardContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: SPACING.lg },
-  progressContainer: {
-    position: 'absolute',
-    top: SPACING.xl,
-    left: SPACING.lg,
-    right: SPACING.lg,
-    zIndex: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.md,
-  },
-  // New styles for participants container
-  participantsContainer: {
-    position: 'absolute',
-    top: SPACING.xl + 20, // Reduced from +40 to position it between header buttons
-    left: 0,
-    right: 0,
-    zIndex: 10,
-    alignItems: 'center',
-  },
-  progressBar: { flex: 1, height: 4, backgroundColor: COLORS.border, borderRadius: 2, overflow: 'hidden' },
-  progressFill: { height: '100%', backgroundColor: COLORS.accent, borderRadius: 2 },
-  progressText: { color: COLORS.textSecondary, fontSize: 12, fontWeight: '600', minWidth: 50, textAlign: 'right' },
 
   card: {
     position: 'absolute',
     width: SCREEN_WIDTH - SPACING.xl * 2,
-    height: SCREEN_HEIGHT * 0.7,
+    height: SCREEN_HEIGHT * 0.65, // Reduced height to prevent overlap
     backgroundColor: COLORS.surface,
     borderRadius: 20,
     overflow: 'hidden',

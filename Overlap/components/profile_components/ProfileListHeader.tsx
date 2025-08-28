@@ -2,7 +2,7 @@
 import React from 'react';
 import { View, StyleSheet } from 'react-native';
 import CollectionHeader from './headers/CollectionHeader';
-import TabSection from './sections/TabSection';
+import TabBar from '../TabBar'; // Direct import of TabBar
 import SearchSection from './sections/SearchSection';
 import AddCollectionSection from './sections/AddCollectionSection';
 import { SharedCollection } from './profileTypes';
@@ -16,7 +16,7 @@ interface ProfileListHeaderProps {
   toggleSettingsMenu: () => void;
   searchQuery: string;
   setSearchQuery: (query: string) => void;
-  resultCount: number; // Added this missing prop
+  resultCount: number;
 }
 
 const ProfileListHeader: React.FC<ProfileListHeaderProps> = ({
@@ -28,22 +28,24 @@ const ProfileListHeader: React.FC<ProfileListHeaderProps> = ({
   toggleSettingsMenu,
   searchQuery,
   setSearchQuery,
-  resultCount, // Added this prop
+  resultCount,
 }) => {
   return (
     <View style={styles.headerContainer}>
-      {/* Tab selector (Liked Activities / Collections) */}
-      <TabSection 
-        activeTab={activeTab} 
-        onTabPress={setActiveTab} 
-      />
+      {/* Tab selector with animated TabBar component */}
+      <View style={styles.tabBarContainer}>
+        <TabBar 
+          activeTab={activeTab} 
+          onTabPress={setActiveTab} 
+        />
+      </View>
       
       {/* Search bar */}
       <SearchSection 
         searchQuery={searchQuery} 
         setSearchQuery={setSearchQuery} 
         resultCount={resultCount}
-        activeTab={activeTab} // Pass activeTab for dynamic placeholder
+        activeTab={activeTab}
       />
       
       {/* Add Collection button - only show when on Collections tab and no collection selected */}
@@ -65,6 +67,9 @@ const ProfileListHeader: React.FC<ProfileListHeaderProps> = ({
 const styles = StyleSheet.create({
   headerContainer: {
     paddingBottom: 16,
+  },
+  tabBarContainer: {
+    marginBottom: 16,
   },
 });
 

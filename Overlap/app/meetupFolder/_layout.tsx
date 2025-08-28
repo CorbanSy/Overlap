@@ -14,8 +14,29 @@ export default function MeetupLayout() {
             screenOptions={{
               headerShown: false,
               presentation: 'modal',
+              gestureEnabled: true,
+              headerTransparent: true,
+              headerTitle: '',
+              headerBackTitle: '',
+              headerLeft: () => null,
             }}
-          />
+          >
+            {/* Explicitly define screens if needed */}
+            <Stack.Screen 
+              name="index" 
+              options={{ 
+                headerShown: false,
+                title: '',
+              }} 
+            />
+            <Stack.Screen 
+              name="[meetupId]" 
+              options={{ 
+                headerShown: false,
+                title: '',
+              }} 
+            />
+          </Stack>
         </PortalProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
