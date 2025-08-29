@@ -1,4 +1,4 @@
-//components/swiping/swipingDeck.tsx
+//components/swiping/SwipingDeck.tsx - Fixed version
 import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { Animated, PanResponder } from 'react-native';
 import ActivityCard, { Card } from './ActivityCard';
@@ -20,8 +20,8 @@ type Props = {
   onSwipeLeft?: (card: Card) => void;
   onSwipeRight?: (card: Card) => void;
   onCardTap?: (card: Card) => void;
-  onIndexChange?: (index: number) => void;          // for header progress
-  onAnimatingChange?: (animating: boolean) => void; // to disable buttons
+  onIndexChange?: (index: number) => void;
+  onAnimatingChange?: (animating: boolean) => void;
 };
 
 const SwipeDeck = forwardRef<SwipeDeckHandle, Props>(function SwipeDeck(
@@ -46,10 +46,16 @@ const SwipeDeck = forwardRef<SwipeDeckHandle, Props>(function SwipeDeck(
     onIndexChange?.(index);
   }, [index, onIndexChange]);
 
+  // Reset both index and photoIndex when cards change
   useEffect(() => {
     setIndex(0);
     setPhotoIndex(0);
   }, [cards]);
+
+  // Reset photo index when card index changes (NEW)
+  useEffect(() => {
+    setPhotoIndex(0);
+  }, [index]);
 
   const animateNextCard = useCallback(() => {
     Animated.parallel([
@@ -104,11 +110,10 @@ const SwipeDeck = forwardRef<SwipeDeckHandle, Props>(function SwipeDeck(
         setTimeout(() => {
           resetAnimations();
           setIndex((p) => p + 1);
-          setPhotoIndex(0);
+          // Removed setPhotoIndex(0) from here - it's handled by useEffect now
           setIsAnimating(false);
         }, 200);
       } catch (e) {
-        // Leave error UI to parent if desired
         resetAnimations();
         setIsAnimating(false);
       }
@@ -183,7 +188,7 @@ const SwipeDeck = forwardRef<SwipeDeckHandle, Props>(function SwipeDeck(
           card={nextCard}
           isActive={false}
           wrapperStyle={nextStyle}
-          currentPhotoIndex={0}
+          currentPhotoIndex={0} // Always start next card at photo 0
           photoTransition={photoTransition}
           onMoreInfo={() => {}}
         />
