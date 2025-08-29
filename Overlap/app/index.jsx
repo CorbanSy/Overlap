@@ -15,7 +15,9 @@ const ORB_COUNT = 28; // Slightly increased
 const EDGE_PAD = 20;
 const CENTER_BASE = 90;
 const PARTICLE_COUNT = 20;
-
+const RING_COLOR = 'rgba(245, 166, 35, 0.6)'; // match CenterBall borderColor
+const ringOpacity = useRef(new Animated.Value(0)).current; // NEW
+const TITLE_FONT_SIZE = 44;
 // Cohesive monochromatic palette with warm tones
 const ENHANCED_PALETTE = [
   '#F5A623', // Primary gold
@@ -561,6 +563,13 @@ export default function App() {
         easing: RNEasing.out(RNEasing.back(0.3)),
         useNativeDriver: true,
       }),
+      // 🔶 Fade the border in only after we've reached the final size
+      Animated.timing(ringOpacity, {
+        toValue: 1,
+        duration: 220,
+        easing: RNEasing.out(RNEasing.cubic),
+        useNativeDriver: true,
+      }),
       // Hold the perfect circle briefly before transition
       Animated.timing(centerScale, {
         toValue: finalScale,
@@ -766,6 +775,20 @@ export default function App() {
             />
           </View>
 
+          {/* Border ring that appears only at the end */}
+          <Animated.View
+            pointerEvents="none"
+            style={[
+              styles.centerRing,
+              {
+                left: centerPos.left,
+                top: centerPos.top,
+                opacity: ringOpacity,
+                transform: [{ scale: centerScale }], // stays locked once final
+              },
+            ]}
+          />
+
           {/* Foreground UI */}
           <View style={styles.container}>
             <View style={styles.hero}>
@@ -862,17 +885,16 @@ const styles = StyleSheet.create({
   },
   centerTitle: {
     position: 'absolute',
-    top: 140 + CENTER_BASE / 2 - 16, // Center vertically within the ball (16 is roughly half the text height)
+    top: 140 + CENTER_BASE / 2 - TITLE_FONT_SIZE / 2, // center by font size
     left: 0,
     right: 0,
     alignItems: 'center',
     zIndex: 15,
   },
-  
   centerTitleText: {
-    color: '#FFFFFF', 
-    fontSize: 32,
-    fontWeight: '800', 
+    color: '#FFFFFF',
+    fontSize: TITLE_FONT_SIZE,  // was 32
+    fontWeight: '800',
     letterSpacing: 1.0,
     textAlign: 'center',
     textShadowColor: 'rgba(245, 166, 35, 0.8)',
@@ -880,7 +902,6 @@ const styles = StyleSheet.create({
     textShadowRadius: 10,
     zIndex: 15,
   },
-
   orb: { 
     position: 'absolute',
     shadowColor: '#000',
@@ -1019,5 +1040,21 @@ const styles = StyleSheet.create({
     bottom: 0,
     backgroundColor: 'rgba(255, 255, 255, 0.1)',
     transform: [{ skewX: '-15deg' }],
+  },
+  centerRing: {
+    position: 'absolute',
+    width: CENTER_BASE,
+    height: CENTER_BASE,
+    borderRadius: CENTER_BASE / 2,
+    borderWidth: 2,
+    borderColor: RING_COLOR,
+    backgroundColor: 'transparent',
+    // Light iOS glow; Android will just show the crisp border
+    shadowColor: '#F5A623',
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 0 },
+    elevation: 0,
+    zIndex: 16,
   },
 });

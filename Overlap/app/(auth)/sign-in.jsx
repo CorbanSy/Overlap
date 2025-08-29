@@ -71,6 +71,7 @@ const SignIn = () => {
           {/* Center Ball with Title */}
           <CenterBall
             title="Overlap"
+            titleSize={40}
             shouldExplode={startExplosion}
             onExplosionComplete={handleExplosionComplete}
           />

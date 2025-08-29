@@ -1,17 +1,10 @@
 //app/meetupFolder/MyMeetupsScreen.tsx
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  View,
-  Text,
-  TouchableOpacity,
-  StyleSheet,
-  ActivityIndicator,
-  SafeAreaView,
-  StatusBar,
-  RefreshControl,
-  Alert,
-  ScrollView,
+   View, Text, TouchableOpacity, StyleSheet, ActivityIndicator,
+   StatusBar, RefreshControl, Alert, ScrollView,
 } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { getUserMeetups, removeMeetup, updateMeetup } from '../../_utils/storage/meetups';
 import { getPendingMeetupInvites, sendMeetupInvite } from '../../_utils/storage/meetupInvites';
@@ -81,6 +74,7 @@ const SPACING = {
 } as const;
 
 const MyMeetupsScreen: React.FC<Props> = ({ onBack }) => {
+  const insets = useSafeAreaInsets();
   const router = useRouter();
   
   // State management
@@ -401,7 +395,10 @@ const MyMeetupsScreen: React.FC<Props> = ({ onBack }) => {
     return (
       <ScrollView
         style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[
+          styles.scrollContent,
+          { paddingBottom: insets.bottom + 100 } // keeps content above tab bar
+        ]}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -488,13 +485,13 @@ const MyMeetupsScreen: React.FC<Props> = ({ onBack }) => {
     );
   };
 
-  return (
-    <SafeAreaView style={styles.safeArea}>
+return (
+    <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
       <StatusBar barStyle="light-content" backgroundColor={COLORS.background} />
       
       <View style={styles.container}>
         {/* Header */}
-        <View style={styles.header}>
+        <View style={[styles.header, { paddingTop: SPACING.md + insets.top }]}>
           <View style={styles.headerContent}>
             <TouchableOpacity 
               style={styles.backIconButton} 

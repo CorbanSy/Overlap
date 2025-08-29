@@ -1,20 +1,10 @@
 //app/meetupFolder/join.tsx
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  View,
-  Text,
-  TextInput,
-  FlatList,
-  TouchableOpacity,
-  StyleSheet,
-  RefreshControl,
-  SafeAreaView,
-  StatusBar,
-  ActivityIndicator,
-  Alert,
-  ScrollView,
-  Keyboard,
+  View, Text, TextInput, FlatList, TouchableOpacity, StyleSheet,
+  RefreshControl, StatusBar, ActivityIndicator, Alert, ScrollView, Keyboard,
 } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import {
   getPendingMeetupInvites,
@@ -66,6 +56,7 @@ const SPACING = {
 } as const;
 
 const JoinMeetupsScreen: React.FC<Props> = ({ onBack }) => {
+  const insets = useSafeAreaInsets();
   const router = useRouter();
 
   // State management
@@ -292,7 +283,7 @@ const JoinMeetupsScreen: React.FC<Props> = ({ onBack }) => {
   // Loading state
   if (loadingInvites && !refreshing) {
     return (
-      <SafeAreaView style={styles.safeArea}>
+      <SafeAreaView style={styles.safeArea} edges={['top','bottom']}>
         <View style={styles.centerContainer}>
           <ActivityIndicator size="large" color={COLORS.primary} />
           <Text style={styles.loadingText}>Loading invitations...</Text>
@@ -325,7 +316,7 @@ const JoinMeetupsScreen: React.FC<Props> = ({ onBack }) => {
       
       <View style={styles.container}>
         {/* Header */}
-        <View style={styles.header}>
+        <View style={[styles.header, { paddingTop: SPACING.md + insets.top }]}>
           <TouchableOpacity 
             style={styles.backIconButton} 
             onPress={onBack}
@@ -359,7 +350,7 @@ const JoinMeetupsScreen: React.FC<Props> = ({ onBack }) => {
 
         <ScrollView 
           style={styles.content}
-          contentContainerStyle={styles.scrollContent}
+          contentContainerStyle={[styles.scrollContent, { paddingBottom: SPACING.xxl + insets.bottom }]}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >

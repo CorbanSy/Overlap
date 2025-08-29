@@ -11,6 +11,7 @@ const CenterBall = ({
   ballColor = 'rgba(245, 166, 35, 0.4)', // Updated to match orange accent
   borderColor = 'rgba(245, 166, 35, 0.6)', // Updated to match orange accent
   titleColor = '#FFFFFF', // Updated to match consistent white text
+  titleSize = 40,
   explosionColors = ['#F5A623', '#1B1F24', '#AAAAAA', '#FFFFFF', '#333333', '#F44336'], // Updated to match sign-up palette
   size = CENTER_BALL_SIZE,
   containerStyle = {},
@@ -180,7 +181,7 @@ const CenterBall = ({
           },
         ]}
       >
-        <Text style={[styles.titleInsideBall, { color: titleColor }]}>
+        <Text style={[styles.titleInsideBall, { color: titleColor, fontSize: titleSize }]}>
           {title}
         </Text>
       </Animated.View>
