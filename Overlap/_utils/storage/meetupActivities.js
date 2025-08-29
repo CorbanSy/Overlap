@@ -2,7 +2,7 @@
 import { doc, setDoc, collection, getDocs, getDoc } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
 import { db } from '../../FirebaseConfig';
-import { fetchPlacesNearby } from './places';
+import { fetchPlacesNearby, fetchPlacePhotos } from './places'; // ⬅️ added fetchPlacePhotos
 import { doesPlaceMatchCategory } from './categoryMapping';
 
 export async function exportMyLikesToMeetup(meetupId) {
@@ -105,7 +105,6 @@ export async function getMeetupActivitiesFromPlaces(
         // Convert priceRange (0-100) to price level (1-4)
         const maxPriceLevel = Math.ceil(priceRange / maxBudgetPerDollar);
         const placePriceLevel = place.priceLevel || 1; // Default to $ if not specified
-        
         if (placePriceLevel > maxPriceLevel) {
           return false;
         }
@@ -128,11 +127,9 @@ export async function getMeetupActivitiesFromPlaces(
     
     // Sort by rating (highest first), then by review count
     filteredPlaces.sort((a, b) => {
-      // Primary sort: rating (descending)
       if (b.rating !== a.rating) {
         return (b.rating || 0) - (a.rating || 0);
       }
-      // Secondary sort: review count (descending)
       return (b.userRatingsTotal || 0) - (a.userRatingsTotal || 0);
     });
     
@@ -146,15 +143,14 @@ export async function getMeetupActivitiesFromPlaces(
       id: place.id || place.place_id,
       name: place.name,
       rating: place.rating,
-      photoUrls: place.photos || [], // URLs to images
-      address: place.formatted_address,
+      photoUrls: place.photos || [], // URLs to images (assumed fresh enough here)
+      address: place.formatted_address || place.vicinity || '',
       category: place.types?.[0], // Primary category
       priceLevel: place.priceLevel,
       description: place.description || ''
     }));
     
     console.log(`[getMeetupActivitiesFromPlaces] Sample activities:`, result.slice(0, 3).map(r => r.name));
-    
     return result;
     
   } catch (error) {
@@ -222,7 +218,6 @@ export async function getMeetupActivitiesFromPlacesWithCategory(
       if (priceRange > 0) {
         const maxPriceLevel = Math.ceil(priceRange / maxBudgetPerDollar);
         const placePriceLevel = place.priceLevel || 1;
-        
         if (placePriceLevel > maxPriceLevel) {
           return false;
         }
@@ -256,20 +251,58 @@ export async function getMeetupActivitiesFromPlacesWithCategory(
     
     console.log(`[getMeetupActivitiesFromPlacesWithCategory] Returning ${limitedPlaces.length} activities for swiping`);
     
-    // Convert to the format expected by SwipingScreen
-    const result = limitedPlaces.map(place => ({
-      id: place.id || place.place_id,
-      name: place.name,
-      rating: place.rating,
-      photoUrls: place.photos || [],
-      address: place.formatted_address,
-      category: place.types?.[0],
-      priceLevel: place.priceLevel,
-      description: place.description || ''
-    }));
+    // ↙️ Replace the photo handling section with your regeneration logic (async map + Promise.all)
+    const result = await Promise.all(
+      limitedPlaces.map(async (place) => {
+        // In getMeetupActivitiesFromPlacesWithCategory, replace the photo handling section:
+        let photoUrls = [];
+
+        try {
+          if (Array.isArray(place.photos) && place.photos.length > 0) {
+            // Test the first URL to see if it's valid
+            const firstUrl = place.photos[0];
+
+            // If it looks like a signed URL but might be expired, regenerate
+            if (
+              typeof firstUrl === 'string' &&
+              firstUrl.includes('GoogleAccessId') &&
+              firstUrl.includes('Signature')
+            ) {
+              console.log(`[getMeetupActivitiesFromPlacesWithCategory] Regenerating URLs for ${place.name}`);
+              // Use your fetchPlacePhotos function to generate fresh URLs
+              if (typeof fetchPlacePhotos === 'function') {
+                photoUrls = await fetchPlacePhotos(place);
+              } else {
+                // Fallback if helper isn't available
+                photoUrls = place.photos;
+              }
+            } else {
+              // Use existing URLs
+              photoUrls = place.photos;
+            }
+          }
+        } catch (photoError) {
+          console.warn(
+            `[getMeetupActivitiesFromPlacesWithCategory] Failed to get photos for ${place.name}:`,
+            photoError
+          );
+          photoUrls = [];
+        }
+
+        return {
+          id: place.id || place.place_id,
+          name: place.name,
+          rating: place.rating,
+          photoUrls, // ⬅️ now the (possibly) refreshed URLs
+          address: place.formatted_address || place.vicinity || '',
+          category: place.types?.[0],
+          priceLevel: place.priceLevel,
+          description: place.description || '',
+        };
+      })
+    );
     
     console.log(`[getMeetupActivitiesFromPlacesWithCategory] Sample activities:`, result.slice(0, 3).map(r => r.name));
-    
     return result;
     
   } catch (error) {

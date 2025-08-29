@@ -1,4 +1,5 @@
-import React, { memo } from 'react';
+//components/swiping/ActivityCard.tsx
+import React, { memo, useState, useEffect, useCallback } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Dimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -32,10 +33,10 @@ export interface Card {
 type Props = {
   card: Card;
   isActive: boolean;
-  wrapperStyle?: any;               // Animated style passed from deck
-  panHandlers?: any;               // Only for active card
+  wrapperStyle?: any;
+  panHandlers?: any;
   currentPhotoIndex: number;
-  photoTransition: Animated.Value; // For image opacity pulse on change
+  photoTransition: Animated.Value;
   onMoreInfo: () => void;
 };
 
@@ -63,10 +64,39 @@ function ActivityCard({
   photoTransition,
   onMoreInfo,
 }: Props) {
+  const [imageStates, setImageStates] = useState<{[key: string]: {loaded: boolean, error: boolean}}>({});
+
   const photoUrls = Array.isArray(card.photoUrls) ? card.photoUrls : [];
   const hasPhotos = photoUrls.length > 0;
-  const displayPhotoIndex = currentPhotoIndex;
-  const imageUri = hasPhotos ? photoUrls[displayPhotoIndex] : undefined;
+  const currentImageUri = hasPhotos ? photoUrls[currentPhotoIndex] : null;
+  const imageKey = `${card.id}-${currentPhotoIndex}`;
+  const imageState = imageStates[imageKey] || { loaded: false, error: false };
+
+  // Clear image states when card changes (but not when just photo index changes)
+  useEffect(() => {
+    console.log(`[ActivityCard] Card changed to ${card.name}, clearing image states`);
+    setImageStates({});
+  }, [card.id, card.name]);
+
+  const handleImageLoad = useCallback(() => {
+    console.log(`[ActivityCard] Image loaded successfully for ${card.name}, photo ${currentPhotoIndex}`);
+    setImageStates(prev => ({
+      ...prev,
+      [imageKey]: { loaded: true, error: false }
+    }));
+  }, [card.name, currentPhotoIndex, imageKey]);
+
+  const handleImageError = useCallback((error: any) => {
+    console.error(`[ActivityCard] Image failed to load for ${card.name}, photo ${currentPhotoIndex}:`);
+    console.error('Error details:', error.nativeEvent);
+    console.error('Image URI:', currentImageUri);
+    setImageStates(prev => ({
+      ...prev,
+      [imageKey]: { loaded: false, error: true }
+    }));
+  }, [card.name, currentPhotoIndex, currentImageUri, imageKey]);
+
+  console.log(`[ActivityCard] Render - Card: ${card.name}, photo: ${currentPhotoIndex}, loaded: ${imageState.loaded}, error: ${imageState.error}`);
 
   return (
     <Animated.View
@@ -74,26 +104,37 @@ function ActivityCard({
       {...(isActive ? panHandlers : {})}
       pointerEvents={isActive ? 'auto' : 'none'}
     >
-      {imageUri ? (
+      {hasPhotos && currentImageUri ? (
         <>
           <Animated.Image
-            source={{ uri: imageUri }}
+            key={imageKey} // Unique key for each card-photo combination
+            source={{ uri: currentImageUri }}
             style={[
               styles.cardImage,
-              isActive && {
-                opacity: photoTransition.interpolate({
-                  inputRange: [0.8, 1],
-                  outputRange: [0.8, 1],
-                }),
-              },
+              {
+                opacity: imageState.loaded && !imageState.error ? 1 : 0,
+              }
             ]}
             resizeMode="cover"
+            onLoad={handleImageLoad}
+            onError={handleImageError}
           />
+          
+          {/* Show loading state while image loads or if error */}
+          {(!imageState.loaded || imageState.error) && (
+            <View style={styles.imageLoadingContainer}>
+              <Ionicons name="image-outline" size={64} color={COLORS.textTertiary} />
+              {imageState.error && <Text style={styles.imageErrorText}>Failed to load image</Text>}
+              {!imageState.error && <Text style={styles.imageErrorText}>Loading...</Text>}
+            </View>
+          )}
+
           <LinearGradient
             colors={['transparent', 'rgba(0,0,0,0.4)', 'rgba(0,0,0,0.85)']}
             locations={[0, 0.55, 1]}
             style={styles.cardGradient}
           />
+          
           {photoUrls.length > 1 && isActive && (
             <View style={styles.photoIndicators}>
               {photoUrls.map((_, idx) => (
@@ -179,6 +220,23 @@ const styles = StyleSheet.create({
   },
   cardImage: { width: '100%', height: '100%' },
   cardGradient: { position: 'absolute', left: 0, right: 0, bottom: 0, height: '55%' },
+
+  imageLoadingContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: COLORS.surface,
+    gap: SPACING.md,
+  },
+  imageErrorText: {
+    color: COLORS.textSecondary,
+    fontSize: 14,
+    textAlign: 'center',
+  },
 
   photoIndicators: {
     position: 'absolute',
