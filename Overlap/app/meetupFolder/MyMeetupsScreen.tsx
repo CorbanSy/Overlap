@@ -1,11 +1,10 @@
-//app/meetupFolder/MyMeetupsScreen
+//app/meetupFolder/MyMeetupsScreen.tsx
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
   TouchableOpacity,
   StyleSheet,
-  FlatList,
   ActivityIndicator,
   SafeAreaView,
   StatusBar,
@@ -15,22 +14,34 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { getUserMeetups, removeMeetup, updateMeetup } from '../../_utils/storage/meetups';
-import { getPendingMeetupInvites } from '../../_utils/storage/meetupInvites';
+import { getPendingMeetupInvites, sendMeetupInvite } from '../../_utils/storage/meetupInvites';
 import { exportMyLikesToMeetup } from '../../_utils/storage/meetupActivities';
 import { initializeTurboSession } from '../../_utils/storage/turboMeetup';
+import { getFriendships } from '../../_utils/storage/social';
 import MeetupCard from '../../components/MeetupCard';
+import FriendPicker from '../../components/FriendPicker';
 import StartMeetupScreen from './startMeetUp';
 import TurboModeScreen from '../../components/turbo/TurboModeScreen';
 import { useRouter } from 'expo-router';
 import { getAuth } from 'firebase/auth';
 
 // Types
+interface Friend {
+  uid: string;
+  name?: string;
+  email?: string;
+  avatarUrl?: string;
+  displayName?: string;
+}
+
 interface Meetup {
   id: string;
   title?: string;
   ongoing: boolean;
   eventName?: string;
   participants?: any[];
+  friends?: Friend[];
+  creatorId?: string;
   // Add other meetup properties as needed
 }
 
@@ -83,6 +94,11 @@ const MyMeetupsScreen: React.FC<Props> = ({ onBack }) => {
   const [currentMeetupId, setCurrentMeetupId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // Friend picker state
+  const [friendPickerVisible, setFriendPickerVisible] = useState(false);
+  const [currentMeetupForInvite, setCurrentMeetupForInvite] = useState<string | null>(null);
+  const [userFriends, setUserFriends] = useState<Friend[]>([]);
+
   // Fetch data functions
   const fetchMeetups = useCallback(async () => {
     try {
@@ -104,15 +120,43 @@ const MyMeetupsScreen: React.FC<Props> = ({ onBack }) => {
     }
   }, []);
 
-  const handleJoinMeetup = useCallback((meetupId: string) => {
-    // Non-hosts join by opening the live session screen
-    router.push({ pathname: '/meetupFolder/startMeetUp', params: { meetupId } });
-  }, [router]);
+  const fetchUserFriends = useCallback(async () => {
+    try {
+      const friendships = await getFriendships();
+      const currentUserId = getAuth()?.currentUser?.uid;
+      
+      if (!currentUserId) return;
+
+      // Transform friendships data to extract friend details
+      const friends: Friend[] = [];
+      friendships.forEach((friendship: any) => {
+        const users = friendship.userDetails || {};
+        // Get the friend's details (not the current user's)
+        Object.keys(users).forEach(userId => {
+          if (userId !== currentUserId) {
+            const userDetail = users[userId];
+            friends.push({
+              uid: userId,
+              name: userDetail.name || userDetail.displayName || '',
+              email: userDetail.email || '',
+              displayName: userDetail.displayName || '',
+              avatarUrl: userDetail.avatarUrl || '',
+            });
+          }
+        });
+      });
+
+      setUserFriends(friends);
+    } catch (err) {
+      console.error('Error fetching user friends:', err);
+    }
+  }, []);
+
   const fetchData = useCallback(async () => {
     setLoading(true);
-    await Promise.all([fetchMeetups(), fetchInvites()]);
+    await Promise.all([fetchMeetups(), fetchInvites(), fetchUserFriends()]);
     setLoading(false);
-  }, [fetchMeetups, fetchInvites]);
+  }, [fetchMeetups, fetchInvites, fetchUserFriends]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -123,6 +167,11 @@ const MyMeetupsScreen: React.FC<Props> = ({ onBack }) => {
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  const handleJoinMeetup = useCallback((meetupId: string) => {
+    // Non-hosts join by opening the live session screen
+    router.push({ pathname: '/meetupFolder/startMeetUp', params: { meetupId } });
+  }, [router]);
 
   // Event handlers
   const handleRemoveMeetup = useCallback(async (meetupId: string) => {
@@ -195,8 +244,6 @@ const MyMeetupsScreen: React.FC<Props> = ({ onBack }) => {
       const meetup = meetups.find(m => m.id === meetupId);
       const groupSize = meetup?.participants?.length || 1;
       
-      // Removed participant count check - turbo works with any group size
-      
       // Initialize turbo session
       await initializeTurboSession(meetupId, groupSize);
       await exportMyLikesToMeetup(meetupId);
@@ -208,6 +255,60 @@ const MyMeetupsScreen: React.FC<Props> = ({ onBack }) => {
       console.error('Error starting turbo mode:', err);
       Alert.alert('Error', 'Failed to start Turbo Mode. Please try again.');
     }
+  }, [meetups]);
+
+  // Friend management handlers
+  const handleAddFriend = useCallback(async (meetupId: string) => {
+    setCurrentMeetupForInvite(meetupId);
+    setFriendPickerVisible(true);
+  }, []);
+
+  const handleRemoveFriend = useCallback(async (meetupId: string, friendUid: string) => {
+    try {
+      // Get the current meetup data
+      const meetup = meetups.find(m => m.id === meetupId);
+      if (!meetup) {
+        throw new Error('Meetup not found');
+      }
+      
+      // Remove the friend from the friends array
+      const updatedFriends = (meetup.friends || []).filter(
+        (friend: Friend) => friend.uid !== friendUid
+      );
+      
+      // Update the meetup with the new friends array
+      await updateMeetup({
+        id: meetupId,
+        friends: updatedFriends
+      });
+      
+      // Update local state
+      setMeetups(prev => 
+        prev.map(m => 
+          m.id === meetupId 
+            ? { ...m, friends: updatedFriends }
+            : m
+        )
+      );
+      
+      console.log('Friend removed successfully');
+    } catch (error) {
+      console.error('Error removing friend:', error);
+      Alert.alert('Error', 'Failed to remove friend. Please try again.');
+    }
+  }, [meetups]);
+
+  // Handle when invites are sent from FriendPicker
+  const handleInvitesSent = useCallback((invitedCount: number) => {
+    // Force a complete refresh to sync all data
+    fetchData(); // Use fetchData instead of onRefresh for complete reload
+    console.log(`Successfully sent ${invitedCount} invitations`);
+  }, [fetchData]);
+
+  // Get current friends for a specific meetup
+  const getCurrentMeetupFriends = useCallback((meetupId: string) => {
+    const meetup = meetups.find(m => m.id === meetupId);
+    return meetup?.friends || [];
   }, [meetups]);
 
   const handleRetry = useCallback(() => {
@@ -336,6 +437,10 @@ const MyMeetupsScreen: React.FC<Props> = ({ onBack }) => {
                   onTurboMode={isHost ? handleTurboMode : undefined}
                   isHost={isHost}
                   onJoin={!isHost ? handleJoinMeetup : undefined}
+                  onAddFriend={isHost ? handleAddFriend : undefined}
+                  onRemoveFriend={isHost ? handleRemoveFriend : undefined}
+                  currentUserId={authUid}
+                  currentUserEmail={getAuth()?.currentUser?.email}
                 />
               );
             })}
@@ -366,6 +471,10 @@ const MyMeetupsScreen: React.FC<Props> = ({ onBack }) => {
                   onStop={isHost ? handleStopMeetup : undefined}
                   onTurboMode={isHost ? handleTurboMode : undefined}
                   isHost={isHost}
+                  onAddFriend={isHost ? handleAddFriend : undefined}
+                  onRemoveFriend={isHost ? handleRemoveFriend : undefined}
+                  currentUserId={authUid}
+                  currentUserEmail={getAuth()?.currentUser?.email}
                   // not live yet → no join button for guests
                 />
               );
@@ -426,6 +535,19 @@ const MyMeetupsScreen: React.FC<Props> = ({ onBack }) => {
         <View style={styles.content}>
           {renderAllMeetups()}
         </View>
+
+        {/* Friend Picker Modal */}
+        <FriendPicker
+          visible={friendPickerVisible}
+          onClose={() => {
+            setFriendPickerVisible(false);
+            setCurrentMeetupForInvite(null);
+          }}
+          meetupId={currentMeetupForInvite || ''}
+          currentFriends={currentMeetupForInvite ? getCurrentMeetupFriends(currentMeetupForInvite) : []}
+          onInvitesSent={handleInvitesSent}
+          availableFriends={userFriends}
+        />
       </View>
     </SafeAreaView>
   );

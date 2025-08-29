@@ -1,13 +1,5 @@
-// components/swiping.tsx - Modified to cycle through photos with swipes
-import React, {
-  useRef,
-  useState,
-  useEffect,
-  useMemo,
-  useCallback,
-  forwardRef,
-  useImperativeHandle,
-} from 'react';
+// components/swiping.tsx - Refactored with extracted hooks and utilities
+import React, { useState, useCallback, forwardRef, useImperativeHandle, useMemo, useEffect, useRef } from 'react';
 import {
   Animated,
   PanResponder,
@@ -30,6 +22,7 @@ import { getAuth } from 'firebase/auth';
 import MeetupParticipants from './MeetupParticipants';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+// Types and interfaces
 interface Card {
   id: string;
   name: string;
@@ -58,9 +51,10 @@ interface SwipingScreenProps {
   forceRefresh?: number;
 }
 
+// Constants
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
-const PHOTO_SWIPE_THRESHOLD = 50; // Lower threshold for photo cycling
-const CARD_SWIPE_THRESHOLD = 120; // Higher threshold for card actions (not used with buttons)
+const PHOTO_SWIPE_THRESHOLD = 50;
+const CARD_SWIPE_THRESHOLD = 120;
 
 const COLORS = {
   background: '#0D1117',
@@ -76,70 +70,199 @@ const COLORS = {
 
 const SPACING = { xs: 4, sm: 8, md: 12, lg: 16, xl: 20, xxl: 24 } as const;
 
+// Custom hook for card data
+const useCardData = (meetupId: string, category?: string, forceRefresh?: number) => {
+  const [cards, setCards] = useState<Card[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const loadCards = useCallback(async () => {
+    if (!meetupId) {
+      setError('No meetup ID provided');
+      setLoading(false);
+      return;
+    }
+    
+    try {
+      setError(null);
+      setLoading(true);
+      
+      const userLat = 32.7157;
+      const userLng = -117.1611;
+      const targetCategory = category || 'Dining';
+      
+      console.log(`[SwipingScreen] Loading activities for category: ${targetCategory}`);
+      
+      const activities = await getMeetupActivitiesFromPlacesWithCategory(
+        meetupId, userLat, userLng, targetCategory
+      );
+      
+      if (!activities || activities.length === 0) {
+        setError(`No ${targetCategory.toLowerCase()} activities found for this location and preferences`);
+      } else {
+        console.log(`[SwipingScreen] Loaded ${activities.length} activities for category ${targetCategory}`);
+        setCards(activities);
+      }
+    } catch (err) {
+      console.error('Error fetching activities:', err);
+      setError('Failed to load activities. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  }, [meetupId, category, forceRefresh]);
+
+  useEffect(() => {
+    loadCards();
+  }, [loadCards]);
+
+  return { cards, loading, error, loadCards };
+};
+
+// Custom hook for swipe animations
+const useSwipeAnimations = () => {
+  const position = useRef(new Animated.ValueXY()).current;
+  const scale = useRef(new Animated.Value(1)).current;
+  const nextCardScale = useRef(new Animated.Value(0.95)).current;
+  const nextCardOpacity = useRef(new Animated.Value(0.8)).current;
+  const photoTransition = useRef(new Animated.Value(1)).current;
+
+  const animateSwipeOut = useCallback((direction: 'left' | 'right', onComplete: () => void) => {
+    const targetX = direction === 'left' ? -SCREEN_WIDTH - 100 : SCREEN_WIDTH + 100;
+    
+    Animated.timing(position, {
+      toValue: { x: targetX, y: 0 },
+      duration: 250,
+      useNativeDriver: true,
+    }).start(onComplete);
+  }, [position]);
+
+  const animateNextCard = useCallback(() => {
+    Animated.parallel([
+      Animated.timing(nextCardScale, { toValue: 1, duration: 200, useNativeDriver: true }),
+      Animated.timing(nextCardOpacity, { toValue: 1, duration: 200, useNativeDriver: true }),
+    ]).start();
+  }, [nextCardScale, nextCardOpacity]);
+
+  const resetAnimations = useCallback(() => {
+    position.setValue({ x: 0, y: 0 });
+    scale.setValue(1);
+    nextCardScale.setValue(0.95);
+    nextCardOpacity.setValue(0.8);
+  }, [position, scale, nextCardScale, nextCardOpacity]);
+
+  const animatePhotoTransition = useCallback(() => {
+    Animated.sequence([
+      Animated.timing(photoTransition, {
+        toValue: 0.8,
+        duration: 100,
+        useNativeDriver: true,
+      }),
+      Animated.timing(photoTransition, {
+        toValue: 1,
+        duration: 100,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [photoTransition]);
+
+  const animateScale = useCallback((toValue: number) => {
+    Animated.timing(scale, { toValue, duration: 100, useNativeDriver: true }).start();
+  }, [scale]);
+
+  const springToCenter = useCallback(() => {
+    Animated.spring(position, {
+      toValue: { x: 0, y: 0 },
+      useNativeDriver: true,
+      tension: 100,
+      friction: 8,
+    }).start();
+  }, [position]);
+
+  return {
+    position,
+    scale,
+    nextCardScale,
+    nextCardOpacity,
+    photoTransition,
+    animateSwipeOut,
+    animateNextCard,
+    resetAnimations,
+    animatePhotoTransition,
+    animateScale,
+    springToCenter,
+  };
+};
+
+// Utility functions for rendering
+const renderPriceLevel = (priceLevel?: number) => {
+  if (priceLevel == null || priceLevel <= 0) return null;
+  return <Text style={styles.priceLevel}>{'$'.repeat(Math.min(priceLevel, 4))}</Text>;
+};
+
+const renderRating = (rating?: number) => {
+  if (!rating) return null;
+  return (
+    <View style={styles.ratingContainer}>
+      <Ionicons name="star" size={16} color="#FFD700" />
+      <Text style={styles.rating}>{rating.toFixed(1)}</Text>
+    </View>
+  );
+};
+
+const renderPhotoIndicators = (photoUrls: string[], currentIndex: number) => {
+  if (!photoUrls || photoUrls.length <= 1) return null;
+  
+  return (
+    <View style={styles.photoIndicators}>
+      {photoUrls.map((_, index) => (
+        <View
+          key={index}
+          style={[
+            styles.photoIndicator,
+            { backgroundColor: index === currentIndex ? COLORS.accent : 'rgba(255,255,255,0.3)' }
+          ]}
+        />
+      ))}
+    </View>
+  );
+};
+
+// Main component
 const SwipingScreen = forwardRef<SwipingHandle, SwipingScreenProps>(
   ({ meetupId, category, onSwipeLeft, onSwipeRight, onCardTap, showInternalButtons = false, turboMode = false, forceRefresh }, ref) => {
     const router = useRouter();
     const insets = useSafeAreaInsets();
     
-    const [cards, setCards] = useState<Card[]>([]);
-    const [loading, setLoading] = useState(true);
+    // Use custom hooks
+    const { cards, loading, error, loadCards } = useCardData(meetupId, category, forceRefresh);
+    const { 
+      position, 
+      scale, 
+      nextCardScale, 
+      nextCardOpacity, 
+      photoTransition,
+      animateSwipeOut,
+      animateNextCard,
+      resetAnimations,
+      animatePhotoTransition,
+      animateScale,
+      springToCenter
+    } = useSwipeAnimations();
+
     const [currentCardIndex, setCurrentCardIndex] = useState(0);
-    const [currentPhotoIndex, setCurrentPhotoIndex] = useState(0); // New state for photo cycling
-    const [error, setError] = useState<string | null>(null);
+    const [currentPhotoIndex, setCurrentPhotoIndex] = useState(0);
     const [isAnimating, setIsAnimating] = useState(false);
-
-    // Animations
-    const position = useRef(new Animated.ValueXY()).current;
-    const scale = useRef(new Animated.Value(1)).current;
-    const nextCardScale = useRef(new Animated.Value(0.95)).current;
-    const nextCardOpacity = useRef(new Animated.Value(0.8)).current;
-    const photoTransition = useRef(new Animated.Value(0)).current; // Animation for photo transitions
-
-    const loadCards = useCallback(async () => {
-      if (!meetupId) {
-        setError('No meetup ID provided');
-        setLoading(false);
-        return;
-      }
-      
-      try {
-        setError(null);
-        setLoading(true);
-        
-        const userLat = 32.7157;
-        const userLng = -117.1611;
-        const targetCategory = category || 'Dining';
-        
-        console.log(`[SwipingScreen] Loading activities for category: ${targetCategory}`);
-        
-        const activities = await getMeetupActivitiesFromPlacesWithCategory(
-          meetupId, userLat, userLng, targetCategory
-        );
-        
-        if (!activities || activities.length === 0) {
-          setError(`No ${targetCategory.toLowerCase()} activities found for this location and preferences`);
-        } else {
-          console.log(`[SwipingScreen] Loaded ${activities.length} activities for category ${targetCategory}`);
-          setCards(activities);
-          setCurrentCardIndex(0);
-          setCurrentPhotoIndex(0); // Reset photo index when loading new cards
-        }
-      } catch (err) {
-        console.error('Error fetching activities:', err);
-        setError('Failed to load activities. Please try again.');
-      } finally {
-        setLoading(false);
-      }
-    }, [meetupId, category, forceRefresh]);
-
-    useEffect(() => {
-      loadCards();
-    }, [loadCards]);
 
     // Reset photo index when card changes
     useEffect(() => {
       setCurrentPhotoIndex(0);
     }, [currentCardIndex]);
+
+    // Reset card index when cards are loaded
+    useEffect(() => {
+      setCurrentCardIndex(0);
+      setCurrentPhotoIndex(0);
+    }, [cards]);
 
     // Handle card swipe (programmatically triggered by buttons)
     const handleCardSwipe = useCallback(
@@ -161,18 +284,12 @@ const SwipingScreen = forwardRef<SwipingHandle, SwipingScreenProps>(
             await recordSwipe(meetupId, user.uid, card.id, direction, card.name);
           }
 
-          Animated.parallel([
-            Animated.timing(nextCardScale, { toValue: 1, duration: 200, useNativeDriver: true }),
-            Animated.timing(nextCardOpacity, { toValue: 1, duration: 200, useNativeDriver: true }),
-          ]).start();
+          animateNextCard();
 
           setTimeout(() => {
-            position.setValue({ x: 0, y: 0 });
-            scale.setValue(1);
-            nextCardScale.setValue(0.95);
-            nextCardOpacity.setValue(0.8);
+            resetAnimations();
             setCurrentCardIndex((p) => p + 1);
-            setCurrentPhotoIndex(0); // Reset photo index for new card
+            setCurrentPhotoIndex(0);
             setIsAnimating(false);
           }, 200);
         } catch (err) {
@@ -181,7 +298,7 @@ const SwipingScreen = forwardRef<SwipingHandle, SwipingScreenProps>(
           setIsAnimating(false);
         }
       },
-      [cards, currentCardIndex, isAnimating, meetupId, onSwipeLeft, onSwipeRight, turboMode, position, scale, nextCardScale, nextCardOpacity]
+      [cards, currentCardIndex, isAnimating, meetupId, onSwipeLeft, onSwipeRight, turboMode, animateNextCard, resetAnimations]
     );
 
     // Handle photo cycling
@@ -199,20 +316,8 @@ const SwipingScreen = forwardRef<SwipingHandle, SwipingScreenProps>(
         }
       });
 
-      // Animate the transition
-      Animated.sequence([
-        Animated.timing(photoTransition, {
-          toValue: 0.8,
-          duration: 100,
-          useNativeDriver: true,
-        }),
-        Animated.timing(photoTransition, {
-          toValue: 1,
-          duration: 100,
-          useNativeDriver: true,
-        }),
-      ]).start();
-    }, [cards, currentCardIndex, photoTransition]);
+      animatePhotoTransition();
+    }, [cards, currentCardIndex, animatePhotoTransition]);
 
     const handleCardTap = useCallback(() => {
       const card = cards[currentCardIndex];
@@ -223,21 +328,13 @@ const SwipingScreen = forwardRef<SwipingHandle, SwipingScreenProps>(
 
     const swipeLeft = useCallback(() => {
       if (isAnimating) return;
-      Animated.timing(position, {
-        toValue: { x: -SCREEN_WIDTH - 100, y: 0 },
-        duration: 250,
-        useNativeDriver: true,
-      }).start(() => handleCardSwipe('left'));
-    }, [handleCardSwipe, isAnimating, position]);
+      animateSwipeOut('left', () => handleCardSwipe('left'));
+    }, [handleCardSwipe, isAnimating, animateSwipeOut]);
 
     const swipeRight = useCallback(() => {
       if (isAnimating) return;
-      Animated.timing(position, {
-        toValue: { x: SCREEN_WIDTH + 100, y: 0 },
-        duration: 250,
-        useNativeDriver: true,
-      }).start(() => handleCardSwipe('right'));
-    }, [handleCardSwipe, isAnimating, position]);
+      animateSwipeOut('right', () => handleCardSwipe('right'));
+    }, [handleCardSwipe, isAnimating, animateSwipeOut]);
 
     useImperativeHandle(ref, () => ({ swipeLeft, swipeRight, openInfo: handleCardTap }), [
       swipeLeft,
@@ -250,84 +347,41 @@ const SwipingScreen = forwardRef<SwipingHandle, SwipingScreenProps>(
         PanResponder.create({
           onStartShouldSetPanResponder: () => !isAnimating,
           onMoveShouldSetPanResponder: (_, gestureState) => {
-            // Only respond to horizontal gestures for photo cycling
             return !isAnimating && Math.abs(gestureState.dx) > Math.abs(gestureState.dy) && Math.abs(gestureState.dx) > 10;
           },
 
           onPanResponderGrant: () => {
-            Animated.timing(scale, { toValue: 0.98, duration: 100, useNativeDriver: true }).start();
+            animateScale(0.98);
           },
 
           onPanResponderMove: (_, gestureState) => {
             if (isAnimating) return;
-            // Don't move the card position, just track the gesture for photo cycling
-            position.setValue({ x: gestureState.dx * 0.3, y: 0 }); // Subtle movement for feedback
+            position.setValue({ x: gestureState.dx * 0.3, y: 0 });
           },
 
           onPanResponderRelease: (_, gestureState) => {
             if (isAnimating) return;
 
-            Animated.timing(scale, { toValue: 1, duration: 100, useNativeDriver: true }).start();
+            animateScale(1);
 
-            // Handle photo cycling based on swipe direction
             if (Math.abs(gestureState.dx) > PHOTO_SWIPE_THRESHOLD) {
               if (gestureState.dx > 0) {
-                cyclePhoto('prev'); // Swipe right = previous photo
+                cyclePhoto('prev');
               } else {
-                cyclePhoto('next'); // Swipe left = next photo
+                cyclePhoto('next');
               }
             }
 
-            // Always return card to center after gesture
-            Animated.spring(position, {
-              toValue: { x: 0, y: 0 },
-              useNativeDriver: true,
-              tension: 100,
-              friction: 8,
-            }).start();
+            springToCenter();
           },
         }),
-      [isAnimating, position, scale, cyclePhoto]
+      [isAnimating, position, cyclePhoto, animateScale, springToCenter]
     );
-
-    const renderPriceLevel = (priceLevel?: number) => {
-      if (priceLevel == null || priceLevel <= 0) return null;
-      return <Text style={styles.priceLevel}>{'$'.repeat(Math.min(priceLevel, 4))}</Text>;
-    };
-
-    const renderRating = (rating?: number) => {
-      if (!rating) return null;
-      return (
-        <View style={styles.ratingContainer}>
-          <Ionicons name="star" size={16} color="#FFD700" />
-          <Text style={styles.rating}>{rating.toFixed(1)}</Text>
-        </View>
-      );
-    };
-
-    // Photo indicators component
-    const renderPhotoIndicators = (photoUrls: string[], currentIndex: number) => {
-      if (!photoUrls || photoUrls.length <= 1) return null;
-      
-      return (
-        <View style={styles.photoIndicators}>
-          {photoUrls.map((_, index) => (
-            <View
-              key={index}
-              style={[
-                styles.photoIndicator,
-                { backgroundColor: index === currentIndex ? COLORS.accent : 'rgba(255,255,255,0.3)' }
-              ]}
-            />
-          ))}
-        </View>
-      );
-    };
 
     const renderCard = (card: Card, index: number, isNext = false) => {
       const photoUrls = Array.isArray(card.photoUrls) ? card.photoUrls : [];
       const hasPhotos = photoUrls.length > 0;
-      const displayPhotoIndex = isNext ? 0 : currentPhotoIndex; // Next card always shows first photo
+      const displayPhotoIndex = isNext ? 0 : currentPhotoIndex;
       const currentPhotoUrl = hasPhotos ? photoUrls[displayPhotoIndex] : null;
 
       const cardStyle = isNext

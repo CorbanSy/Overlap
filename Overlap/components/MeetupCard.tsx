@@ -15,7 +15,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import CollectionCard from './CollectionCard';
-import { getAuth, onAuthStateChanged } from 'firebase/auth';
+import { getAuth, onAuthStateChanged, User } from 'firebase/auth';
 
 // ───────────────────────────────────────────────────────────────────────────────
 // Types
@@ -62,8 +62,8 @@ interface MeetupCardProps {
   onTurboMode?: (meetupId: string) => void;
   isHost?: boolean;
   onJoin?: (meetupId: string) => void;
-
-  /** Optional: pass these from the screen for rock-solid identity */
+  onAddFriend?: (meetupId: string) => void;
+  onRemoveFriend?: (meetupId: string, friendUid: string) => void;
   currentUserId?: string;
   currentUserEmail?: string;
 }
@@ -101,6 +101,7 @@ const SPACING = {
 const FRIEND_PREVIEW_COUNT = 8;
 const COLLECTION_PREVIEW_COUNT = 6;
 const DESCRIPTION_PREVIEW_LENGTH = 120;
+const WIDE_LAYOUT_BREAKPOINT = 560;
 
 // ───────────────────────────────────────────────────────────────────────────────
 // Helpers
@@ -108,12 +109,15 @@ const DESCRIPTION_PREVIEW_LENGTH = 120;
 const toDate = (value: any): Date => {
   if (!value) return new Date();
   if (typeof value?.toDate === 'function') return value.toDate();
+  if (value instanceof Date) return value;
   return new Date(value);
 };
 
 const formatDate = (value: any): string => {
   try {
-    return toDate(value).toLocaleDateString('en-US', {
+    const date = toDate(value);
+    if (isNaN(date.getTime())) return 'Invalid Date';
+    return date.toLocaleDateString('en-US', {
       month: 'short',
       day: 'numeric',
       year: 'numeric',
@@ -125,7 +129,9 @@ const formatDate = (value: any): string => {
 
 const formatTime = (value: any): string => {
   try {
-    return toDate(value).toLocaleTimeString('en-US', {
+    const date = toDate(value);
+    if (isNaN(date.getTime())) return 'Invalid Time';
+    return date.toLocaleTimeString('en-US', {
       hour: '2-digit',
       minute: '2-digit',
       hour12: true,
@@ -137,7 +143,9 @@ const formatTime = (value: any): string => {
 
 const formatDateTime = (value: any): string => {
   try {
-    return toDate(value).toLocaleString('en-US', {
+    const date = toDate(value);
+    if (isNaN(date.getTime())) return 'Invalid Date';
+    return date.toLocaleString('en-US', {
       month: 'short',
       day: 'numeric',
       year: 'numeric',
@@ -156,7 +164,7 @@ const getPriceBadge = (priceRange?: number): string => {
   return '$'.repeat(buckets);
 };
 
-// Enable layout animation on Android (old arch)
+// Enable layout animation on Android
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
@@ -173,6 +181,8 @@ const MeetupCard: React.FC<MeetupCardProps> = ({
   onTurboMode,
   isHost = false,
   onJoin,
+  onAddFriend,
+  onRemoveFriend,
   currentUserId,
   currentUserEmail,
 }) => {
@@ -182,99 +192,186 @@ const MeetupCard: React.FC<MeetupCardProps> = ({
   const [showAllCollections, setShowAllCollections] = useState(false);
   const [cardWidth, setCardWidth] = useState(0);
 
-  // Auth (fallback if props not provided)
-  const [authUser, setAuthUser] = useState<{ uid: string; email: string }>({
+  // Auth state with better typing
+  const [authUser, setAuthUser] = useState<{
+    uid: string;
+    email: string;
+    displayName: string;
+    photoURL: string | null;
+  }>({
     uid: '',
     email: '',
+    displayName: '',
+    photoURL: null,
   });
 
+  // Auth effect with proper cleanup and error handling
   useEffect(() => {
-    // If parent passes identity, we don't need to subscribe
-    if (currentUserId || currentUserEmail) return;
-    const auth = getAuth(); // swap to your singleton if you export one
-    const unsub = onAuthStateChanged(auth, (u) => {
+    if (currentUserId && currentUserEmail) return;
+    
+    const auth = getAuth();
+    const unsubscribe = onAuthStateChanged(auth, (user: User | null) => {
       setAuthUser({
-        uid: u?.uid ?? '',
-        email: (u?.email ?? '').toLowerCase(),
+        uid: user?.uid ?? '',
+        email: (user?.email ?? '').toLowerCase(),
+        displayName: user?.displayName ?? '',
+        photoURL: user?.photoURL ?? null,
       });
     });
-    return unsub;
+
+    return unsubscribe;
   }, [currentUserId, currentUserEmail]);
 
-  const me = useMemo(
-    () => ({
-      uid: (currentUserId ?? authUser.uid ?? '').trim(),
-      email: (currentUserEmail ?? authUser.email ?? '').toLowerCase(),
-    }),
-    [currentUserId, currentUserEmail, authUser.uid, authUser.email]
-  );
+  // Memoized current user info
+  const currentUser = useMemo(() => ({
+    uid: (currentUserId ?? authUser.uid ?? '').trim(),
+    email: (currentUserEmail ?? authUser.email ?? '').toLowerCase(),
+    displayName: authUser.displayName,
+    photoURL: authUser.photoURL,
+  }), [currentUserId, currentUserEmail, authUser]);
 
-  // Layout + derived data
-  const isWideLayout = cardWidth >= 560;
+  // Layout calculations
+  const isWideLayout = useMemo(() => cardWidth >= WIDE_LAYOUT_BREAKPOINT, [cardWidth]);
 
-  // Filter out the signed-in user from invited friends (by uid then email)
-  const friendsRaw: Friend[] = Array.isArray(meetup?.friends) ? meetup.friends : [];
-  const friends: Friend[] = useMemo(() => {
-    return friendsRaw.filter((f) => {
-      const fUid = (f?.uid ?? '').trim();
-      const fEmail = (f?.email ?? '').toLowerCase();
-      if (me.uid && fUid) return fUid !== me.uid;
-      if (me.email && fEmail) return fEmail !== me.email;
-      return true; // keep if we can't confidently match
+  // Data processing with better validation
+  const friendsRaw: Friend[] = useMemo(() => 
+    Array.isArray(meetup?.friends) ? meetup.friends : []
+  , [meetup?.friends]);
+
+  const filteredFriends: Friend[] = useMemo(() => {
+    return friendsRaw.filter((friend) => {
+      if (!friend) return false;
+      
+      const friendUid = (friend.uid ?? '').trim();
+      const friendEmail = (friend.email ?? '').toLowerCase();
+      
+      // Filter out current user by uid or email
+      if (currentUser.uid && friendUid && friendUid === currentUser.uid) return false;
+      if (currentUser.email && friendEmail && friendEmail === currentUser.email) return false;
+      
+      return true;
     });
-  }, [friendsRaw, me.uid, me.email]);
+  }, [friendsRaw, currentUser.uid, currentUser.email]);
 
-  const collections = Array.isArray(meetup?.collections) ? meetup.collections : [];
-  const participantCount = Array.isArray(meetup?.participants)
-    ? meetup.participants.length
-    : 1;
+  const collections: Collection[] = useMemo(() => 
+    Array.isArray(meetup?.collections) ? meetup.collections : []
+  , [meetup?.collections]);
 
+  const participantCount = useMemo(() => 
+    Array.isArray(meetup?.participants) ? meetup.participants.length : 1
+  , [meetup?.participants]);
+
+  // Host display logic with better fallbacks
+  const hostDisplay: string = useMemo(() => {
+    const hostId = (meetup?.creatorId ?? '').trim();
+    if (!hostId) return 'Unknown';
+
+    // Current user is host
+    if (hostId === currentUser.uid) {
+      return currentUser.displayName ? `You (${currentUser.displayName})` : 'You';
+    }
+
+    // Look for host in friends list first
+    const hostFriend = friendsRaw.find((friend) => friend?.uid === hostId);
+    if (hostFriend?.email) return hostFriend.email;
+    if (hostFriend?.name) return hostFriend.name;
+
+    // Look in participants
+    const participants = Array.isArray(meetup?.participants) ? meetup.participants : [];
+    const hostParticipant = participants.find((p: any) => {
+      if (typeof p === 'string') return p === hostId;
+      return (p?.uid ?? p?.id) === hostId;
+    });
+
+    if (typeof hostParticipant === 'object' && hostParticipant) {
+      const email = hostParticipant.email ?? hostParticipant.emailLower;
+      if (email) return email.toLowerCase();
+    }
+
+    // Fallback to shortened ID
+    return `User ${hostId.slice(0, 8)}`;
+  }, [meetup?.creatorId, meetup?.participants, friendsRaw, currentUser]);
+
+  // Truncated description
   const truncatedDescription = useMemo(() => {
-    const description = meetup?.description || '';
+    const description = meetup?.description ?? '';
     if (description.length <= DESCRIPTION_PREVIEW_LENGTH) return description;
-    return description.slice(0, DESCRIPTION_PREVIEW_LENGTH) + '…';
+    return `${description.slice(0, DESCRIPTION_PREVIEW_LENGTH)}…`;
   }, [meetup?.description]);
 
-  const friendsToShow = showAllFriends ? friends : friends.slice(0, FRIEND_PREVIEW_COUNT);
-  const collectionsToShow = showAllCollections
-    ? collections
-    : collections.slice(0, COLLECTION_PREVIEW_COUNT);
+  // Display arrays
+  const friendsToShow = useMemo(() => 
+    showAllFriends ? filteredFriends : filteredFriends.slice(0, FRIEND_PREVIEW_COUNT)
+  , [showAllFriends, filteredFriends]);
 
-  // Handlers
+  const collectionsToShow = useMemo(() => 
+    showAllCollections ? collections : collections.slice(0, COLLECTION_PREVIEW_COUNT)
+  , [showAllCollections, collections]);
+
+  // Event handlers
   const handleLayout = useCallback((event: LayoutChangeEvent) => {
     setCardWidth(event.nativeEvent.layout.width);
   }, []);
 
   const handleToggleExpanded = useCallback(() => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setExpanded((prev) => !prev);
+    setExpanded(prev => !prev);
   }, []);
 
   const handleJoin = useCallback(() => {
-    if (!meetup?.id) return;
+    if (!meetup?.id) {
+      console.warn('Cannot join meetup: missing meetup ID');
+      return;
+    }
     onJoin?.(meetup.id);
   }, [meetup?.id, onJoin]);
 
   const handleToggleMeetup = useCallback(() => {
-    if (!meetup?.id) return;
-
-    if (meetup.ongoing) {
-      Alert.alert('Stop Meetup', 'Are you sure you want to stop this meetup?', [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Stop', style: 'destructive', onPress: () => onStop?.(meetup.id) },
-      ]);
-    } else {
-      onStart?.(meetup.id);
+    if (!meetup?.id) {
+      console.warn('Cannot toggle meetup: missing meetup ID');
+      return;
     }
+
+    const action = meetup.ongoing ? 'stop' : 'start';
+    const title = meetup.ongoing ? 'Stop Meetup' : 'Start Meetup';
+    const message = meetup.ongoing 
+      ? 'Are you sure you want to stop this meetup?' 
+      : 'Are you sure you want to start this meetup?';
+
+    Alert.alert(title, message, [
+      { text: 'Cancel', style: 'cancel' },
+      { 
+        text: meetup.ongoing ? 'Stop' : 'Start', 
+        style: meetup.ongoing ? 'destructive' : 'default',
+        onPress: () => {
+          if (meetup.ongoing) {
+            onStop?.(meetup.id);
+          } else {
+            onStart?.(meetup.id);
+          }
+        }
+      },
+    ]);
   }, [meetup?.id, meetup?.ongoing, onStart, onStop]);
 
   const handleTurboMode = useCallback(() => {
-    if (!meetup?.id) return;
+    if (!meetup?.id) {
+      console.warn('Cannot start turbo mode: missing meetup ID');
+      return;
+    }
 
-    Alert.alert('Start Turbo Mode', 'Ready for a 2-minute rapid-fire decision session?', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Start Turbo', style: 'default', onPress: () => onTurboMode?.(meetup.id) },
-    ]);
+    Alert.alert(
+      'Start Turbo Mode', 
+      'Ready for a 2-minute rapid-fire decision session?', 
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Start Turbo', 
+          style: 'default', 
+          onPress: () => onTurboMode?.(meetup.id) 
+        },
+      ]
+    );
   }, [meetup?.id, onTurboMode]);
 
   const handleRemove = useCallback(() => {
@@ -289,38 +386,118 @@ const MeetupCard: React.FC<MeetupCardProps> = ({
   }, [onRemove]);
 
   const handleToggleFriends = useCallback(() => {
-    setShowAllFriends((prev) => !prev);
+    setShowAllFriends(prev => !prev);
   }, []);
 
   const handleToggleCollections = useCallback(() => {
-    setShowAllCollections((prev) => !prev);
+    setShowAllCollections(prev => !prev);
   }, []);
 
-  // Render helpers
-  const renderChip = (icon: string, text: string, key: string) => (
+  const handleAddFriend = useCallback(() => {
+    if (!meetup?.id) {
+      console.warn('Cannot add friend: missing meetup ID');
+      return;
+    }
+    onAddFriend?.(meetup.id);
+  }, [meetup?.id, onAddFriend]);
+
+  const handleRemoveFriend = useCallback((friendUid: string, friendName?: string) => {
+    if (!meetup?.id) {
+      console.warn('Cannot remove friend: missing meetup ID');
+      return;
+    }
+
+    const displayName = friendName || friendUid.slice(0, 8);
+    Alert.alert(
+      'Remove Friend',
+      `Are you sure you want to remove ${displayName} from this meetup?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: 'Remove', 
+          style: 'destructive', 
+          onPress: () => onRemoveFriend?.(meetup.id, friendUid) 
+        },
+      ]
+    );
+  }, [meetup?.id, onRemoveFriend]);
+
+  // Render helpers with better key generation
+  const renderChip = useCallback((icon: string, text: string, key: string) => (
     <View key={key} style={styles.chip}>
       <Ionicons name={icon as any} size={14} color={COLORS.textSecondary} />
       <Text style={styles.chipText} numberOfLines={1}>
         {text}
       </Text>
     </View>
-  );
+  ), []);
 
-  const renderMetaRow = (label: string, value?: string | number) => (
+  const renderMetaRow = useCallback((label: string, value?: string | number) => (
     <View key={label} style={styles.metaRow}>
       <Text style={styles.metaLabel}>{label}</Text>
       <Text style={styles.metaValue} numberOfLines={1}>
         {value ?? 'N/A'}
       </Text>
     </View>
-  );
+  ), []);
 
-  const renderCollectionCard = ({ item }: { item: Collection }) => (
-    <CollectionCard collection={item} previewOnly />
-  );
+  const renderCollectionCard = useCallback(({ item }: { item: Collection }) => (
+    <CollectionCard 
+      key={item.id} 
+      collection={item} 
+      previewOnly 
+    />
+  ), []);
+
+  const renderFriendCard = useCallback((friend: Friend, index: number) => {
+    // Better name resolution logic
+    const displayName = friend?.name || 
+                      friend?.displayName || 
+                      friend?.email || 
+                      `User ${friend.uid?.slice(0, 8) || index + 1}`;
+
+    return (
+      <View key={`friend-${friend.uid}-${index}`} style={styles.friendCard}>
+        {/* Remove button for hosts */}
+        {isHost && onRemoveFriend && (
+          <TouchableOpacity
+            style={styles.removeFriendButton}
+            onPress={() => handleRemoveFriend(friend.uid, friend.name || friend.email)}
+            activeOpacity={0.7}
+            accessibilityLabel={`Remove ${friend.name || friend.email || 'friend'}`}
+            accessibilityRole="button"
+          >
+            <Ionicons name="close" size={12} color={COLORS.danger} />
+          </TouchableOpacity>
+        )}
+        
+        <Image
+          source={
+            friend?.avatarUrl
+              ? { uri: friend.avatarUrl }
+              : require('../assets/images/profile.png')
+          }
+          style={styles.friendAvatar}
+          defaultSource={require('../assets/images/profile.png')}
+        />
+        <Text numberOfLines={2} style={styles.friendName}>
+          {displayName}
+        </Text>
+      </View>
+    );
+  }, [isHost, onRemoveFriend, handleRemoveFriend]);
+
+  // Validation
+  if (!meetup) {
+    return (
+      <View style={[styles.cardContainer, styles.errorContainer]}>
+        <Text style={styles.errorText}>Invalid meetup data</Text>
+      </View>
+    );
+  }
 
   // ───────────────────────────────────────────────────────────────────────────
-  // UI
+  // Render
   // ───────────────────────────────────────────────────────────────────────────
   return (
     <View style={styles.cardContainer} onLayout={handleLayout}>
@@ -331,7 +508,7 @@ const MeetupCard: React.FC<MeetupCardProps> = ({
       <View style={styles.header}>
         <View style={styles.titleContainer}>
           <Text style={styles.title} numberOfLines={2}>
-            {meetup?.eventName || 'Untitled Meetup'}
+            {meetup.eventName || 'Untitled Meetup'}
           </Text>
           {meetup.ongoing && (
             <View style={styles.liveBadge}>
@@ -346,6 +523,7 @@ const MeetupCard: React.FC<MeetupCardProps> = ({
             onPress={handleToggleExpanded}
             activeOpacity={0.7}
             accessibilityLabel={expanded ? 'Collapse details' : 'Expand details'}
+            accessibilityRole="button"
           >
             <Ionicons
               name={expanded ? 'chevron-up' : 'chevron-down'}
@@ -354,7 +532,7 @@ const MeetupCard: React.FC<MeetupCardProps> = ({
             />
           </TouchableOpacity>
 
-          {/* Actions */}
+          {/* Action buttons */}
           <View style={styles.actionButtonsContainer}>
             {isHost ? (
               <>
@@ -366,6 +544,7 @@ const MeetupCard: React.FC<MeetupCardProps> = ({
                   onPress={handleToggleMeetup}
                   activeOpacity={0.8}
                   accessibilityLabel={meetup.ongoing ? 'Stop meetup' : 'Start meetup'}
+                  accessibilityRole="button"
                 >
                   <Ionicons
                     name={meetup.ongoing ? 'stop' : 'play'}
@@ -383,6 +562,7 @@ const MeetupCard: React.FC<MeetupCardProps> = ({
                     onPress={handleTurboMode}
                     activeOpacity={0.8}
                     accessibilityLabel="Start Turbo Mode"
+                    accessibilityRole="button"
                   >
                     <Ionicons name="flash" size={14} color={COLORS.background} />
                     <Text style={styles.turboButtonText}>Turbo</Text>
@@ -390,13 +570,13 @@ const MeetupCard: React.FC<MeetupCardProps> = ({
                 )}
               </>
             ) : (
-              // Guest: show Join only when live
-              meetup.ongoing && (
+              meetup.ongoing && onJoin && (
                 <TouchableOpacity
                   style={[styles.actionButton, styles.startButton]}
                   onPress={handleJoin}
                   activeOpacity={0.8}
                   accessibilityLabel="Join live meetup"
+                  accessibilityRole="button"
                 >
                   <Ionicons name="enter" size={16} color={COLORS.background} />
                   <Text style={styles.actionButtonText}>Join</Text>
@@ -416,20 +596,20 @@ const MeetupCard: React.FC<MeetupCardProps> = ({
       </View>
 
       {/* Description preview */}
-      {!expanded && !!truncatedDescription && (
+      {!expanded && truncatedDescription && (
         <Text style={styles.previewDescription}>{truncatedDescription}</Text>
       )}
 
-      {/* Expanded */}
+      {/* Expanded content */}
       {expanded && (
         <View style={[styles.expandedContent, !isWideLayout && styles.expandedContentStacked]}>
-          {/* Main */}
+          {/* Main content */}
           <View style={styles.mainContent}>
             <Text style={styles.description}>
-              {meetup?.description || 'No description provided.'}
+              {meetup.description || 'No description provided.'}
             </Text>
 
-            {/* Collections */}
+            {/* Collections section */}
             <View style={styles.section}>
               <View style={styles.sectionHeader}>
                 <Text style={styles.sectionTitle}>Collections</Text>
@@ -444,7 +624,7 @@ const MeetupCard: React.FC<MeetupCardProps> = ({
                 <FlatList
                   horizontal
                   data={collectionsToShow}
-                  keyExtractor={(item) => item?.id?.toString() || Math.random().toString()}
+                  keyExtractor={(item) => item?.id || `collection-${Math.random()}`}
                   renderItem={renderCollectionCard}
                   showsHorizontalScrollIndicator={false}
                   contentContainerStyle={styles.horizontalList}
@@ -458,55 +638,75 @@ const MeetupCard: React.FC<MeetupCardProps> = ({
                   style={styles.toggleButton}
                   onPress={handleToggleCollections}
                   activeOpacity={0.7}
+                  accessibilityRole="button"
                 >
                   <Text style={styles.toggleButtonText}>
-                    {showAllCollections ? 'Show fewer' : `Show all ${collections.length} collections`}
+                    {showAllCollections 
+                      ? 'Show fewer' 
+                      : `Show all ${collections.length} collections`
+                    }
                   </Text>
                 </TouchableOpacity>
               )}
             </View>
 
-            {/* Friends */}
+            {/* Friends section */}
             <View style={styles.section}>
               <View style={styles.sectionHeader}>
                 <Text style={styles.sectionTitle}>Invited Friends</Text>
-                {friends.length > 0 && (
-                  <View style={styles.countBadge}>
-                    <Text style={styles.countBadgeText}>{friends.length}</Text>
-                  </View>
-                )}
+                <View style={styles.sectionHeaderActions}>
+                  {filteredFriends.length > 0 && (
+                    <View style={styles.countBadge}>
+                      <Text style={styles.countBadgeText}>{filteredFriends.length}</Text>
+                    </View>
+                  )}
+                  {isHost && onAddFriend && (
+                    <TouchableOpacity
+                      style={styles.addFriendButton}
+                      onPress={handleAddFriend}
+                      activeOpacity={0.7}
+                      accessibilityLabel="Add friend to meetup"
+                      accessibilityRole="button"
+                    >
+                      <Ionicons name="person-add" size={16} color={COLORS.primary} />
+                    </TouchableOpacity>
+                  )}
+                </View>
               </View>
 
               {friendsToShow.length > 0 ? (
                 <View style={styles.friendsGrid}>
-                  {friendsToShow.map((friend, index) => (
-                    <View key={friend?.uid || index} style={styles.friendCard}>
-                      <Image
-                        source={
-                          friend?.avatarUrl
-                            ? { uri: friend.avatarUrl }
-                            : require('../assets/images/profile.png')
-                        }
-                        style={styles.friendAvatar}
-                      />
-                      <Text numberOfLines={2} style={styles.friendName}>
-                        {friend?.name || friend?.email || `Friend ${index + 1}`}
-                      </Text>
-                    </View>
-                  ))}
+                  {friendsToShow.map(renderFriendCard)}
                 </View>
               ) : (
-                <Text style={styles.emptyText}>No friends invited yet.</Text>
+                <View style={styles.emptyStateContainer}>
+                  <Text style={styles.emptyText}>No friends invited yet.</Text>
+                  {isHost && onAddFriend && (
+                    <TouchableOpacity
+                      style={styles.emptyStateButton}
+                      onPress={handleAddFriend}
+                      activeOpacity={0.7}
+                      accessibilityRole="button"
+                    >
+                      <Ionicons name="person-add" size={16} color={COLORS.primary} />
+                      <Text style={styles.emptyStateButtonText}>Invite Friends</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
               )}
 
-              {friends.length > FRIEND_PREVIEW_COUNT && (
+              {filteredFriends.length > FRIEND_PREVIEW_COUNT && (
                 <TouchableOpacity
                   style={styles.toggleButton}
                   onPress={handleToggleFriends}
                   activeOpacity={0.7}
+                  accessibilityRole="button"
                 >
                   <Text style={styles.toggleButtonText}>
-                    {showAllFriends ? 'Show fewer' : `Show all ${friends.length} friends`}
+                    {showAllFriends 
+                      ? 'Show fewer' 
+                      : `Show all ${filteredFriends.length} friends`
+                    }
                   </Text>
                 </TouchableOpacity>
               )}
@@ -518,13 +718,17 @@ const MeetupCard: React.FC<MeetupCardProps> = ({
             <Text style={styles.sidebarTitle}>Details</Text>
 
             <View style={styles.metaContainer}>
-              {renderMetaRow('Category', meetup?.category)}
-              {renderMetaRow('Mood', meetup?.mood)}
-              {renderMetaRow('Price', `${getPriceBadge(meetup?.priceRange)} (${meetup?.priceRange ?? 0})`)}
-              {renderMetaRow('Group Size', meetup?.groupSize)}
-              {renderMetaRow('Participants', participantCount)}
-              {renderMetaRow('Created', formatDateTime(meetup?.createdAt))}
-              {renderMetaRow('Meetup ID', meetup?.meetupId || meetup?.id)}
+              {renderMetaRow('Host', hostDisplay)}
+              {renderMetaRow('Category', meetup.category)}
+              {renderMetaRow('Mood', meetup.mood)}
+              {renderMetaRow(
+                'Price',
+                `${getPriceBadge(meetup.priceRange)} (${meetup.priceRange ?? 0})`
+              )}
+              {renderMetaRow('Group Size', meetup.groupSize?.toString())}
+              {renderMetaRow('Participants', participantCount.toString())}
+              {renderMetaRow('Created', formatDateTime(meetup.createdAt))}
+              {renderMetaRow('Meetup ID', meetup.meetupId || meetup.id)}
             </View>
 
             <View style={styles.sidebarActions}>
@@ -534,6 +738,7 @@ const MeetupCard: React.FC<MeetupCardProps> = ({
                   onPress={onEdit}
                   activeOpacity={0.7}
                   accessibilityLabel="Edit meetup"
+                  accessibilityRole="button"
                 >
                   <Ionicons name="pencil" size={18} color={COLORS.primary} />
                 </TouchableOpacity>
@@ -544,6 +749,7 @@ const MeetupCard: React.FC<MeetupCardProps> = ({
                   onPress={handleRemove}
                   activeOpacity={0.7}
                   accessibilityLabel="Remove meetup"
+                  accessibilityRole="button"
                 >
                   <Ionicons name="trash" size={18} color={COLORS.danger} />
                 </TouchableOpacity>
@@ -573,6 +779,16 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
+  },
+  errorContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: SPACING.xl,
+  },
+  errorText: {
+    color: COLORS.danger,
+    fontSize: 14,
+    fontWeight: '500',
   },
   statusIndicator: {
     position: 'absolute',
@@ -648,11 +864,6 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.turbo,
     paddingHorizontal: SPACING.sm,
   },
-  turboButtonDisabled: {
-    backgroundColor: COLORS.surface,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
   actionButtonText: {
     color: COLORS.background,
     fontSize: 14,
@@ -662,21 +873,6 @@ const styles = StyleSheet.create({
     color: COLORS.background,
     fontSize: 12,
     fontWeight: '700',
-  },
-  turboButtonTextDisabled: {
-    color: COLORS.textTertiary,
-  },
-  participantIndicator: {
-    marginBottom: SPACING.sm,
-  },
-  participantIndicatorText: {
-    color: COLORS.textSecondary,
-    fontSize: 12,
-    fontWeight: '500',
-  },
-  participantIndicatorWarning: {
-    color: COLORS.turbo,
-    fontWeight: '600',
   },
   chipsContainer: {
     flexDirection: 'row',
@@ -731,6 +927,11 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: SPACING.sm,
   },
+  sectionHeaderActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
   sectionTitle: {
     color: COLORS.text,
     fontSize: 16,
@@ -768,6 +969,28 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderWidth: 1,
     borderColor: COLORS.border,
+    position: 'relative',
+  },
+  removeFriendButton: {
+    position: 'absolute',
+    top: 2,
+    right: 2,
+    backgroundColor: COLORS.background,
+    borderRadius: 10,
+    width: 20,
+    height: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: COLORS.danger,
+    zIndex: 1,
+  },
+  addFriendButton: {
+    backgroundColor: 'rgba(35, 134, 54, 0.1)',
+    borderRadius: 8,
+    padding: SPACING.sm,
+    borderWidth: 1,
+    borderColor: COLORS.primary,
   },
   friendAvatar: {
     width: 36,
@@ -785,6 +1008,26 @@ const styles = StyleSheet.create({
     color: COLORS.textTertiary,
     fontSize: 14,
     fontStyle: 'italic',
+  },
+  emptyStateContainer: {
+    alignItems: 'center',
+    gap: SPACING.md,
+  },
+  emptyStateButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(35, 134, 54, 0.1)',
+    borderRadius: 8,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+    borderWidth: 1,
+    borderColor: COLORS.primary,
+    gap: SPACING.xs,
+  },
+  emptyStateButtonText: {
+    color: COLORS.primary,
+    fontSize: 14,
+    fontWeight: '600',
   },
   toggleButton: {
     alignSelf: 'flex-start',
@@ -862,3 +1105,4 @@ const styles = StyleSheet.create({
 });
 
 export default MeetupCard;
+    
