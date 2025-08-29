@@ -1,4 +1,4 @@
-// MeetupInvitesScreen.tsx
+//app/meetupFolder/MeetupInvitesScreen.tsx
 import React, { useState, useEffect } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, FlatList, ActivityIndicator } from 'react-native';
 import { getPendingMeetupInvites, acceptMeetupInvite, declineMeetupInvite } from '../../_utils/storage/meetupInvites';

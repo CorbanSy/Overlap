@@ -171,17 +171,23 @@ export async function getMeetupData(meetupId) {
 }
 
 export async function updateMeetup(meetupData) {
-  if (!meetupData.id) {
-    throw new Error('No meetup id provided');
-  }
+  if (!meetupData.id) throw new Error('No meetup id provided');
 
   const auth = getAuth();
   const user = auth.currentUser;
   if (!user) throw new Error("No user is signed in");
 
   const meetupRef = doc(db, 'meetups', meetupData.id);
-  
-  // Build an object with only the fields that are defined
+  const existingSnap = await getDoc(meetupRef);
+  if (!existingSnap.exists()) throw new Error('Meetup not found');
+  const existing = existingSnap.data();
+
+  // Only the creator/host can start or stop (toggle "ongoing")
+  if (meetupData.ongoing !== undefined && user.uid !== existing.creatorId) {
+    throw new Error('Only the host can start/stop this meetup.');
+  }
+
+  // Build minimal update set
   const updateFields = {};
   if (meetupData.eventName !== undefined) updateFields.eventName = meetupData.eventName;
   if (meetupData.mood !== undefined) updateFields.mood = meetupData.mood;
@@ -189,31 +195,26 @@ export async function updateMeetup(meetupData) {
   if (meetupData.restrictions !== undefined) updateFields.restrictions = meetupData.restrictions;
   if (meetupData.ongoing !== undefined) updateFields.ongoing = meetupData.ongoing;
   if (meetupData.friends !== undefined) updateFields.friends = meetupData.friends;
-  
+
+  if (Object.keys(updateFields).length === 0) return; // nothing to do
+
   // Update the main meetup document
   await updateDoc(meetupRef, updateFields);
-  
-  // If certain fields changed, update user meetup references
+
+  // If specific fields changed, propagate to all participants' user subcollections
   if (meetupData.eventName !== undefined || meetupData.ongoing !== undefined) {
-    const meetupSnapshot = await getDoc(meetupRef);
-    const meetupDataFull = meetupSnapshot.data();
-    
-    if (meetupDataFull && meetupDataFull.participants) {
-      // Update all participants' user meetup references
+    const refreshed = await getDoc(meetupRef);
+    const full = refreshed.data();
+
+    if (full && Array.isArray(full.participants)) {
       const batch = writeBatch(db);
-      
-      meetupDataFull.participants.forEach(participantId => {
+      full.participants.forEach((participantId) => {
         const userMeetupRef = doc(db, 'users', participantId, 'meetups', meetupData.id);
         const userUpdateFields = {};
-        
         if (meetupData.eventName !== undefined) userUpdateFields.eventName = meetupData.eventName;
         if (meetupData.ongoing !== undefined) userUpdateFields.ongoing = meetupData.ongoing;
-        
-        if (Object.keys(userUpdateFields).length > 0) {
-          batch.update(userMeetupRef, userUpdateFields);
-        }
+        if (Object.keys(userUpdateFields).length > 0) batch.update(userMeetupRef, userUpdateFields);
       });
-      
       await batch.commit();
     }
   }

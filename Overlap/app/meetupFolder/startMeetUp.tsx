@@ -1,7 +1,6 @@
-// app/meetupFolder/startMeetUp.tsx - Removed Turbo Mode button
+// app/meetupFolder/startMeetUp.tsx
 import React, { useState, useRef, useMemo, useEffect } from 'react';
 import {
-  SafeAreaView,
   StyleSheet,
   View,
   Text,
@@ -20,10 +19,13 @@ import Leader from '../../components/leader';
 import { getMeetupData, updateMeetup } from '../../_utils/storage/meetups';
 import { Ionicons } from '@expo/vector-icons';
 
+// ⬇️ use the SafeAreaView from react-native-safe-area-context
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 const BUTTON_SIZE = 60;
-const CONTROL_BAR_HEIGHT = 100; // Fixed height for control bar
+const CONTROL_BAR_BASE_HEIGHT = 100; // base height before adding bottom inset
 const COLORS = {
   bg: '#0D1117',
   surface: '#1B1F24',
@@ -35,8 +37,9 @@ const COLORS = {
 export default function StartMeetupScreen() {
   const { meetupId } = useLocalSearchParams<{ meetupId?: string }>();
   const router = useRouter();
-  
-  // State management
+  const insets = useSafeAreaInsets(); // ⬅️ get safe-area insets
+
+  // State
   const [showDirectionModal, setShowDirectionModal] = useState(false);
   const [showLeaderboardModal, setShowLeaderboardModal] = useState(false);
   const [currentCategory, setCurrentCategory] = useState<string>('Dining');
@@ -44,16 +47,15 @@ export default function StartMeetupScreen() {
   const [refreshKey, setRefreshKey] = useState(0);
 
   const deckRef = useRef<SwipingHandle>(null);
-  
-  // Animation for slide-in from right
+
+  // Animations
   const slideAnim = useRef(new Animated.Value(SCREEN_WIDTH)).current;
   const panX = useRef(new Animated.Value(0)).current;
 
-  // Load meetup data on mount
+  // Load meetup data
   useEffect(() => {
     const loadMeetupData = async () => {
       if (!meetupId) return;
-      
       try {
         const data = await getMeetupData(meetupId);
         setMeetupData(data);
@@ -62,41 +64,26 @@ export default function StartMeetupScreen() {
         console.error('Error loading meetup data:', error);
       }
     };
-
     loadMeetupData();
   }, [meetupId]);
 
-  // Handle category change
   const handleCategoryChange = async (newCategory: string) => {
     if (!meetupId) return;
-
     try {
-      console.log(`[handleCategoryChange] Changing category from ${currentCategory} to ${newCategory}`);
-      
       setCurrentCategory(newCategory);
-      setMeetupData(prev => ({ ...prev, category: newCategory }));
-      setRefreshKey(prev => prev + 1);
-      
-      await updateMeetup({
-        id: meetupId,
-        category: newCategory,
-      });
-
-      console.log(`[handleCategoryChange] Category updated successfully. Local: ${newCategory}, RefreshKey: ${refreshKey + 1}`);
-      
+      setMeetupData((prev: any) => ({ ...prev, category: newCategory }));
+      setRefreshKey((prev) => prev + 1);
+      await updateMeetup({ id: meetupId, category: newCategory });
     } catch (error) {
       console.error('Error updating meetup category:', error);
-      
       const originalData = await getMeetupData(meetupId);
       setCurrentCategory(originalData.category || 'Dining');
       setMeetupData(originalData);
-      
       throw error;
     }
   };
 
   const openLeaderboard = () => {
-    console.log('Opening leaderboard...');
     setShowLeaderboardModal(true);
     slideAnim.setValue(SCREEN_WIDTH);
     panX.setValue(0);
@@ -109,50 +96,32 @@ export default function StartMeetupScreen() {
   };
 
   const closeLeaderboard = () => {
-    Animated.timing(slideAnim, {
-      toValue: SCREEN_WIDTH,
-      duration: 300,
-      useNativeDriver: true,
-    }).start(() => {
-      setShowLeaderboardModal(false);
-      panX.setValue(0);
-    });
+    Animated.timing(slideAnim, { toValue: SCREEN_WIDTH, duration: 300, useNativeDriver: true })
+      .start(() => {
+        setShowLeaderboardModal(false);
+        panX.setValue(0);
+      });
   };
 
-  // Pan responder for swipe to dismiss
   const panResponder = useMemo(
     () =>
       PanResponder.create({
-        onMoveShouldSetPanResponder: (_, gestureState) => {
-          return Math.abs(gestureState.dx) > 10 && Math.abs(gestureState.dx) > Math.abs(gestureState.dy);
+        onMoveShouldSetPanResponder: (_: any, g: any) =>
+          Math.abs(g.dx) > 10 && Math.abs(g.dx) > Math.abs(g.dy),
+        onPanResponderGrant: () => panX.setValue(0),
+        onPanResponderMove: (_: any, g: any) => {
+          if (g.dx > 0) panX.setValue(g.dx);
         },
-        onPanResponderGrant: () => {
-          panX.setValue(0);
-        },
-        onPanResponderMove: (_, gestureState) => {
-          if (gestureState.dx > 0) {
-            panX.setValue(gestureState.dx);
-          }
-        },
-        onPanResponderRelease: (_, gestureState) => {
+        onPanResponderRelease: (_: any, g: any) => {
           const threshold = SCREEN_WIDTH * 0.3;
-          
-          if (gestureState.dx > threshold || gestureState.vx > 0.5) {
-            Animated.timing(panX, {
-              toValue: SCREEN_WIDTH,
-              duration: 200,
-              useNativeDriver: true,
-            }).start(() => {
-              setShowLeaderboardModal(false);
-              panX.setValue(0);
-            });
+          if (g.dx > threshold || g.vx > 0.5) {
+            Animated.timing(panX, { toValue: SCREEN_WIDTH, duration: 200, useNativeDriver: true })
+              .start(() => {
+                setShowLeaderboardModal(false);
+                panX.setValue(0);
+              });
           } else {
-            Animated.spring(panX, {
-              toValue: 0,
-              useNativeDriver: true,
-              tension: 100,
-              friction: 8,
-            }).start();
+            Animated.spring(panX, { toValue: 0, useNativeDriver: true, tension: 100, friction: 8 }).start();
           }
         },
       }),
@@ -161,18 +130,24 @@ export default function StartMeetupScreen() {
 
   if (!meetupId) {
     return (
-      <SafeAreaView style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+      <SafeAreaView style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]} edges={['top', 'left', 'right']}>
         <Text style={{ color: '#fff' }}>Missing meetupId</Text>
       </SafeAreaView>
     );
   }
 
+  // Derived layout numbers that respect safe areas
+  const controlBarHeight = CONTROL_BAR_BASE_HEIGHT + insets.bottom;
+  const controlBarPaddingBottom = Math.max(16, insets.bottom);
+  const deckBottomMargin = controlBarHeight; // keep deck above the control bar
+
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <SafeAreaView style={styles.container}>
+      {/* ⬇️ SafeAreaView from safe-area-context handles the status bar notch on Android */}
+      <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
         {/* HEADER */}
         <View style={styles.header}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.headerAction}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.headerAction} activeOpacity={0.7}>
             <Ionicons name="chevron-back" size={20} color={COLORS.accent} />
             <Text style={styles.headerButton}>Leave Meetup</Text>
           </TouchableOpacity>
@@ -181,26 +156,34 @@ export default function StartMeetupScreen() {
             <Text style={styles.categoryText}>{currentCategory}</Text>
           </View>
 
-          <TouchableOpacity onPress={openLeaderboard} style={styles.headerAction}>
+          <TouchableOpacity onPress={openLeaderboard} style={styles.headerAction} activeOpacity={0.7}>
             <Ionicons name="trophy-outline" size={18} color={COLORS.accent} />
             <Text style={styles.headerButton}>Leaderboard</Text>
           </TouchableOpacity>
         </View>
 
-        {/* SWIPE DECK - Now takes full available space */}
-        <View style={styles.swipeDeckContainer}>
-          <SwipingScreen 
+        {/* SWIPE DECK */}
+        <View style={[styles.swipeDeckContainer, { marginBottom: deckBottomMargin }]}>
+          <SwipingScreen
             key={`${meetupId}-${currentCategory}-${refreshKey}`}
-            ref={deckRef} 
-            meetupId={String(meetupId)} 
+            ref={deckRef}
+            meetupId={String(meetupId)}
             category={currentCategory}
-            showInternalButtons={false} 
+            showInternalButtons={false}
             forceRefresh={refreshKey}
           />
         </View>
 
-        {/* CONTROLS - Fixed at bottom with proper spacing */}
-        <View style={styles.controlBar}>
+        {/* CONTROLS */}
+        <View
+          style={[
+            styles.controlBar,
+            {
+              height: controlBarHeight,
+              paddingBottom: controlBarPaddingBottom,
+            },
+          ]}
+        >
           <TouchableOpacity
             style={[styles.controlButton, { backgroundColor: COLORS.danger }]}
             onPress={() => deckRef.current?.swipeLeft()}
@@ -227,12 +210,7 @@ export default function StartMeetupScreen() {
         </View>
 
         {/* CHANGE-CATEGORY MODAL */}
-        <Modal
-          animationType="slide"
-          transparent
-          visible={showDirectionModal}
-          onRequestClose={() => setShowDirectionModal(false)}
-        >
+        <Modal animationType="slide" transparent visible={showDirectionModal} onRequestClose={() => setShowDirectionModal(false)}>
           <View style={styles.modalOverlay}>
             <MeetupExploreCard
               currentCategory={currentCategory}
@@ -244,45 +222,29 @@ export default function StartMeetupScreen() {
         </Modal>
 
         {/* LEADERBOARD MODAL */}
-        <Modal
-          animationType="none"
-          transparent
-          visible={showLeaderboardModal}
-          onRequestClose={closeLeaderboard}
-        >
+        <Modal animationType="none" transparent visible={showLeaderboardModal} onRequestClose={closeLeaderboard}>
           <View style={styles.slideModalOverlay}>
-            <Animated.View 
+            <Animated.View
               style={[
                 styles.slideModalContent,
-                {
-                  transform: [
-                    { 
-                      translateX: Animated.add(slideAnim, panX)
-                    }
-                  ]
-                }
+                { transform: [{ translateX: Animated.add(slideAnim, panX) }] },
               ]}
               {...panResponder.panHandlers}
             >
-              <View style={styles.slideModalHeader}>
+              {/* ⬇️ respect top inset inside the modal */}
+              <View style={[styles.slideModalHeader, { paddingTop: insets.top + 12 }]}>
                 <View style={styles.swipeIndicator} />
                 <View style={styles.headerContent}>
                   <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                     <Ionicons name="trophy" size={24} color={COLORS.accent} style={{ marginRight: 8 }} />
-                    <Text style={styles.slideModalTitle}>
-                      Activity Leaderboard
-                    </Text>
+                    <Text style={styles.slideModalTitle}>Activity Leaderboard</Text>
                   </View>
-                  <TouchableOpacity 
-                    onPress={closeLeaderboard} 
-                    style={styles.modalCloseButton}
-                    activeOpacity={0.7}
-                  >
+                  <TouchableOpacity onPress={closeLeaderboard} style={styles.modalCloseButton} activeOpacity={0.7}>
                     <Ionicons name="close" size={24} color="#fff" />
                   </TouchableOpacity>
                 </View>
               </View>
-              
+
               <View style={styles.slideModalBody}>
                 <Leader meetupId={String(meetupId)} />
               </View>
@@ -295,11 +257,8 @@ export default function StartMeetupScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { 
-    flex: 1, 
-    backgroundColor: COLORS.bg 
-  },
-  
+  container: { flex: 1, backgroundColor: COLORS.bg },
+
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -308,17 +267,8 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: '#232533',
   },
-  headerAction: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    gap: 6,
-    zIndex: 1,
-  },
-  headerButton: { 
-    color: COLORS.accent, 
-    fontSize: 16, 
-    fontWeight: '600' 
-  },
+  headerAction: { flexDirection: 'row', alignItems: 'center', gap: 6, zIndex: 1 },
+  headerButton: { color: COLORS.accent, fontSize: 16, fontWeight: '600' },
 
   categoryDisplay: {
     backgroundColor: COLORS.surface,
@@ -328,30 +278,22 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.accent,
   },
-  categoryText: {
-    color: COLORS.accent,
-    fontSize: 14,
-    fontWeight: '600',
-  },
+  categoryText: { color: COLORS.accent, fontSize: 14, fontWeight: '600' },
 
   swipeDeckContainer: {
     flex: 1,
-    marginBottom: CONTROL_BAR_HEIGHT, // Reserve space for control bar
   },
 
-  // UPDATED: Control bar with fixed positioning and proper spacing
   controlBar: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
-    height: CONTROL_BAR_HEIGHT,
     flexDirection: 'row',
     justifyContent: 'space-around',
     alignItems: 'center',
     paddingHorizontal: 40,
-    paddingBottom: 20, // Safe area padding
-    backgroundColor: COLORS.bg, // Ensure background doesn't show through
+    backgroundColor: COLORS.bg,
   },
   controlButton: {
     width: BUTTON_SIZE,
@@ -366,11 +308,9 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 6,
   },
-  centerButton: { 
-    backgroundColor: COLORS.accent 
-  },
+  centerButton: { backgroundColor: COLORS.accent },
 
-  // Modal styles
+  // Modals
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',
@@ -396,7 +336,6 @@ const styles = StyleSheet.create({
     elevation: 10,
   },
   slideModalHeader: {
-    paddingTop: 50,
     paddingBottom: 16,
     borderBottomWidth: 1,
     borderBottomColor: '#30363D',
@@ -415,16 +354,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 20,
   },
-  slideModalTitle: {
-    color: '#fff',
-    fontSize: 20,
-    fontWeight: '700',
-  },
-  modalCloseButton: {
-    padding: 4,
-  },
-  slideModalBody: {
-    flex: 1,
-    paddingTop: 10,
-  },
+  slideModalTitle: { color: '#fff', fontSize: 20, fontWeight: '700' },
+  modalCloseButton: { padding: 4 },
+  slideModalBody: { flex: 1, paddingTop: 10 },
 });

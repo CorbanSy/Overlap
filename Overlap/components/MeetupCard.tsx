@@ -58,7 +58,9 @@ interface MeetupCardProps {
   onRemove?: () => void;
   onStart?: (meetupId: string) => void;
   onStop?: (meetupId: string) => void;
-  onTurboMode?: (meetupId: string) => void; // New prop for turbo mode
+  onTurboMode?: (meetupId: string) => void;
+  isHost?: boolean;                 // << NEW
+  onJoin?: (meetupId: string) => void; // << NEW
 }
 
 // Constants
@@ -156,7 +158,9 @@ const MeetupCard: React.FC<MeetupCardProps> = ({
   onRemove,
   onStart,
   onStop,
-  onTurboMode, // New prop
+  onTurboMode,
+  isHost = false,      // <-- add default
+  onJoin,             // <-- pull from props
 }) => {
   // State
   const [expanded, setExpanded] = useState(false);
@@ -190,6 +194,11 @@ const MeetupCard: React.FC<MeetupCardProps> = ({
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     setExpanded(prev => !prev);
   }, []);
+
+  const handleJoin = useCallback(() => {
+    if (!meetup?.id) return;
+    onJoin?.(meetup.id);
+  }, [meetup?.id, onJoin]);
 
   const handleToggleMeetup = useCallback(() => {
     if (!meetup?.id) return;
@@ -314,36 +323,44 @@ const MeetupCard: React.FC<MeetupCardProps> = ({
 
           {/* Action buttons container */}
           <View style={styles.actionButtonsContainer}>
-            <TouchableOpacity
-              style={[
-                styles.actionButton,
-                meetup.ongoing ? styles.stopButton : styles.startButton,
-              ]}
-              onPress={handleToggleMeetup}
-              activeOpacity={0.8}
-              accessibilityLabel={meetup.ongoing ? 'Stop meetup' : 'Start meetup'}
-            >
-              <Ionicons
-                name={meetup.ongoing ? 'stop' : 'play'}
-                size={16}
-                color={COLORS.background}
-              />
-              <Text style={styles.actionButtonText}>
-                {meetup.ongoing ? 'Stop' : 'Start'}
-              </Text>
-            </TouchableOpacity>
+            {isHost ? (
+              <>
+                <TouchableOpacity
+                  style={[styles.actionButton, meetup.ongoing ? styles.stopButton : styles.startButton]}
+                  onPress={handleToggleMeetup}
+                  activeOpacity={0.8}
+                  accessibilityLabel={meetup.ongoing ? 'Stop meetup' : 'Start meetup'}
+                >
+                  <Ionicons name={meetup.ongoing ? 'stop' : 'play'} size={16} color={COLORS.background} />
+                  <Text style={styles.actionButtonText}>{meetup.ongoing ? 'Stop' : 'Start'}</Text>
+                </TouchableOpacity>
 
-            {/* Turbo Mode button - show for all non-ongoing meetups */}
-            {!meetup.ongoing && onTurboMode && (
-              <TouchableOpacity
-                style={[styles.actionButton, styles.turboButton]}
-                onPress={handleTurboMode}
-                activeOpacity={0.8}
-                accessibilityLabel="Start Turbo Mode"
-              >
-                <Ionicons name="flash" size={14} color={COLORS.background} />
-                <Text style={styles.turboButtonText}>Turbo</Text>
-              </TouchableOpacity>
+                {/* Keep Turbo host-only to avoid side-effects for guests */}
+                {!meetup.ongoing && onTurboMode && (
+                  <TouchableOpacity
+                    style={[styles.actionButton, styles.turboButton]}
+                    onPress={handleTurboMode}
+                    activeOpacity={0.8}
+                    accessibilityLabel="Start Turbo Mode"
+                  >
+                    <Ionicons name="flash" size={14} color={COLORS.background} />
+                    <Text style={styles.turboButtonText}>Turbo</Text>
+                  </TouchableOpacity>
+                )}
+              </>
+            ) : (
+              // Not host: if live, show Join button; otherwise nothing
+              meetup.ongoing && (
+                <TouchableOpacity
+                  style={[styles.actionButton, styles.startButton]}
+                  onPress={handleJoin}
+                  activeOpacity={0.8}
+                  accessibilityLabel="Join live meetup"
+                >
+                  <Ionicons name="enter" size={16} color={COLORS.background} />
+                  <Text style={styles.actionButtonText}>Join</Text>
+                </TouchableOpacity>
+              )
             )}
           </View>
         </View>

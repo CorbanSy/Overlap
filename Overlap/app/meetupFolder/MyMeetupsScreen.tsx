@@ -22,6 +22,7 @@ import MeetupCard from '../../components/MeetupCard';
 import StartMeetupScreen from './startMeetUp';
 import TurboModeScreen from '../../components/turbo/TurboModeScreen';
 import { useRouter } from 'expo-router';
+import { getAuth } from 'firebase/auth';
 
 // Types
 interface Meetup {
@@ -73,6 +74,7 @@ const MyMeetupsScreen: React.FC<Props> = ({ onBack }) => {
   
   // State management
   const [meetups, setMeetups] = useState<Meetup[]>([]);
+  const authUid = getAuth()?.currentUser?.uid || null;
   const [pendingInvites, setPendingInvites] = useState<PendingInvite[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -102,6 +104,10 @@ const MyMeetupsScreen: React.FC<Props> = ({ onBack }) => {
     }
   }, []);
 
+  const handleJoinMeetup = useCallback((meetupId: string) => {
+    // Non-hosts join by opening the live session screen
+    router.push({ pathname: '/meetupFolder/startMeetUp', params: { meetupId } });
+  }, [router]);
   const fetchData = useCallback(async () => {
     setLoading(true);
     await Promise.all([fetchMeetups(), fetchInvites()]);
@@ -318,16 +324,21 @@ const MyMeetupsScreen: React.FC<Props> = ({ onBack }) => {
               </View>
             </View>
             
-            {ongoingMeetups.map((meetup) => (
-              <MeetupCard
-                key={meetup.id}
-                meetup={meetup}
-                onRemove={() => handleRemoveMeetup(meetup.id)}
-                onStart={handleStartMeetup}
-                onStop={handleStopMeetup}
-                // No turbo mode for ongoing meetups
-              />
-            ))}
+            {ongoingMeetups.map((meetup) => {
+              const isHost = authUid === meetup.creatorId;
+              return (
+                <MeetupCard
+                  key={meetup.id}
+                  meetup={meetup}
+                  onRemove={() => handleRemoveMeetup(meetup.id)}
+                  onStart={isHost ? handleStartMeetup : undefined}
+                  onStop={isHost ? handleStopMeetup : undefined}
+                  onTurboMode={isHost ? handleTurboMode : undefined}
+                  isHost={isHost}
+                  onJoin={!isHost ? handleJoinMeetup : undefined}
+                />
+              );
+            })}
           </View>
         )}
 
@@ -344,16 +355,21 @@ const MyMeetupsScreen: React.FC<Props> = ({ onBack }) => {
               </View>
             </View>
             
-            {regularMeetups.map((meetup) => (
-              <MeetupCard
-                key={meetup.id}
-                meetup={meetup}
-                onRemove={() => handleRemoveMeetup(meetup.id)}
-                onStart={handleStartMeetup}
-                onStop={handleStopMeetup}
-                onTurboMode={handleTurboMode} // Add turbo mode support
-              />
-            ))}
+            {regularMeetups.map((meetup) => {
+              const isHost = authUid === meetup.creatorId;
+              return (
+                <MeetupCard
+                  key={meetup.id}
+                  meetup={meetup}
+                  onRemove={() => handleRemoveMeetup(meetup.id)}
+                  onStart={isHost ? handleStartMeetup : undefined}
+                  onStop={isHost ? handleStopMeetup : undefined}
+                  onTurboMode={isHost ? handleTurboMode : undefined}
+                  isHost={isHost}
+                  // not live yet → no join button for guests
+                />
+              );
+            })}
           </View>
         )}
 
