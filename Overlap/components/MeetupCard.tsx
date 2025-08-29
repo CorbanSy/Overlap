@@ -1,5 +1,5 @@
-//components/MeetupCard.tsx
-import React, { useCallback, useMemo, useState } from 'react';
+// components/MeetupCard.tsx
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -14,10 +14,12 @@ import {
   Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import FriendCard from './FriendCard';
 import CollectionCard from './CollectionCard';
+import { getAuth, onAuthStateChanged } from 'firebase/auth';
 
+// ───────────────────────────────────────────────────────────────────────────────
 // Types
+// ───────────────────────────────────────────────────────────────────────────────
 interface Friend {
   uid: string;
   name?: string;
@@ -28,7 +30,6 @@ interface Friend {
 interface Collection {
   id: string;
   name?: string;
-  // Add other collection properties as needed
 }
 
 interface Meetup {
@@ -59,11 +60,17 @@ interface MeetupCardProps {
   onStart?: (meetupId: string) => void;
   onStop?: (meetupId: string) => void;
   onTurboMode?: (meetupId: string) => void;
-  isHost?: boolean;                 // << NEW
-  onJoin?: (meetupId: string) => void; // << NEW
+  isHost?: boolean;
+  onJoin?: (meetupId: string) => void;
+
+  /** Optional: pass these from the screen for rock-solid identity */
+  currentUserId?: string;
+  currentUserEmail?: string;
 }
 
-// Constants
+// ───────────────────────────────────────────────────────────────────────────────
+// UI constants
+// ───────────────────────────────────────────────────────────────────────────────
 const COLORS = {
   background: '#0D1117',
   card: '#1B1F24',
@@ -79,7 +86,7 @@ const COLORS = {
   textTertiary: '#6E7681',
   border: 'rgba(255,255,255,0.08)',
   borderHover: 'rgba(255,255,255,0.12)',
-  turbo: '#FF6B35', // New turbo color
+  turbo: '#FF6B35',
 } as const;
 
 const SPACING = {
@@ -95,7 +102,9 @@ const FRIEND_PREVIEW_COUNT = 8;
 const COLLECTION_PREVIEW_COUNT = 6;
 const DESCRIPTION_PREVIEW_LENGTH = 120;
 
-// Utility functions
+// ───────────────────────────────────────────────────────────────────────────────
+// Helpers
+// ───────────────────────────────────────────────────────────────────────────────
 const toDate = (value: any): Date => {
   if (!value) return new Date();
   if (typeof value?.toDate === 'function') return value.toDate();
@@ -147,11 +156,14 @@ const getPriceBadge = (priceRange?: number): string => {
   return '$'.repeat(buckets);
 };
 
-// Configure layout animations
+// Enable layout animation on Android (old arch)
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
+// ───────────────────────────────────────────────────────────────────────────────
+// Component
+// ───────────────────────────────────────────────────────────────────────────────
 const MeetupCard: React.FC<MeetupCardProps> = ({
   meetup,
   onEdit,
@@ -159,21 +171,64 @@ const MeetupCard: React.FC<MeetupCardProps> = ({
   onStart,
   onStop,
   onTurboMode,
-  isHost = false,      // <-- add default
-  onJoin,             // <-- pull from props
+  isHost = false,
+  onJoin,
+  currentUserId,
+  currentUserEmail,
 }) => {
-  // State
+  // UI state
   const [expanded, setExpanded] = useState(false);
   const [showAllFriends, setShowAllFriends] = useState(false);
   const [showAllCollections, setShowAllCollections] = useState(false);
   const [cardWidth, setCardWidth] = useState(0);
 
-  // Computed values
+  // Auth (fallback if props not provided)
+  const [authUser, setAuthUser] = useState<{ uid: string; email: string }>({
+    uid: '',
+    email: '',
+  });
+
+  useEffect(() => {
+    // If parent passes identity, we don't need to subscribe
+    if (currentUserId || currentUserEmail) return;
+    const auth = getAuth(); // swap to your singleton if you export one
+    const unsub = onAuthStateChanged(auth, (u) => {
+      setAuthUser({
+        uid: u?.uid ?? '',
+        email: (u?.email ?? '').toLowerCase(),
+      });
+    });
+    return unsub;
+  }, [currentUserId, currentUserEmail]);
+
+  const me = useMemo(
+    () => ({
+      uid: (currentUserId ?? authUser.uid ?? '').trim(),
+      email: (currentUserEmail ?? authUser.email ?? '').toLowerCase(),
+    }),
+    [currentUserId, currentUserEmail, authUser.uid, authUser.email]
+  );
+
+  // Layout + derived data
   const isWideLayout = cardWidth >= 560;
-  const friends = Array.isArray(meetup?.friends) ? meetup.friends : [];
+
+  // Filter out the signed-in user from invited friends (by uid then email)
+  const friendsRaw: Friend[] = Array.isArray(meetup?.friends) ? meetup.friends : [];
+  const friends: Friend[] = useMemo(() => {
+    return friendsRaw.filter((f) => {
+      const fUid = (f?.uid ?? '').trim();
+      const fEmail = (f?.email ?? '').toLowerCase();
+      if (me.uid && fUid) return fUid !== me.uid;
+      if (me.email && fEmail) return fEmail !== me.email;
+      return true; // keep if we can't confidently match
+    });
+  }, [friendsRaw, me.uid, me.email]);
+
   const collections = Array.isArray(meetup?.collections) ? meetup.collections : [];
-  const participantCount = meetup?.participants?.length || 1;
-  
+  const participantCount = Array.isArray(meetup?.participants)
+    ? meetup.participants.length
+    : 1;
+
   const truncatedDescription = useMemo(() => {
     const description = meetup?.description || '';
     if (description.length <= DESCRIPTION_PREVIEW_LENGTH) return description;
@@ -181,18 +236,18 @@ const MeetupCard: React.FC<MeetupCardProps> = ({
   }, [meetup?.description]);
 
   const friendsToShow = showAllFriends ? friends : friends.slice(0, FRIEND_PREVIEW_COUNT);
-  const collectionsToShow = showAllCollections 
-    ? collections 
+  const collectionsToShow = showAllCollections
+    ? collections
     : collections.slice(0, COLLECTION_PREVIEW_COUNT);
 
-  // Event handlers
+  // Handlers
   const handleLayout = useCallback((event: LayoutChangeEvent) => {
     setCardWidth(event.nativeEvent.layout.width);
   }, []);
 
   const handleToggleExpanded = useCallback(() => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setExpanded(prev => !prev);
+    setExpanded((prev) => !prev);
   }, []);
 
   const handleJoin = useCallback(() => {
@@ -202,16 +257,12 @@ const MeetupCard: React.FC<MeetupCardProps> = ({
 
   const handleToggleMeetup = useCallback(() => {
     if (!meetup?.id) return;
-    
+
     if (meetup.ongoing) {
-      Alert.alert(
-        'Stop Meetup',
-        'Are you sure you want to stop this meetup?',
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Stop', style: 'destructive', onPress: () => onStop?.(meetup.id) },
-        ]
-      );
+      Alert.alert('Stop Meetup', 'Are you sure you want to stop this meetup?', [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Stop', style: 'destructive', onPress: () => onStop?.(meetup.id) },
+      ]);
     } else {
       onStart?.(meetup.id);
     }
@@ -219,16 +270,11 @@ const MeetupCard: React.FC<MeetupCardProps> = ({
 
   const handleTurboMode = useCallback(() => {
     if (!meetup?.id) return;
-    
-    // Removed the participant count check - turbo works with any number of participants
-    Alert.alert(
-      'Start Turbo Mode',
-      'Ready for a 2-minute rapid-fire decision session?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Start Turbo', style: 'default', onPress: () => onTurboMode?.(meetup.id) },
-      ]
-    );
+
+    Alert.alert('Start Turbo Mode', 'Ready for a 2-minute rapid-fire decision session?', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Start Turbo', style: 'default', onPress: () => onTurboMode?.(meetup.id) },
+    ]);
   }, [meetup?.id, onTurboMode]);
 
   const handleRemove = useCallback(() => {
@@ -243,11 +289,11 @@ const MeetupCard: React.FC<MeetupCardProps> = ({
   }, [onRemove]);
 
   const handleToggleFriends = useCallback(() => {
-    setShowAllFriends(prev => !prev);
+    setShowAllFriends((prev) => !prev);
   }, []);
 
   const handleToggleCollections = useCallback(() => {
-    setShowAllCollections(prev => !prev);
+    setShowAllCollections((prev) => !prev);
   }, []);
 
   // Render helpers
@@ -269,26 +315,13 @@ const MeetupCard: React.FC<MeetupCardProps> = ({
     </View>
   );
 
-  const renderFriendCard = ({ item, index }: { item: Friend; index: number }) => (
-    <View style={styles.friendCard}>
-      <Image
-        source={
-          item?.avatarUrl
-            ? { uri: item.avatarUrl }
-            : require('../assets/images/profile.png')
-        }
-        style={styles.friendAvatar}
-      />
-      <Text numberOfLines={2} style={styles.friendName}>
-        {item?.name || item?.email || `Friend ${index + 1}`}
-      </Text>
-    </View>
-  );
-
   const renderCollectionCard = ({ item }: { item: Collection }) => (
     <CollectionCard collection={item} previewOnly />
   );
 
+  // ───────────────────────────────────────────────────────────────────────────
+  // UI
+  // ───────────────────────────────────────────────────────────────────────────
   return (
     <View style={styles.cardContainer} onLayout={handleLayout}>
       {/* Status indicator */}
@@ -321,21 +354,29 @@ const MeetupCard: React.FC<MeetupCardProps> = ({
             />
           </TouchableOpacity>
 
-          {/* Action buttons container */}
+          {/* Actions */}
           <View style={styles.actionButtonsContainer}>
             {isHost ? (
               <>
                 <TouchableOpacity
-                  style={[styles.actionButton, meetup.ongoing ? styles.stopButton : styles.startButton]}
+                  style={[
+                    styles.actionButton,
+                    meetup.ongoing ? styles.stopButton : styles.startButton,
+                  ]}
                   onPress={handleToggleMeetup}
                   activeOpacity={0.8}
                   accessibilityLabel={meetup.ongoing ? 'Stop meetup' : 'Start meetup'}
                 >
-                  <Ionicons name={meetup.ongoing ? 'stop' : 'play'} size={16} color={COLORS.background} />
-                  <Text style={styles.actionButtonText}>{meetup.ongoing ? 'Stop' : 'Start'}</Text>
+                  <Ionicons
+                    name={meetup.ongoing ? 'stop' : 'play'}
+                    size={16}
+                    color={COLORS.background}
+                  />
+                  <Text style={styles.actionButtonText}>
+                    {meetup.ongoing ? 'Stop' : 'Start'}
+                  </Text>
                 </TouchableOpacity>
 
-                {/* Keep Turbo host-only to avoid side-effects for guests */}
                 {!meetup.ongoing && onTurboMode && (
                   <TouchableOpacity
                     style={[styles.actionButton, styles.turboButton]}
@@ -349,7 +390,7 @@ const MeetupCard: React.FC<MeetupCardProps> = ({
                 )}
               </>
             ) : (
-              // Not host: if live, show Join button; otherwise nothing
+              // Guest: show Join only when live
               meetup.ongoing && (
                 <TouchableOpacity
                   style={[styles.actionButton, styles.startButton]}
@@ -366,7 +407,7 @@ const MeetupCard: React.FC<MeetupCardProps> = ({
         </View>
       </View>
 
-      {/* Chips row */}
+      {/* Chips */}
       <View style={styles.chipsContainer}>
         {meetup.date && renderChip('calendar-outline', formatDate(meetup.date), 'date')}
         {meetup.time && renderChip('time-outline', formatTime(meetup.time), 'time')}
@@ -374,22 +415,21 @@ const MeetupCard: React.FC<MeetupCardProps> = ({
         {meetup.code && renderChip('key-outline', `Code: ${meetup.code}`, 'code')}
       </View>
 
-      {/* Preview description */}
-      {!expanded && truncatedDescription && (
+      {/* Description preview */}
+      {!expanded && !!truncatedDescription && (
         <Text style={styles.previewDescription}>{truncatedDescription}</Text>
       )}
 
-      {/* Expanded content */}
+      {/* Expanded */}
       {expanded && (
         <View style={[styles.expandedContent, !isWideLayout && styles.expandedContentStacked]}>
-          {/* Main content */}
+          {/* Main */}
           <View style={styles.mainContent}>
-            {/* Full description */}
             <Text style={styles.description}>
               {meetup?.description || 'No description provided.'}
             </Text>
 
-            {/* Collections section */}
+            {/* Collections */}
             <View style={styles.section}>
               <View style={styles.sectionHeader}>
                 <Text style={styles.sectionTitle}>Collections</Text>
@@ -420,15 +460,13 @@ const MeetupCard: React.FC<MeetupCardProps> = ({
                   activeOpacity={0.7}
                 >
                   <Text style={styles.toggleButtonText}>
-                    {showAllCollections
-                      ? 'Show fewer'
-                      : `Show all ${collections.length} collections`}
+                    {showAllCollections ? 'Show fewer' : `Show all ${collections.length} collections`}
                   </Text>
                 </TouchableOpacity>
               )}
             </View>
 
-            {/* Friends section */}
+            {/* Friends */}
             <View style={styles.section}>
               <View style={styles.sectionHeader}>
                 <Text style={styles.sectionTitle}>Invited Friends</Text>
@@ -468,19 +506,17 @@ const MeetupCard: React.FC<MeetupCardProps> = ({
                   activeOpacity={0.7}
                 >
                   <Text style={styles.toggleButtonText}>
-                    {showAllFriends
-                      ? 'Show fewer'
-                      : `Show all ${friends.length} friends`}
+                    {showAllFriends ? 'Show fewer' : `Show all ${friends.length} friends`}
                   </Text>
                 </TouchableOpacity>
               )}
             </View>
           </View>
 
-          {/* Sidebar with details */}
+          {/* Sidebar */}
           <View style={styles.sidebar}>
             <Text style={styles.sidebarTitle}>Details</Text>
-            
+
             <View style={styles.metaContainer}>
               {renderMetaRow('Category', meetup?.category)}
               {renderMetaRow('Mood', meetup?.mood)}
@@ -491,7 +527,6 @@ const MeetupCard: React.FC<MeetupCardProps> = ({
               {renderMetaRow('Meetup ID', meetup?.meetupId || meetup?.id)}
             </View>
 
-            {/* Action buttons */}
             <View style={styles.sidebarActions}>
               {onEdit && (
                 <TouchableOpacity
@@ -521,6 +556,9 @@ const MeetupCard: React.FC<MeetupCardProps> = ({
   );
 };
 
+// ───────────────────────────────────────────────────────────────────────────────
+// Styles
+// ───────────────────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   cardContainer: {
     backgroundColor: COLORS.card,
@@ -608,7 +646,7 @@ const styles = StyleSheet.create({
   },
   turboButton: {
     backgroundColor: COLORS.turbo,
-    paddingHorizontal: SPACING.sm, // Slightly smaller padding
+    paddingHorizontal: SPACING.sm,
   },
   turboButtonDisabled: {
     backgroundColor: COLORS.surface,
