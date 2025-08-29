@@ -1,4 +1,4 @@
-// components/MeetupCard.tsx
+// components/meetup_components/MeetupCard.tsx
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   View,
@@ -25,11 +25,16 @@ interface Friend {
   name?: string;
   email?: string;
   avatarUrl?: string;
+  displayName?: string;
 }
 
 interface Collection {
   id: string;
+  title?: string;
   name?: string;
+  activityCount?: number;
+  previewUrl?: string | null;
+  activities?: any[]; // optional, if present
 }
 
 interface Meetup {
@@ -66,6 +71,8 @@ interface MeetupCardProps {
   onRemoveFriend?: (meetupId: string, friendUid: string) => void;
   currentUserId?: string;
   currentUserEmail?: string;
+  onAddCollection?: (meetupId: string) => void;
+  onRemoveCollection?: (meetupId: string, collectionId: string) => void;
 }
 
 // ───────────────────────────────────────────────────────────────────────────────
@@ -185,6 +192,8 @@ const MeetupCard: React.FC<MeetupCardProps> = ({
   onRemoveFriend,
   currentUserId,
   currentUserEmail,
+  onAddCollection,
+  onRemoveCollection,
 }) => {
   // UI state
   const [expanded, setExpanded] = useState(false);
@@ -208,7 +217,7 @@ const MeetupCard: React.FC<MeetupCardProps> = ({
   // Auth effect with proper cleanup and error handling
   useEffect(() => {
     if (currentUserId && currentUserEmail) return;
-    
+
     const auth = getAuth();
     const unsubscribe = onAuthStateChanged(auth, (user: User | null) => {
       setAuthUser({
@@ -223,43 +232,49 @@ const MeetupCard: React.FC<MeetupCardProps> = ({
   }, [currentUserId, currentUserEmail]);
 
   // Memoized current user info
-  const currentUser = useMemo(() => ({
-    uid: (currentUserId ?? authUser.uid ?? '').trim(),
-    email: (currentUserEmail ?? authUser.email ?? '').toLowerCase(),
-    displayName: authUser.displayName,
-    photoURL: authUser.photoURL,
-  }), [currentUserId, currentUserEmail, authUser]);
+  const currentUser = useMemo(
+    () => ({
+      uid: (currentUserId ?? authUser.uid ?? '').trim(),
+      email: (currentUserEmail ?? authUser.email ?? '').toLowerCase(),
+      displayName: authUser.displayName,
+      photoURL: authUser.photoURL,
+    }),
+    [currentUserId, currentUserEmail, authUser]
+  );
 
   // Layout calculations
   const isWideLayout = useMemo(() => cardWidth >= WIDE_LAYOUT_BREAKPOINT, [cardWidth]);
 
   // Data processing with better validation
-  const friendsRaw: Friend[] = useMemo(() => 
-    Array.isArray(meetup?.friends) ? meetup.friends : []
-  , [meetup?.friends]);
+  const friendsRaw: Friend[] = useMemo(
+    () => (Array.isArray(meetup?.friends) ? meetup.friends : []),
+    [meetup?.friends]
+  );
 
   const filteredFriends: Friend[] = useMemo(() => {
     return friendsRaw.filter((friend) => {
       if (!friend) return false;
-      
+
       const friendUid = (friend.uid ?? '').trim();
       const friendEmail = (friend.email ?? '').toLowerCase();
-      
+
       // Filter out current user by uid or email
       if (currentUser.uid && friendUid && friendUid === currentUser.uid) return false;
       if (currentUser.email && friendEmail && friendEmail === currentUser.email) return false;
-      
+
       return true;
     });
   }, [friendsRaw, currentUser.uid, currentUser.email]);
 
-  const collections: Collection[] = useMemo(() => 
-    Array.isArray(meetup?.collections) ? meetup.collections : []
-  , [meetup?.collections]);
+  const collections: Collection[] = useMemo(
+    () => (Array.isArray(meetup?.collections) ? meetup.collections : []),
+    [meetup?.collections]
+  );
 
-  const participantCount = useMemo(() => 
-    Array.isArray(meetup?.participants) ? meetup.participants.length : 1
-  , [meetup?.participants]);
+  const participantCount = useMemo(
+    () => (Array.isArray(meetup?.participants) ? meetup.participants.length : 1),
+    [meetup?.participants]
+  );
 
   // Host display logic with better fallbacks
   const hostDisplay: string = useMemo(() => {
@@ -300,13 +315,15 @@ const MeetupCard: React.FC<MeetupCardProps> = ({
   }, [meetup?.description]);
 
   // Display arrays
-  const friendsToShow = useMemo(() => 
-    showAllFriends ? filteredFriends : filteredFriends.slice(0, FRIEND_PREVIEW_COUNT)
-  , [showAllFriends, filteredFriends]);
+  const friendsToShow = useMemo(
+    () => (showAllFriends ? filteredFriends : filteredFriends.slice(0, FRIEND_PREVIEW_COUNT)),
+    [showAllFriends, filteredFriends]
+  );
 
-  const collectionsToShow = useMemo(() => 
-    showAllCollections ? collections : collections.slice(0, COLLECTION_PREVIEW_COUNT)
-  , [showAllCollections, collections]);
+  const collectionsToShow = useMemo(
+    () => (showAllCollections ? collections : collections.slice(0, COLLECTION_PREVIEW_COUNT)),
+    [showAllCollections, collections]
+  );
 
   // Event handlers
   const handleLayout = useCallback((event: LayoutChangeEvent) => {
@@ -315,7 +332,7 @@ const MeetupCard: React.FC<MeetupCardProps> = ({
 
   const handleToggleExpanded = useCallback(() => {
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setExpanded(prev => !prev);
+    setExpanded((prev) => !prev);
   }, []);
 
   const handleJoin = useCallback(() => {
@@ -332,16 +349,15 @@ const MeetupCard: React.FC<MeetupCardProps> = ({
       return;
     }
 
-    const action = meetup.ongoing ? 'stop' : 'start';
     const title = meetup.ongoing ? 'Stop Meetup' : 'Start Meetup';
-    const message = meetup.ongoing 
-      ? 'Are you sure you want to stop this meetup?' 
+    const message = meetup.ongoing
+      ? 'Are you sure you want to stop this meetup?'
       : 'Are you sure you want to start this meetup?';
 
     Alert.alert(title, message, [
       { text: 'Cancel', style: 'cancel' },
-      { 
-        text: meetup.ongoing ? 'Stop' : 'Start', 
+      {
+        text: meetup.ongoing ? 'Stop' : 'Start',
         style: meetup.ongoing ? 'destructive' : 'default',
         onPress: () => {
           if (meetup.ongoing) {
@@ -349,7 +365,7 @@ const MeetupCard: React.FC<MeetupCardProps> = ({
           } else {
             onStart?.(meetup.id);
           }
-        }
+        },
       },
     ]);
   }, [meetup?.id, meetup?.ongoing, onStart, onStop]);
@@ -360,37 +376,25 @@ const MeetupCard: React.FC<MeetupCardProps> = ({
       return;
     }
 
-    Alert.alert(
-      'Start Turbo Mode', 
-      'Ready for a 2-minute rapid-fire decision session?', 
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { 
-          text: 'Start Turbo', 
-          style: 'default', 
-          onPress: () => onTurboMode?.(meetup.id) 
-        },
-      ]
-    );
+    Alert.alert('Start Turbo Mode', 'Ready for a 2-minute rapid-fire decision session?', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Start Turbo', style: 'default', onPress: () => onTurboMode?.(meetup.id) },
+    ]);
   }, [meetup?.id, onTurboMode]);
 
   const handleRemove = useCallback(() => {
-    Alert.alert(
-      'Remove Meetup',
-      'Are you sure you want to remove this meetup? This action cannot be undone.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Remove', style: 'destructive', onPress: onRemove },
-      ]
-    );
+    Alert.alert('Remove Meetup', 'Are you sure you want to remove this meetup? This action cannot be undone.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Remove', style: 'destructive', onPress: onRemove },
+    ]);
   }, [onRemove]);
 
   const handleToggleFriends = useCallback(() => {
-    setShowAllFriends(prev => !prev);
+    setShowAllFriends((prev) => !prev);
   }, []);
 
   const handleToggleCollections = useCallback(() => {
-    setShowAllCollections(prev => !prev);
+    setShowAllCollections((prev) => !prev);
   }, []);
 
   const handleAddFriend = useCallback(() => {
@@ -401,91 +405,153 @@ const MeetupCard: React.FC<MeetupCardProps> = ({
     onAddFriend?.(meetup.id);
   }, [meetup?.id, onAddFriend]);
 
-  const handleRemoveFriend = useCallback((friendUid: string, friendName?: string) => {
+  const handleRemoveFriend = useCallback(
+    (friendUid: string, friendName?: string) => {
+      if (!meetup?.id) {
+        console.warn('Cannot remove friend: missing meetup ID');
+        return;
+      }
+
+      const displayName = friendName || friendUid.slice(0, 8);
+      Alert.alert('Remove Friend', `Are you sure you want to remove ${displayName} from this meetup?`, [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Remove', style: 'destructive', onPress: () => onRemoveFriend?.(meetup.id, friendUid) },
+      ]);
+    },
+    [meetup?.id, onRemoveFriend]
+  );
+
+  const handleAddCollection = useCallback(() => {
     if (!meetup?.id) {
-      console.warn('Cannot remove friend: missing meetup ID');
+      console.warn('Cannot add collection: missing meetup ID');
       return;
     }
+    onAddCollection?.(meetup.id);
+  }, [meetup?.id, onAddCollection]);
 
-    const displayName = friendName || friendUid.slice(0, 8);
-    Alert.alert(
-      'Remove Friend',
-      `Are you sure you want to remove ${displayName} from this meetup?`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { 
-          text: 'Remove', 
-          style: 'destructive', 
-          onPress: () => onRemoveFriend?.(meetup.id, friendUid) 
-        },
-      ]
-    );
-  }, [meetup?.id, onRemoveFriend]);
+  const handleRemoveCollection = useCallback(
+    (collectionId: string, name?: string) => {
+      if (!meetup?.id) {
+        console.warn('Cannot remove collection: missing meetup ID');
+        return;
+      }
+      Alert.alert(
+        'Remove Collection',
+        `Remove “${name || 'this collection'}” from this meetup?`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Remove', style: 'destructive', onPress: () => onRemoveCollection?.(meetup.id, collectionId) },
+        ]
+      );
+    },
+    [meetup?.id, onRemoveCollection]
+  );
 
   // Render helpers with better key generation
-  const renderChip = useCallback((icon: string, text: string, key: string) => (
-    <View key={key} style={styles.chip}>
-      <Ionicons name={icon as any} size={14} color={COLORS.textSecondary} />
-      <Text style={styles.chipText} numberOfLines={1}>
-        {text}
-      </Text>
-    </View>
-  ), []);
-
-  const renderMetaRow = useCallback((label: string, value?: string | number) => (
-    <View key={label} style={styles.metaRow}>
-      <Text style={styles.metaLabel}>{label}</Text>
-      <Text style={styles.metaValue} numberOfLines={1}>
-        {value ?? 'N/A'}
-      </Text>
-    </View>
-  ), []);
-
-  const renderCollectionCard = useCallback(({ item }: { item: Collection }) => (
-    <CollectionCard 
-      key={item.id} 
-      collection={item} 
-      previewOnly 
-    />
-  ), []);
-
-  const renderFriendCard = useCallback((friend: Friend, index: number) => {
-    // Better name resolution logic
-    const displayName = friend?.name || 
-                      friend?.displayName || 
-                      friend?.email || 
-                      `User ${friend.uid?.slice(0, 8) || index + 1}`;
-
-    return (
-      <View key={`friend-${friend.uid}-${index}`} style={styles.friendCard}>
-        {/* Remove button for hosts */}
-        {isHost && onRemoveFriend && (
-          <TouchableOpacity
-            style={styles.removeFriendButton}
-            onPress={() => handleRemoveFriend(friend.uid, friend.name || friend.email)}
-            activeOpacity={0.7}
-            accessibilityLabel={`Remove ${friend.name || friend.email || 'friend'}`}
-            accessibilityRole="button"
-          >
-            <Ionicons name="close" size={12} color={COLORS.danger} />
-          </TouchableOpacity>
-        )}
-        
-        <Image
-          source={
-            friend?.avatarUrl
-              ? { uri: friend.avatarUrl }
-              : require('../../assets/images/profile.png')
-          }
-          style={styles.friendAvatar}
-          defaultSource={require('../../assets/images/profile.png')}
-        />
-        <Text numberOfLines={2} style={styles.friendName}>
-          {displayName}
+  const renderChip = useCallback(
+    (icon: string, text: string, key: string) => (
+      <View key={key} style={styles.chip}>
+        <Ionicons name={icon as any} size={14} color={COLORS.textSecondary} />
+        <Text style={styles.chipText} numberOfLines={1}>
+          {text}
         </Text>
       </View>
-    );
-  }, [isHost, onRemoveFriend, handleRemoveFriend]);
+    ),
+    []
+  );
+
+  const renderMetaRow = useCallback(
+    (label: string, value?: string | number) => (
+      <View key={label} style={styles.metaRow}>
+        <Text style={styles.metaLabel}>{label}</Text>
+        <Text style={styles.metaValue} numberOfLines={1}>
+          {value ?? 'N/A'}
+        </Text>
+      </View>
+    ),
+    []
+  );
+
+  const renderCollectionItem = useCallback(
+    ({ item }: { item: Collection }) => {
+      const label = item.title || item.name || 'Untitled';
+      const count = item.activityCount ?? (Array.isArray(item.activities) ? item.activities.length : 0);
+      const preview = item.previewUrl || item.activities?.[0]?.image || item.activities?.[0]?.photoUrls?.[0] || null;
+
+      return (
+        <View style={styles.collectionWrap} key={item.id}>
+          <View style={styles.meetupCollectionCard}>
+            <View style={styles.cardPreviewSection}>
+              {preview ? (
+                <Image source={{ uri: preview }} style={styles.cardPreviewImageFull} />
+              ) : (
+                <View style={styles.cardDefaultPreview}>
+                  <Ionicons name="folder-outline" size={24} color={COLORS.accent} />
+                </View>
+              )}
+            </View>
+
+            <View style={styles.collectionHeader}>
+              <Ionicons name="folder" size={14} color={COLORS.accent} />
+              <Text style={styles.collectionTitle} numberOfLines={1}>{label}</Text>
+            </View>
+            <Text style={styles.activityCountText}>
+              {count} {count === 1 ? 'activity' : 'activities'}
+            </Text>
+          </View>
+
+          {isHost && onRemoveCollection && (
+            <TouchableOpacity
+              style={styles.removeCollectionButton}
+              onPress={() => handleRemoveCollection(item.id, label)}
+              activeOpacity={0.7}
+              accessibilityLabel={`Remove collection ${label}`}
+              accessibilityRole="button"
+            >
+              <Ionicons name="close" size={12} color={COLORS.danger} />
+            </TouchableOpacity>
+          )}
+        </View>
+      );
+    },
+    [isHost, onRemoveCollection, handleRemoveCollection]
+  );
+
+  const renderFriendCard = useCallback(
+    (friend: Friend, index: number) => {
+      const displayName =
+        friend?.name || friend?.displayName || friend?.email || `User ${friend.uid?.slice(0, 8) || index + 1}`;
+
+      return (
+        <View key={`friend-${friend.uid}-${index}`} style={styles.friendCard}>
+          {/* Remove button for hosts */}
+          {isHost && onRemoveFriend && (
+            <TouchableOpacity
+              style={styles.removeFriendButton}
+              onPress={() => handleRemoveFriend(friend.uid, friend.name || friend.email)}
+              activeOpacity={0.7}
+              accessibilityLabel={`Remove ${friend.name || friend.email || 'friend'}`}
+              accessibilityRole="button"
+            >
+              <Ionicons name="close" size={12} color={COLORS.danger} />
+            </TouchableOpacity>
+          )}
+
+          <Image
+            source={
+              friend?.avatarUrl ? { uri: friend.avatarUrl } : require('../../assets/images/profile.png')
+            }
+            style={styles.friendAvatar}
+            defaultSource={require('../../assets/images/profile.png')}
+          />
+          <Text numberOfLines={2} style={styles.friendName}>
+            {displayName}
+          </Text>
+        </View>
+      );
+    },
+    [isHost, onRemoveFriend, handleRemoveFriend]
+  );
 
   // Validation
   if (!meetup) {
@@ -525,11 +591,7 @@ const MeetupCard: React.FC<MeetupCardProps> = ({
             accessibilityLabel={expanded ? 'Collapse details' : 'Expand details'}
             accessibilityRole="button"
           >
-            <Ionicons
-              name={expanded ? 'chevron-up' : 'chevron-down'}
-              size={20}
-              color={COLORS.textSecondary}
-            />
+            <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={20} color={COLORS.textSecondary} />
           </TouchableOpacity>
 
           {/* Action buttons */}
@@ -537,23 +599,14 @@ const MeetupCard: React.FC<MeetupCardProps> = ({
             {isHost ? (
               <>
                 <TouchableOpacity
-                  style={[
-                    styles.actionButton,
-                    meetup.ongoing ? styles.stopButton : styles.startButton,
-                  ]}
+                  style={[styles.actionButton, meetup.ongoing ? styles.stopButton : styles.startButton]}
                   onPress={handleToggleMeetup}
                   activeOpacity={0.8}
                   accessibilityLabel={meetup.ongoing ? 'Stop meetup' : 'Start meetup'}
                   accessibilityRole="button"
                 >
-                  <Ionicons
-                    name={meetup.ongoing ? 'stop' : 'play'}
-                    size={16}
-                    color={COLORS.background}
-                  />
-                  <Text style={styles.actionButtonText}>
-                    {meetup.ongoing ? 'Stop' : 'Start'}
-                  </Text>
+                  <Ionicons name={meetup.ongoing ? 'stop' : 'play'} size={16} color={COLORS.background} />
+                  <Text style={styles.actionButtonText}>{meetup.ongoing ? 'Stop' : 'Start'}</Text>
                 </TouchableOpacity>
 
                 {!meetup.ongoing && onTurboMode && (
@@ -570,7 +623,8 @@ const MeetupCard: React.FC<MeetupCardProps> = ({
                 )}
               </>
             ) : (
-              meetup.ongoing && onJoin && (
+              meetup.ongoing &&
+              onJoin && (
                 <TouchableOpacity
                   style={[styles.actionButton, styles.startButton]}
                   onPress={handleJoin}
@@ -596,28 +650,37 @@ const MeetupCard: React.FC<MeetupCardProps> = ({
       </View>
 
       {/* Description preview */}
-      {!expanded && truncatedDescription && (
-        <Text style={styles.previewDescription}>{truncatedDescription}</Text>
-      )}
+      {!expanded && truncatedDescription && <Text style={styles.previewDescription}>{truncatedDescription}</Text>}
 
       {/* Expanded content */}
       {expanded && (
         <View style={[styles.expandedContent, !isWideLayout && styles.expandedContentStacked]}>
           {/* Main content */}
           <View style={styles.mainContent}>
-            <Text style={styles.description}>
-              {meetup.description || 'No description provided.'}
-            </Text>
+            <Text style={styles.description}>{meetup.description || 'No description provided.'}</Text>
 
             {/* Collections section */}
             <View style={styles.section}>
               <View style={styles.sectionHeader}>
                 <Text style={styles.sectionTitle}>Collections</Text>
-                {collections.length > 0 && (
-                  <View style={styles.countBadge}>
-                    <Text style={styles.countBadgeText}>{collections.length}</Text>
-                  </View>
-                )}
+                <View style={styles.sectionHeaderActions}>
+                  {collections.length > 0 && (
+                    <View style={styles.countBadge}>
+                      <Text style={styles.countBadgeText}>{collections.length}</Text>
+                    </View>
+                  )}
+                  {isHost && onAddCollection && (
+                    <TouchableOpacity
+                      style={styles.addFriendButton}
+                      onPress={handleAddCollection}
+                      activeOpacity={0.7}
+                      accessibilityLabel="Add collections to meetup"
+                      accessibilityRole="button"
+                    >
+                      <Ionicons name="folder-open" size={16} color={COLORS.primary} />
+                    </TouchableOpacity>
+                  )}
+                </View>
               </View>
 
               {collectionsToShow.length > 0 ? (
@@ -625,7 +688,7 @@ const MeetupCard: React.FC<MeetupCardProps> = ({
                   horizontal
                   data={collectionsToShow}
                   keyExtractor={(item) => item?.id || `collection-${Math.random()}`}
-                  renderItem={renderCollectionCard}
+                  renderItem={renderCollectionItem}
                   showsHorizontalScrollIndicator={false}
                   contentContainerStyle={styles.horizontalList}
                 />
@@ -641,10 +704,7 @@ const MeetupCard: React.FC<MeetupCardProps> = ({
                   accessibilityRole="button"
                 >
                   <Text style={styles.toggleButtonText}>
-                    {showAllCollections 
-                      ? 'Show fewer' 
-                      : `Show all ${collections.length} collections`
-                    }
+                    {showAllCollections ? 'Show fewer' : `Show all ${collections.length} collections`}
                   </Text>
                 </TouchableOpacity>
               )}
@@ -675,9 +735,7 @@ const MeetupCard: React.FC<MeetupCardProps> = ({
               </View>
 
               {friendsToShow.length > 0 ? (
-                <View style={styles.friendsGrid}>
-                  {friendsToShow.map(renderFriendCard)}
-                </View>
+                <View style={styles.friendsGrid}>{friendsToShow.map(renderFriendCard)}</View>
               ) : (
                 <View style={styles.emptyStateContainer}>
                   <Text style={styles.emptyText}>No friends invited yet.</Text>
@@ -703,10 +761,7 @@ const MeetupCard: React.FC<MeetupCardProps> = ({
                   accessibilityRole="button"
                 >
                   <Text style={styles.toggleButtonText}>
-                    {showAllFriends 
-                      ? 'Show fewer' 
-                      : `Show all ${filteredFriends.length} friends`
-                    }
+                    {showAllFriends ? 'Show fewer' : `Show all ${filteredFriends.length} friends`}
                   </Text>
                 </TouchableOpacity>
               )}
@@ -721,10 +776,7 @@ const MeetupCard: React.FC<MeetupCardProps> = ({
               {renderMetaRow('Host', hostDisplay)}
               {renderMetaRow('Category', meetup.category)}
               {renderMetaRow('Mood', meetup.mood)}
-              {renderMetaRow(
-                'Price',
-                `${getPriceBadge(meetup.priceRange)} (${meetup.priceRange ?? 0})`
-              )}
+              {renderMetaRow('Price', `${getPriceBadge(meetup.priceRange)} (${meetup.priceRange ?? 0})`)}
               {renderMetaRow('Group Size', meetup.groupSize?.toString())}
               {renderMetaRow('Participants', participantCount.toString())}
               {renderMetaRow('Created', formatDateTime(meetup.createdAt))}
@@ -954,6 +1006,23 @@ const styles = StyleSheet.create({
     gap: SPACING.sm,
     paddingVertical: SPACING.xs,
   },
+  collectionWrap: {
+    position: 'relative',
+  },
+  removeCollectionButton: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    backgroundColor: COLORS.background,
+    borderRadius: 10,
+    width: 20,
+    height: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: COLORS.danger,
+    zIndex: 1,
+  },
   friendsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -1102,7 +1171,29 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(248, 81, 73, 0.1)',
     borderColor: COLORS.danger,
   },
+  meetupCollectionCard: {
+  backgroundColor: COLORS.surface,
+  borderRadius: 8,
+  padding: SPACING.md,
+  borderWidth: 1,
+  borderColor: COLORS.border,
+  width: 140,
+},
+cardPreviewSection: {
+  height: 60,
+  borderRadius: 8,
+  marginBottom: SPACING.sm,
+  overflow: 'hidden',
+  borderWidth: 1,
+  borderColor: COLORS.border,
+  justifyContent: 'center',
+  alignItems: 'center',
+  backgroundColor: '#20262d',
+},
+cardPreviewImageFull: { width: '100%', height: '100%' },
+collectionHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 4 },
+collectionTitle: { color: COLORS.text, marginLeft: 6, fontWeight: '600', fontSize: 13, flex: 1 },
+activityCountText: { color: COLORS.textTertiary, fontSize: 11, fontWeight: '500' },
 });
 
 export default MeetupCard;
-    

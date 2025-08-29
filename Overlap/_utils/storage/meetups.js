@@ -57,7 +57,7 @@ export async function createMeetup(meetupData) {
       avatarUrl: friend.avatarUrl || ""
     })),
     location: meetupData.location || "",
-    collections: meetupData.collections || [],
+    collections: normalizeCollections(meetupData.collections || []),
     code: meetupData.code,
   };
 
@@ -183,7 +183,10 @@ export async function updateMeetup(meetupData) {
   const existing = existingSnap.data();
 
   // Only the creator/host can start or stop (toggle "ongoing")
-  if (meetupData.ongoing !== undefined && user.uid !== existing.creatorId) {
+  if ((meetupData.ongoing !== undefined ||
+      meetupData.friends !== undefined ||
+      meetupData.collections !== undefined) &&
+     user.uid !== existing.creatorId) {
     throw new Error('Only the host can start/stop this meetup.');
   }
 
@@ -195,7 +198,9 @@ export async function updateMeetup(meetupData) {
   if (meetupData.restrictions !== undefined) updateFields.restrictions = meetupData.restrictions;
   if (meetupData.ongoing !== undefined) updateFields.ongoing = meetupData.ongoing;
   if (meetupData.friends !== undefined) updateFields.friends = meetupData.friends;
-
+  if (meetupData.collections !== undefined) {
+    updateFields.collections = normalizeCollections(meetupData.collections);
+  }
   if (Object.keys(updateFields).length === 0) return; // nothing to do
 
   // Update the main meetup document
@@ -292,4 +297,18 @@ export async function removeUserFromMeetup(meetupId, userId) {
   batch.delete(userMeetupRef);
   
   await batch.commit();
+}
+
+function normalizeCollections(cols = []) {
+  if (!Array.isArray(cols)) return [];
+  return cols.map((c) => ({
+    id: c.id,
+    title: c.title || c.name || 'Untitled Collection',
+    // optional lightweight preview for UI
+    activityCount: c.activityCount ?? (Array.isArray(c.activities) ? c.activities.length : 0),
+    previewUrl: c.previewUrl 
+      ?? c.activities?.[0]?.image 
+      ?? c.activities?.[0]?.photoUrls?.[0] 
+      ?? null,
+  }));
 }

@@ -1,13 +1,20 @@
-//app/meetupFolder/MyMeetupsScreen.tsx
+// app/meetupFolder/MyMeetupsScreen.tsx
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-   View, Text, TouchableOpacity, StyleSheet, ActivityIndicator,
-   StatusBar, RefreshControl, Alert, ScrollView,
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  ActivityIndicator,
+  StatusBar,
+  RefreshControl,
+  Alert,
+  ScrollView,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { getUserMeetups, removeMeetup, updateMeetup } from '../../_utils/storage/meetups';
-import { getPendingMeetupInvites, sendMeetupInvite } from '../../_utils/storage/meetupInvites';
+import { getPendingMeetupInvites } from '../../_utils/storage/meetupInvites';
 import { exportMyLikesToMeetup } from '../../_utils/storage/meetupActivities';
 import { initializeTurboSession } from '../../_utils/storage/turboMeetup';
 import { getFriendships } from '../../_utils/storage/social';
@@ -17,6 +24,8 @@ import StartMeetupScreen from './startMeetUp';
 import TurboModeScreen from '../../components/turbo/TurboModeScreen';
 import { useRouter } from 'expo-router';
 import { getAuth } from 'firebase/auth';
+import { getUserCollections } from '../../_utils/storage/likesCollections';
+import CollectionSelectionModal from '../../components/meetup_components/modals/CollectionSelectionModal';
 
 // Types
 interface Friend {
@@ -27,6 +36,13 @@ interface Friend {
   displayName?: string;
 }
 
+interface Collection {
+  id: string;
+  name?: string;
+  title?: string;
+  activities?: any[];
+}
+
 interface Meetup {
   id: string;
   title?: string;
@@ -35,12 +51,12 @@ interface Meetup {
   participants?: any[];
   friends?: Friend[];
   creatorId?: string;
-  // Add other meetup properties as needed
+  collections?: Collection[];
+  description?: string;
 }
 
 interface PendingInvite {
   id: string;
-  // Add other properties as needed
 }
 
 interface Props {
@@ -76,7 +92,7 @@ const SPACING = {
 const MyMeetupsScreen: React.FC<Props> = ({ onBack }) => {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  
+
   // State management
   const [meetups, setMeetups] = useState<Meetup[]>([]);
   const authUid = getAuth()?.currentUser?.uid || null;
@@ -92,6 +108,12 @@ const MyMeetupsScreen: React.FC<Props> = ({ onBack }) => {
   const [friendPickerVisible, setFriendPickerVisible] = useState(false);
   const [currentMeetupForInvite, setCurrentMeetupForInvite] = useState<string | null>(null);
   const [userFriends, setUserFriends] = useState<Friend[]>([]);
+
+  // Collection picker state
+  const [collectionPickerVisible, setCollectionPickerVisible] = useState(false);
+  const [currentMeetupForCollections, setCurrentMeetupForCollections] = useState<string | null>(null);
+  const [availableCollections, setAvailableCollections] = useState<Collection[]>([]);
+  const [tempSelectedCollections, setTempSelectedCollections] = useState<Collection[]>([]);
 
   // Fetch data functions
   const fetchMeetups = useCallback(async () => {
@@ -118,15 +140,12 @@ const MyMeetupsScreen: React.FC<Props> = ({ onBack }) => {
     try {
       const friendships = await getFriendships();
       const currentUserId = getAuth()?.currentUser?.uid;
-      
       if (!currentUserId) return;
 
-      // Transform friendships data to extract friend details
       const friends: Friend[] = [];
       friendships.forEach((friendship: any) => {
         const users = friendship.userDetails || {};
-        // Get the friend's details (not the current user's)
-        Object.keys(users).forEach(userId => {
+        Object.keys(users).forEach((userId) => {
           if (userId !== currentUserId) {
             const userDetail = users[userId];
             friends.push({
@@ -162,94 +181,87 @@ const MyMeetupsScreen: React.FC<Props> = ({ onBack }) => {
     fetchData();
   }, [fetchData]);
 
-  const handleJoinMeetup = useCallback((meetupId: string) => {
-    // Non-hosts join by opening the live session screen
-    router.push({ pathname: '/meetupFolder/startMeetUp', params: { meetupId } });
-  }, [router]);
+  const handleJoinMeetup = useCallback(
+    (meetupId: string) => {
+      router.push({ pathname: '/meetupFolder/startMeetUp', params: { meetupId } });
+    },
+    [router]
+  );
 
   // Event handlers
   const handleRemoveMeetup = useCallback(async (meetupId: string) => {
-    Alert.alert(
-      'Remove Meetup',
-      'Are you sure you want to remove this meetup? This action cannot be undone.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Remove',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await removeMeetup(meetupId);
-              setMeetups(prev => prev.filter(meetup => meetup.id !== meetupId));
-            } catch (err) {
-              console.error('Error removing meetup:', err);
-              Alert.alert('Error', 'Failed to remove meetup. Please try again.');
-            }
-          },
+    Alert.alert('Remove Meetup', 'Are you sure you want to remove this meetup? This action cannot be undone.', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Remove',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await removeMeetup(meetupId);
+            setMeetups((prev) => prev.filter((meetup) => meetup.id !== meetupId));
+          } catch (err) {
+            console.error('Error removing meetup:', err);
+            Alert.alert('Error', 'Failed to remove meetup. Please try again.');
+          }
         },
-      ]
-    );
+      },
+    ]);
   }, []);
 
-  const handleStartMeetup = useCallback(async (meetupId: string) => {
-    try {
-      await updateMeetup({ id: meetupId, ongoing: true });
-      await exportMyLikesToMeetup(meetupId);
-      setMeetups(prev =>
-        prev.map(m => (m.id === meetupId ? { ...m, ongoing: true } : m))
-      );
+  const handleStartMeetup = useCallback(
+    async (meetupId: string) => {
+      try {
+        await updateMeetup({ id: meetupId, ongoing: true });
+        await exportMyLikesToMeetup(meetupId);
+        setMeetups((prev) => prev.map((m) => (m.id === meetupId ? { ...m, ongoing: true } : m)));
 
-      // Navigate to start meetup screen
-      router.push({ pathname: '/meetupFolder/startMeetUp', params: { meetupId } });
-    } catch (err) {
-      console.error('Error starting meetup:', err);
-      Alert.alert('Error', 'Failed to start meetup. Please try again.');
-    }
-  }, [router]);
+        router.push({ pathname: '/meetupFolder/startMeetUp', params: { meetupId } });
+      } catch (err) {
+        console.error('Error starting meetup:', err);
+        Alert.alert('Error', 'Failed to start meetup. Please try again.');
+      }
+    },
+    [router]
+  );
 
   const handleStopMeetup = useCallback(async (meetupId: string) => {
-    Alert.alert(
-      'Stop Meetup',
-      'Are you sure you want to stop this meetup?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Stop',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await updateMeetup({ id: meetupId, ongoing: false });
-              setMeetups(prev =>
-                prev.map(m => (m.id === meetupId ? { ...m, ongoing: false } : m))
-              );
-            } catch (err) {
-              console.error('Error stopping meetup:', err);
-              Alert.alert('Error', 'Failed to stop meetup. Please try again.');
-            }
-          },
+    Alert.alert('Stop Meetup', 'Are you sure you want to stop this meetup?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Stop',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await updateMeetup({ id: meetupId, ongoing: false });
+            setMeetups((prev) => prev.map((m) => (m.id === meetupId ? { ...m, ongoing: false } : m)));
+          } catch (err) {
+            console.error('Error stopping meetup:', err);
+            Alert.alert('Error', 'Failed to stop meetup. Please try again.');
+          }
         },
-      ]
-    );
+      },
+    ]);
   }, []);
 
   // Handle Turbo Mode
-  const handleTurboMode = useCallback(async (meetupId: string) => {
-    try {
-      const meetup = meetups.find(m => m.id === meetupId);
-      const groupSize = meetup?.participants?.length || 1;
-      
-      // Initialize turbo session
-      await initializeTurboSession(meetupId, groupSize);
-      await exportMyLikesToMeetup(meetupId);
-      
-      // Set current meetup and show turbo mode
-      setCurrentMeetupId(meetupId);
-      setShowTurbo(true);
-    } catch (err) {
-      console.error('Error starting turbo mode:', err);
-      Alert.alert('Error', 'Failed to start Turbo Mode. Please try again.');
-    }
-  }, [meetups]);
+  const handleTurboMode = useCallback(
+    async (meetupId: string) => {
+      try {
+        const meetup = meetups.find((m) => m.id === meetupId);
+        const groupSize = meetup?.participants?.length || 1;
+
+        await initializeTurboSession(meetupId, groupSize);
+        await exportMyLikesToMeetup(meetupId);
+
+        setCurrentMeetupId(meetupId);
+        setShowTurbo(true);
+      } catch (err) {
+        console.error('Error starting turbo mode:', err);
+        Alert.alert('Error', 'Failed to start Turbo Mode. Please try again.');
+      }
+    },
+    [meetups]
+  );
 
   // Friend management handlers
   const handleAddFriend = useCallback(async (meetupId: string) => {
@@ -257,53 +269,113 @@ const MyMeetupsScreen: React.FC<Props> = ({ onBack }) => {
     setFriendPickerVisible(true);
   }, []);
 
-  const handleRemoveFriend = useCallback(async (meetupId: string, friendUid: string) => {
-    try {
-      // Get the current meetup data
-      const meetup = meetups.find(m => m.id === meetupId);
-      if (!meetup) {
-        throw new Error('Meetup not found');
+  const handleRemoveFriend = useCallback(
+    async (meetupId: string, friendUid: string) => {
+      try {
+        const meetup = meetups.find((m) => m.id === meetupId);
+        if (!meetup) throw new Error('Meetup not found');
+
+        const updatedFriends = (meetup.friends || []).filter((friend: Friend) => friend.uid !== friendUid);
+
+        await updateMeetup({ id: meetupId, friends: updatedFriends });
+
+        setMeetups((prev) => prev.map((m) => (m.id === meetupId ? { ...m, friends: updatedFriends } : m)));
+      } catch (error) {
+        console.error('Error removing friend:', error);
+        Alert.alert('Error', 'Failed to remove friend. Please try again.');
       }
-      
-      // Remove the friend from the friends array
-      const updatedFriends = (meetup.friends || []).filter(
-        (friend: Friend) => friend.uid !== friendUid
-      );
-      
-      // Update the meetup with the new friends array
-      await updateMeetup({
-        id: meetupId,
-        friends: updatedFriends
-      });
-      
-      // Update local state
-      setMeetups(prev => 
-        prev.map(m => 
-          m.id === meetupId 
-            ? { ...m, friends: updatedFriends }
-            : m
+    },
+    [meetups]
+  );
+
+  // Collection management handlers
+  const handleAddCollection = useCallback(
+    async (meetupId: string) => {
+      try {
+        const all = await getUserCollections();
+        const m = meetups.find((mm) => mm.id === meetupId);
+        setAvailableCollections(all);
+
+        // Use full objects for selection modal (better previews)
+        const preselected: Collection[] = Array.isArray(m?.collections) ? m!.collections! : [];
+        setTempSelectedCollections(preselected);
+
+        setCurrentMeetupForCollections(meetupId);
+        setCollectionPickerVisible(true);
+      } catch (e) {
+        console.error('Error loading collections', e);
+        Alert.alert('Error', 'Unable to load your collections.');
+      }
+    },
+    [meetups]
+  );
+
+  const toggleTempCollection = useCallback((col: Collection) => {
+    setTempSelectedCollections((prev) => {
+      const exists = prev.some((c) => c.id === col.id);
+      if (exists) return prev.filter((c) => c.id !== col.id);
+      return [...prev, col];
+    });
+  }, []);
+
+  const handleCollectionsConfirm = useCallback(async () => {
+    if (!currentMeetupForCollections) return;
+    try {
+      // Persist minimal + preview so UI can render without extra fetches
+      const minimal = tempSelectedCollections.map((c) => ({
+        id: c.id,
+        title: c.title || c.name || 'Untitled Collection',
+        activityCount: Array.isArray(c.activities) ? c.activities.length : 0,
+        previewUrl: c.activities?.[0]?.image || c.activities?.[0]?.photoUrls?.[0] || null,
+      }));
+      await updateMeetup({ id: currentMeetupForCollections, collections: minimal });
+
+      setMeetups(prev =>
+        prev.map(m =>
+          m.id === currentMeetupForCollections ? { ...m, collections: minimal } : m
         )
       );
-      
-      console.log('Friend removed successfully');
-    } catch (error) {
-      console.error('Error removing friend:', error);
-      Alert.alert('Error', 'Failed to remove friend. Please try again.');
+    } catch (e) {
+      console.error('Failed updating collections', e);
+      Alert.alert('Error', 'Failed to update collections.');
+    } finally {
+      setCollectionPickerVisible(false);
+      setCurrentMeetupForCollections(null);
     }
-  }, [meetups]);
+  }, [currentMeetupForCollections, tempSelectedCollections]);
+
+  const handleRemoveCollection = useCallback(
+    async (meetupId: string, collectionId: string) => {
+      try {
+        const m = meetups.find((mm) => mm.id === meetupId);
+        const next = (m?.collections || []).filter((c: any) => c.id !== collectionId);
+        await updateMeetup({ id: meetupId, collections: next });
+        setMeetups((prev) => prev.map((mm) => (mm.id === meetupId ? { ...mm, collections: next } : mm)));
+      } catch (e) {
+        console.error('Could not remove collection', e);
+        Alert.alert('Error', 'Could not remove collection.');
+      }
+    },
+    [meetups]
+  );
 
   // Handle when invites are sent from FriendPicker
-  const handleInvitesSent = useCallback((invitedCount: number) => {
-    // Force a complete refresh to sync all data
-    fetchData(); // Use fetchData instead of onRefresh for complete reload
-    console.log(`Successfully sent ${invitedCount} invitations`);
-  }, [fetchData]);
+  const handleInvitesSent = useCallback(
+    (invitedCount: number) => {
+      fetchData();
+      console.log(`Successfully sent ${invitedCount} invitations`);
+    },
+    [fetchData]
+  );
 
   // Get current friends for a specific meetup
-  const getCurrentMeetupFriends = useCallback((meetupId: string) => {
-    const meetup = meetups.find(m => m.id === meetupId);
-    return meetup?.friends || [];
-  }, [meetups]);
+  const getCurrentMeetupFriends = useCallback(
+    (meetupId: string) => {
+      const meetup = meetups.find((m) => m.id === meetupId);
+      return meetup?.friends || [];
+    },
+    [meetups]
+  );
 
   const handleRetry = useCallback(() => {
     fetchData();
@@ -317,7 +389,7 @@ const MyMeetupsScreen: React.FC<Props> = ({ onBack }) => {
         onExit={() => {
           setShowTurbo(false);
           setCurrentMeetupId(null);
-          onRefresh(); // Refresh data when returning
+          onRefresh();
         }}
       />
     );
@@ -331,7 +403,7 @@ const MyMeetupsScreen: React.FC<Props> = ({ onBack }) => {
         onLeave={() => {
           setShowStart(false);
           setCurrentMeetupId(null);
-          onRefresh(); // Refresh data when returning
+          onRefresh();
         }}
       />
     );
@@ -367,8 +439,8 @@ const MyMeetupsScreen: React.FC<Props> = ({ onBack }) => {
     );
   }
 
-  const regularMeetups = meetups.filter(m => !m.ongoing);
-  const ongoingMeetups = meetups.filter(m => m.ongoing);
+  const regularMeetups = meetups.filter((m) => !m.ongoing);
+  const ongoingMeetups = meetups.filter((m) => m.ongoing);
   const totalMeetups = meetups.length;
 
   // Render empty state
@@ -385,20 +457,13 @@ const MyMeetupsScreen: React.FC<Props> = ({ onBack }) => {
     const allMeetups = [...ongoingMeetups, ...regularMeetups];
 
     if (allMeetups.length === 0) {
-      return renderEmptyState(
-        'No Meetups Yet',
-        'Create your first meetup to get started connecting with others!',
-        'calendar-outline'
-      );
+      return renderEmptyState('No Meetups Yet', 'Create your first meetup to get started connecting with others!', 'calendar-outline');
     }
 
     return (
       <ScrollView
         style={styles.scrollView}
-        contentContainerStyle={[
-          styles.scrollContent,
-          { paddingBottom: insets.bottom + 100 } // keeps content above tab bar
-        ]}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 100 }]}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
@@ -421,7 +486,7 @@ const MyMeetupsScreen: React.FC<Props> = ({ onBack }) => {
                 <Text style={styles.badgeText}>{ongoingMeetups.length}</Text>
               </View>
             </View>
-            
+
             {ongoingMeetups.map((meetup) => {
               const isHost = authUid === meetup.creatorId;
               return (
@@ -436,8 +501,10 @@ const MyMeetupsScreen: React.FC<Props> = ({ onBack }) => {
                   onJoin={!isHost ? handleJoinMeetup : undefined}
                   onAddFriend={isHost ? handleAddFriend : undefined}
                   onRemoveFriend={isHost ? handleRemoveFriend : undefined}
+                  onAddCollection={isHost ? handleAddCollection : undefined}
+                  onRemoveCollection={isHost ? handleRemoveCollection : undefined}
                   currentUserId={authUid}
-                  currentUserEmail={getAuth()?.currentUser?.email}
+                  currentUserEmail={getAuth()?.currentUser?.email || undefined}
                 />
               );
             })}
@@ -456,7 +523,7 @@ const MyMeetupsScreen: React.FC<Props> = ({ onBack }) => {
                 <Text style={styles.badgeText}>{regularMeetups.length}</Text>
               </View>
             </View>
-            
+
             {regularMeetups.map((meetup) => {
               const isHost = authUid === meetup.creatorId;
               return (
@@ -470,68 +537,51 @@ const MyMeetupsScreen: React.FC<Props> = ({ onBack }) => {
                   isHost={isHost}
                   onAddFriend={isHost ? handleAddFriend : undefined}
                   onRemoveFriend={isHost ? handleRemoveFriend : undefined}
+                  onAddCollection={isHost ? handleAddCollection : undefined}
+                  onRemoveCollection={isHost ? handleRemoveCollection : undefined}
                   currentUserId={authUid}
-                  currentUserEmail={getAuth()?.currentUser?.email}
-                  // not live yet → no join button for guests
+                  currentUserEmail={getAuth()?.currentUser?.email || undefined}
                 />
               );
             })}
           </View>
         )}
 
-        {/* Add some bottom padding for the navigation */}
         <View style={styles.bottomSpacer} />
       </ScrollView>
     );
   };
 
-return (
+  return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
       <StatusBar barStyle="light-content" backgroundColor={COLORS.background} />
-      
+
       <View style={styles.container}>
         {/* Header */}
         <View style={[styles.header, { paddingTop: SPACING.md + insets.top }]}>
           <View style={styles.headerContent}>
-            <TouchableOpacity 
-              style={styles.backIconButton} 
-              onPress={onBack}
-              activeOpacity={0.7}
-            >
+            <TouchableOpacity style={styles.backIconButton} onPress={onBack} activeOpacity={0.7}>
               <Ionicons name="chevron-back" size={24} color={COLORS.text} />
             </TouchableOpacity>
-            
+
             <View style={styles.headerText}>
               <Text style={styles.title}>My Meetups</Text>
               {totalMeetups > 0 && (
                 <Text style={styles.subtitle}>
                   {totalMeetups} meetup{totalMeetups !== 1 ? 's' : ''} total
-                  {ongoingMeetups.length > 0 && (
-                    <Text style={styles.liveIndicator}> • {ongoingMeetups.length} live</Text>
-                  )}
+                  {ongoingMeetups.length > 0 && <Text style={styles.liveIndicator}> • {ongoingMeetups.length} live</Text>}
                 </Text>
               )}
             </View>
 
-            <TouchableOpacity 
-              style={styles.refreshButton}
-              onPress={onRefresh}
-              disabled={refreshing}
-              activeOpacity={0.7}
-            >
-              <Ionicons 
-                name="refresh" 
-                size={20} 
-                color={refreshing ? COLORS.textTertiary : COLORS.textSecondary} 
-              />
+            <TouchableOpacity style={styles.refreshButton} onPress={onRefresh} disabled={refreshing} activeOpacity={0.7}>
+              <Ionicons name="refresh" size={20} color={refreshing ? COLORS.textTertiary : COLORS.textSecondary} />
             </TouchableOpacity>
           </View>
         </View>
 
         {/* Main Content */}
-        <View style={styles.content}>
-          {renderAllMeetups()}
-        </View>
+        <View style={styles.content}>{renderAllMeetups()}</View>
 
         {/* Friend Picker Modal */}
         <FriendPicker
@@ -544,6 +594,19 @@ return (
           currentFriends={currentMeetupForInvite ? getCurrentMeetupFriends(currentMeetupForInvite) : []}
           onInvitesSent={handleInvitesSent}
           availableFriends={userFriends}
+        />
+
+        {/* Collection Selection Modal */}
+        <CollectionSelectionModal
+          visible={collectionPickerVisible}
+          collectionsList={availableCollections}
+          selectedCollections={tempSelectedCollections}
+          onToggleCollection={toggleTempCollection}
+          onConfirm={handleCollectionsConfirm}
+          onClose={() => {
+            setCollectionPickerVisible(false);
+            setCurrentMeetupForCollections(null);
+          }}
         />
       </View>
     </SafeAreaView>
@@ -727,7 +790,7 @@ const styles = StyleSheet.create({
     lineHeight: 22,
   },
   bottomSpacer: {
-    height: 100, // Extra space for bottom navigation
+    height: 100,
   },
 });
 

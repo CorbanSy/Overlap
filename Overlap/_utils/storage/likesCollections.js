@@ -127,3 +127,13 @@ export async function deleteCollection(collectionId) {
   const collectionRef = doc(db, 'users', user.uid, 'collections', collectionId);
   await deleteDoc(collectionRef);
 }
+
+export async function getUserCollections() {
+  const auth = getAuth();
+  const user = auth.currentUser;
+  if (!user) throw new Error('No user is signed in');
+
+  const colRef = collection(db, 'users', user.uid, 'collections');
+  const snap = await getDocs(colRef);
+  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+}
