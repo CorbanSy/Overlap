@@ -41,7 +41,7 @@ const TurboSprint: React.FC<TurboSprintProps> = ({
   const [benchmarkProgress, setBenchmarkProgress] = useState(0);
   const [remainingSwipesForDeathmatch, setRemainingSwipesForDeathmatch] = useState(0);
   const [showBenchmarkHit, setShowBenchmarkHit] = useState(false);
-  
+  const shownOnceRef = useRef(false);
   const progressBarAnim = useRef(new Animated.Value(0)).current;
   const benchmarkHitAnim = useRef(new Animated.Value(0)).current;
   const auth = getAuth();
@@ -88,7 +88,8 @@ const TurboSprint: React.FC<TurboSprintProps> = ({
     }).start();
 
     // Check for benchmark hit
-    if (progress >= 1 && !showBenchmarkHit) {
+    if (progress >= 1 && !shownOnceRef.current) {
+      shownOnceRef.current = true;
       setShowBenchmarkHit(true);
       Animated.sequence([
         Animated.timing(benchmarkHitAnim, {
@@ -106,7 +107,14 @@ const TurboSprint: React.FC<TurboSprintProps> = ({
         setShowBenchmarkHit(false);
       });
     }
-  }, [turboData.members, turboData.minSwipesPerPerson, showBenchmarkHit]);
+  }, [turboData.members, turboData.minSwipesPerPerson]);
+
+  // If state flips, make sure overlay is hidden
+  useEffect(() => {
+    if ((turboData as any)?.state === 'deathmatch') {
+      setShowBenchmarkHit(false);
+    }
+  }, [turboData]);
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);

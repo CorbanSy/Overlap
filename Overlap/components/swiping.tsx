@@ -1,4 +1,4 @@
-// components/swiping.tsx - Fixed to respect parent container bounds
+// components/swiping.tsx - Modified to cycle through photos with swipes
 import React, {
   useRef,
   useState,
@@ -59,8 +59,8 @@ interface SwipingScreenProps {
 }
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
-const SWIPE_THRESHOLD = 120;
-const SCALE_FACTOR = 0.95;
+const PHOTO_SWIPE_THRESHOLD = 50; // Lower threshold for photo cycling
+const CARD_SWIPE_THRESHOLD = 120; // Higher threshold for card actions (not used with buttons)
 
 const COLORS = {
   background: '#0D1117',
@@ -84,14 +84,16 @@ const SwipingScreen = forwardRef<SwipingHandle, SwipingScreenProps>(
     const [cards, setCards] = useState<Card[]>([]);
     const [loading, setLoading] = useState(true);
     const [currentCardIndex, setCurrentCardIndex] = useState(0);
+    const [currentPhotoIndex, setCurrentPhotoIndex] = useState(0); // New state for photo cycling
     const [error, setError] = useState<string | null>(null);
     const [isAnimating, setIsAnimating] = useState(false);
 
     // Animations
     const position = useRef(new Animated.ValueXY()).current;
     const scale = useRef(new Animated.Value(1)).current;
-    const nextCardScale = useRef(new Animated.Value(SCALE_FACTOR)).current;
+    const nextCardScale = useRef(new Animated.Value(0.95)).current;
     const nextCardOpacity = useRef(new Animated.Value(0.8)).current;
+    const photoTransition = useRef(new Animated.Value(0)).current; // Animation for photo transitions
 
     const loadCards = useCallback(async () => {
       if (!meetupId) {
@@ -120,6 +122,7 @@ const SwipingScreen = forwardRef<SwipingHandle, SwipingScreenProps>(
           console.log(`[SwipingScreen] Loaded ${activities.length} activities for category ${targetCategory}`);
           setCards(activities);
           setCurrentCardIndex(0);
+          setCurrentPhotoIndex(0); // Reset photo index when loading new cards
         }
       } catch (err) {
         console.error('Error fetching activities:', err);
@@ -133,7 +136,13 @@ const SwipingScreen = forwardRef<SwipingHandle, SwipingScreenProps>(
       loadCards();
     }, [loadCards]);
 
-    const handleSwipe = useCallback(
+    // Reset photo index when card changes
+    useEffect(() => {
+      setCurrentPhotoIndex(0);
+    }, [currentCardIndex]);
+
+    // Handle card swipe (programmatically triggered by buttons)
+    const handleCardSwipe = useCallback(
       async (direction: 'left' | 'right') => {
         const card = cards[currentCardIndex];
         if (!card || isAnimating) return;
@@ -160,9 +169,10 @@ const SwipingScreen = forwardRef<SwipingHandle, SwipingScreenProps>(
           setTimeout(() => {
             position.setValue({ x: 0, y: 0 });
             scale.setValue(1);
-            nextCardScale.setValue(SCALE_FACTOR);
+            nextCardScale.setValue(0.95);
             nextCardOpacity.setValue(0.8);
             setCurrentCardIndex((p) => p + 1);
+            setCurrentPhotoIndex(0); // Reset photo index for new card
             setIsAnimating(false);
           }, 200);
         } catch (err) {
@@ -173,6 +183,36 @@ const SwipingScreen = forwardRef<SwipingHandle, SwipingScreenProps>(
       },
       [cards, currentCardIndex, isAnimating, meetupId, onSwipeLeft, onSwipeRight, turboMode, position, scale, nextCardScale, nextCardOpacity]
     );
+
+    // Handle photo cycling
+    const cyclePhoto = useCallback((direction: 'next' | 'prev') => {
+      const currentCard = cards[currentCardIndex];
+      if (!currentCard || !currentCard.photoUrls || currentCard.photoUrls.length <= 1) return;
+
+      const totalPhotos = currentCard.photoUrls.length;
+      
+      setCurrentPhotoIndex(prev => {
+        if (direction === 'next') {
+          return (prev + 1) % totalPhotos;
+        } else {
+          return prev === 0 ? totalPhotos - 1 : prev - 1;
+        }
+      });
+
+      // Animate the transition
+      Animated.sequence([
+        Animated.timing(photoTransition, {
+          toValue: 0.8,
+          duration: 100,
+          useNativeDriver: true,
+        }),
+        Animated.timing(photoTransition, {
+          toValue: 1,
+          duration: 100,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    }, [cards, currentCardIndex, photoTransition]);
 
     const handleCardTap = useCallback(() => {
       const card = cards[currentCardIndex];
@@ -187,8 +227,8 @@ const SwipingScreen = forwardRef<SwipingHandle, SwipingScreenProps>(
         toValue: { x: -SCREEN_WIDTH - 100, y: 0 },
         duration: 250,
         useNativeDriver: true,
-      }).start(() => handleSwipe('left'));
-    }, [handleSwipe, isAnimating, position]);
+      }).start(() => handleCardSwipe('left'));
+    }, [handleCardSwipe, isAnimating, position]);
 
     const swipeRight = useCallback(() => {
       if (isAnimating) return;
@@ -196,8 +236,8 @@ const SwipingScreen = forwardRef<SwipingHandle, SwipingScreenProps>(
         toValue: { x: SCREEN_WIDTH + 100, y: 0 },
         duration: 250,
         useNativeDriver: true,
-      }).start(() => handleSwipe('right'));
-    }, [handleSwipe, isAnimating, position]);
+      }).start(() => handleCardSwipe('right'));
+    }, [handleCardSwipe, isAnimating, position]);
 
     useImperativeHandle(ref, () => ({ swipeLeft, swipeRight, openInfo: handleCardTap }), [
       swipeLeft,
@@ -209,44 +249,45 @@ const SwipingScreen = forwardRef<SwipingHandle, SwipingScreenProps>(
       () =>
         PanResponder.create({
           onStartShouldSetPanResponder: () => !isAnimating,
-          onMoveShouldSetPanResponder: () => !isAnimating,
+          onMoveShouldSetPanResponder: (_, gestureState) => {
+            // Only respond to horizontal gestures for photo cycling
+            return !isAnimating && Math.abs(gestureState.dx) > Math.abs(gestureState.dy) && Math.abs(gestureState.dx) > 10;
+          },
 
           onPanResponderGrant: () => {
             Animated.timing(scale, { toValue: 0.98, duration: 100, useNativeDriver: true }).start();
           },
 
-          onPanResponderMove: (_, g) => {
+          onPanResponderMove: (_, gestureState) => {
             if (isAnimating) return;
-            position.setValue({ x: g.dx, y: g.dy });
+            // Don't move the card position, just track the gesture for photo cycling
+            position.setValue({ x: gestureState.dx * 0.3, y: 0 }); // Subtle movement for feedback
           },
 
-          onPanResponderRelease: (_, g) => {
+          onPanResponderRelease: (_, gestureState) => {
             if (isAnimating) return;
 
             Animated.timing(scale, { toValue: 1, duration: 100, useNativeDriver: true }).start();
 
-            // Remove tap-to-open functionality - only allow swiping
-            const config = { duration: 250, useNativeDriver: true } as const;
-
-            if (g.dx > SWIPE_THRESHOLD) {
-              Animated.timing(position, { toValue: { x: SCREEN_WIDTH + 100, y: g.dy }, ...config }).start(
-                () => handleSwipe('right')
-              );
-            } else if (g.dx < -SWIPE_THRESHOLD) {
-              Animated.timing(position, { toValue: { x: -SCREEN_WIDTH - 100, y: g.dy }, ...config }).start(
-                () => handleSwipe('left')
-              );
-            } else {
-              Animated.spring(position, {
-                toValue: { x: 0, y: 0 },
-                useNativeDriver: true,
-                tension: 100,
-                friction: 8,
-              }).start();
+            // Handle photo cycling based on swipe direction
+            if (Math.abs(gestureState.dx) > PHOTO_SWIPE_THRESHOLD) {
+              if (gestureState.dx > 0) {
+                cyclePhoto('prev'); // Swipe right = previous photo
+              } else {
+                cyclePhoto('next'); // Swipe left = next photo
+              }
             }
+
+            // Always return card to center after gesture
+            Animated.spring(position, {
+              toValue: { x: 0, y: 0 },
+              useNativeDriver: true,
+              tension: 100,
+              friction: 8,
+            }).start();
           },
         }),
-      [isAnimating, position, scale, handleCardTap, handleSwipe]
+      [isAnimating, position, scale, cyclePhoto]
     );
 
     const renderPriceLevel = (priceLevel?: number) => {
@@ -264,9 +305,30 @@ const SwipingScreen = forwardRef<SwipingHandle, SwipingScreenProps>(
       );
     };
 
+    // Photo indicators component
+    const renderPhotoIndicators = (photoUrls: string[], currentIndex: number) => {
+      if (!photoUrls || photoUrls.length <= 1) return null;
+      
+      return (
+        <View style={styles.photoIndicators}>
+          {photoUrls.map((_, index) => (
+            <View
+              key={index}
+              style={[
+                styles.photoIndicator,
+                { backgroundColor: index === currentIndex ? COLORS.accent : 'rgba(255,255,255,0.3)' }
+              ]}
+            />
+          ))}
+        </View>
+      );
+    };
+
     const renderCard = (card: Card, index: number, isNext = false) => {
-      const imageUrl =
-        Array.isArray(card.photoUrls) && card.photoUrls.length > 0 ? card.photoUrls[0] : null;
+      const photoUrls = Array.isArray(card.photoUrls) ? card.photoUrls : [];
+      const hasPhotos = photoUrls.length > 0;
+      const displayPhotoIndex = isNext ? 0 : currentPhotoIndex; // Next card always shows first photo
+      const currentPhotoUrl = hasPhotos ? photoUrls[displayPhotoIndex] : null;
 
       const cardStyle = isNext
         ? [
@@ -280,14 +342,11 @@ const SwipingScreen = forwardRef<SwipingHandle, SwipingScreenProps>(
               zIndex: 2,
               transform: [
                 ...position.getTranslateTransform(),
-                {
-                  rotate: position.x.interpolate({
-                    inputRange: [-SCREEN_WIDTH, 0, SCREEN_WIDTH],
-                    outputRange: ['-30deg', '0deg', '30deg'],
-                    extrapolate: 'clamp',
-                  }),
-                },
-                { scale },
+                { scale: Animated.multiply(scale, photoTransition.interpolate({
+                  inputRange: [0.8, 1],
+                  outputRange: [0.98, 1],
+                  extrapolate: 'clamp'
+                })) },
               ],
             },
           ];
@@ -298,56 +357,41 @@ const SwipingScreen = forwardRef<SwipingHandle, SwipingScreenProps>(
           style={cardStyle}
           {...(!isNext ? panResponder.panHandlers : {})}
         >
-          {imageUrl ? (
+          {currentPhotoUrl ? (
             <>
-              <Image source={{ uri: imageUrl }} style={styles.cardImage} resizeMode="cover" />
+              <Animated.Image 
+                source={{ uri: currentPhotoUrl }} 
+                style={[
+                  styles.cardImage,
+                  !isNext && {
+                    opacity: photoTransition.interpolate({
+                      inputRange: [0.8, 1],
+                      outputRange: [0.8, 1],
+                      extrapolate: 'clamp'
+                    })
+                  }
+                ]} 
+                resizeMode="cover" 
+              />
               <LinearGradient
                 colors={['transparent', 'rgba(0,0,0,0.4)', 'rgba(0,0,0,0.85)']}
                 locations={[0, 0.55, 1]}
                 style={styles.cardGradient}
               />
+              {!isNext && renderPhotoIndicators(photoUrls, currentPhotoIndex)}
             </>
           ) : (
             <View style={styles.noImageContainer}>
               <Ionicons name="image-outline" size={64} color={COLORS.textTertiary} />
-              <Text style={styles.noImageText}>No Image Available</Text>
+              <Text style={styles.noImageText}>No Images Available</Text>
             </View>
           )}
 
-          {!isNext && (
-            <>
-              <Animated.View
-                style={[
-                  styles.swipeIndicator,
-                  styles.likeIndicator,
-                  {
-                    opacity: position.x.interpolate({
-                      inputRange: [0, SWIPE_THRESHOLD],
-                      outputRange: [0, 1],
-                      extrapolate: 'clamp',
-                    }),
-                  },
-                ]}
-              >
-                <Text style={styles.indicatorText}>LIKE</Text>
-              </Animated.View>
-
-              <Animated.View
-                style={[
-                  styles.swipeIndicator,
-                  styles.passIndicator,
-                  {
-                    opacity: position.x.interpolate({
-                      inputRange: [-SWIPE_THRESHOLD, 0],
-                      outputRange: [1, 0],
-                      extrapolate: 'clamp',
-                    }),
-                  },
-                ]}
-              >
-                <Text style={styles.indicatorText}>PASS</Text>
-              </Animated.View>
-            </>
+          {/* Photo cycling hint - only show if multiple photos */}
+          {!isNext && hasPhotos && photoUrls.length > 1 && (
+            <View style={styles.swipeHint}>
+              <Text style={styles.swipeHintText}>Swipe to browse {photoUrls.length} photos</Text>
+            </View>
           )}
 
           <View style={styles.cardInfo}>
@@ -515,7 +559,7 @@ const styles = StyleSheet.create({
   // Compact header area
   headerArea: {
     paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.sm, // Reduced padding
+    paddingVertical: SPACING.sm,
     zIndex: 10,
   },
   
@@ -523,7 +567,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.md,
-    marginBottom: SPACING.xs, // Reduced margin
+    marginBottom: SPACING.xs,
   },
   progressBar: { 
     flex: 1, 
@@ -569,8 +613,8 @@ const styles = StyleSheet.create({
   card: {
     position: 'absolute',
     width: SCREEN_WIDTH - SPACING.xl * 2,
-    height: '85%', // Use percentage instead of fixed height
-    maxHeight: 500, // Prevent cards from being too tall
+    height: '85%',
+    maxHeight: 500,
     backgroundColor: COLORS.surface,
     borderRadius: 20,
     overflow: 'hidden',
@@ -584,6 +628,43 @@ const styles = StyleSheet.create({
   cardImage: { width: '100%', height: '100%' },
   cardGradient: { position: 'absolute', left: 0, right: 0, bottom: 0, height: '55%' },
 
+  // Photo indicators
+  photoIndicators: {
+    position: 'absolute',
+    top: 20,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 6,
+    zIndex: 3,
+  },
+  photoIndicator: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+  },
+
+  // Swipe hint
+  swipeHint: {
+    position: 'absolute',
+    top: 50,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    zIndex: 3,
+  },
+  swipeHintText: {
+    color: 'rgba(255,255,255,0.8)',
+    fontSize: 12,
+    fontWeight: '600',
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+
   noImageContainer: {
     flex: 1,
     justifyContent: 'center',
@@ -592,19 +673,6 @@ const styles = StyleSheet.create({
     gap: SPACING.md,
   },
   noImageText: { color: COLORS.textTertiary, fontSize: 16, fontWeight: '500' },
-
-  swipeIndicator: {
-    position: 'absolute',
-    top: '50%',
-    paddingVertical: SPACING.sm,
-    paddingHorizontal: SPACING.lg,
-    borderRadius: 8,
-    borderWidth: 3,
-    zIndex: 5,
-  },
-  likeIndicator: { right: SPACING.xl, borderColor: COLORS.success, backgroundColor: 'rgba(40, 167, 69, 0.2)' },
-  passIndicator: { left: SPACING.xl, borderColor: COLORS.danger, backgroundColor: 'rgba(220, 53, 69, 0.2)' },
-  indicatorText: { color: COLORS.text, fontSize: 18, fontWeight: '800', letterSpacing: 2 },
 
   cardInfo: { position: 'absolute', bottom: 0, left: 0, right: 0, padding: SPACING.xl, gap: SPACING.sm },
   cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: SPACING.md },

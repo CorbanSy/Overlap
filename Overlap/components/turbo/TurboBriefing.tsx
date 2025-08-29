@@ -18,7 +18,7 @@ interface TurboBriefingProps {
 }
 
 const TurboBriefing: React.FC<TurboBriefingProps> = ({ turboData }) => {
-  const [countdown, setCountdown] = useState(15);
+  const [countdown, setCountdown] = useState(6);
   const fadeAnim = new Animated.Value(0);
 
   useEffect(() => {

@@ -1,4 +1,4 @@
-// app/meetupFolder/startMeetUp.tsx - Fixed layout to prevent button overlap
+// app/meetupFolder/startMeetUp.tsx - Removed Turbo Mode button
 import React, { useState, useRef, useMemo, useEffect } from 'react';
 import {
   SafeAreaView,
@@ -17,8 +17,6 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import SwipingScreen, { SwipingHandle } from '../../components/swiping';
 import MeetupExploreCard from '../../components/MeetUpExploreCard';
 import Leader from '../../components/leader';
-import TurboModeScreen from '../../components/turbo/TurboModeScreen';
-import { initializeTurboSession } from '../../_utils/storage/turboMeetup';
 import { getMeetupData, updateMeetup } from '../../_utils/storage/meetups';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -41,8 +39,6 @@ export default function StartMeetupScreen() {
   // State management
   const [showDirectionModal, setShowDirectionModal] = useState(false);
   const [showLeaderboardModal, setShowLeaderboardModal] = useState(false);
-  const [showTurboMode, setShowTurboMode] = useState(false);
-  const [turboSessionId, setTurboSessionId] = useState<string | null>(null);
   const [currentCategory, setCurrentCategory] = useState<string>('Dining');
   const [meetupData, setMeetupData] = useState<any>(null);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -96,33 +92,6 @@ export default function StartMeetupScreen() {
       setMeetupData(originalData);
       
       throw error;
-    }
-  };
-
-  // Turbo Mode Handler
-  const handleStartTurboMode = async () => {
-    if (!meetupId) {
-      Alert.alert('Error', 'No meetup ID found');
-      return;
-    }
-
-    try {
-      const data = meetupData || await getMeetupData(meetupId);
-      const groupSize = data.participants?.length || 1;
-      
-      if (groupSize < 3) {
-        Alert.alert(
-          'Not Enough Participants', 
-          'Turbo Mode requires at least 3 participants. Invite more friends first!'
-        );
-        return;
-      }
-
-      await initializeTurboSession(meetupId, groupSize);
-      setShowTurboMode(true);
-    } catch (error) {
-      console.error('Error starting turbo mode:', error);
-      Alert.alert('Error', 'Failed to start Turbo Mode. Please try again.');
     }
   };
 
@@ -198,18 +167,6 @@ export default function StartMeetupScreen() {
     );
   }
 
-  if (showTurboMode) {
-    return (
-      <TurboModeScreen
-        meetupId={String(meetupId)}
-        onExit={() => {
-          setShowTurboMode(false);
-          setTurboSessionId(null);
-        }}
-      />
-    );
-  }
-
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaView style={styles.container}>
@@ -230,22 +187,7 @@ export default function StartMeetupScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* TURBO MODE BUTTON */}
-        <View style={styles.turboContainer}>
-          <TouchableOpacity 
-            style={styles.turboButton} 
-            onPress={handleStartTurboMode}
-            activeOpacity={0.8}
-          >
-            <View style={styles.turboButtonContent}>
-              <Ionicons name="flash" size={20} color={COLORS.accent} />
-              <Text style={styles.turboButtonText}>Turbo Mode</Text>
-              <Text style={styles.turboButtonSubtitle}>2min decision</Text>
-            </View>
-          </TouchableOpacity>
-        </View>
-
-        {/* SWIPE DECK - Now contained within available space */}
+        {/* SWIPE DECK - Now takes full available space */}
         <View style={styles.swipeDeckContainer}>
           <SwipingScreen 
             key={`${meetupId}-${currentCategory}-${refreshKey}`}
@@ -392,41 +334,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 
-  turboContainer: {
-    alignItems: 'center',
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: '#232533',
-  },
-  turboButton: {
-    backgroundColor: COLORS.surface,
-    borderRadius: 12,
-    padding: 12,
-    borderWidth: 2,
-    borderColor: COLORS.accent,
-    shadowColor: COLORS.accent,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
-    elevation: 4,
-  },
-  turboButtonContent: {
-    alignItems: 'center',
-    gap: 2,
-    width: 100,
-  },
-  turboButtonText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
-  turboButtonSubtitle: {
-    fontSize: 10,
-    color: COLORS.accent,
-    fontWeight: '600',
-  },
-
-  // NEW: Container for swipe deck that respects control bar space
   swipeDeckContainer: {
     flex: 1,
     marginBottom: CONTROL_BAR_HEIGHT, // Reserve space for control bar
@@ -463,7 +370,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.accent 
   },
 
-  // Modal styles (unchanged)
+  // Modal styles
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',

@@ -58,6 +58,7 @@ interface MeetupCardProps {
   onRemove?: () => void;
   onStart?: (meetupId: string) => void;
   onStop?: (meetupId: string) => void;
+  onTurboMode?: (meetupId: string) => void; // New prop for turbo mode
 }
 
 // Constants
@@ -76,6 +77,7 @@ const COLORS = {
   textTertiary: '#6E7681',
   border: 'rgba(255,255,255,0.08)',
   borderHover: 'rgba(255,255,255,0.12)',
+  turbo: '#FF6B35', // New turbo color
 } as const;
 
 const SPACING = {
@@ -154,6 +156,7 @@ const MeetupCard: React.FC<MeetupCardProps> = ({
   onRemove,
   onStart,
   onStop,
+  onTurboMode, // New prop
 }) => {
   // State
   const [expanded, setExpanded] = useState(false);
@@ -165,6 +168,7 @@ const MeetupCard: React.FC<MeetupCardProps> = ({
   const isWideLayout = cardWidth >= 560;
   const friends = Array.isArray(meetup?.friends) ? meetup.friends : [];
   const collections = Array.isArray(meetup?.collections) ? meetup.collections : [];
+  const participantCount = meetup?.participants?.length || 1;
   
   const truncatedDescription = useMemo(() => {
     const description = meetup?.description || '';
@@ -203,6 +207,20 @@ const MeetupCard: React.FC<MeetupCardProps> = ({
       onStart?.(meetup.id);
     }
   }, [meetup?.id, meetup?.ongoing, onStart, onStop]);
+
+  const handleTurboMode = useCallback(() => {
+    if (!meetup?.id) return;
+    
+    // Removed the participant count check - turbo works with any number of participants
+    Alert.alert(
+      'Start Turbo Mode',
+      'Ready for a 2-minute rapid-fire decision session?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Start Turbo', style: 'default', onPress: () => onTurboMode?.(meetup.id) },
+      ]
+    );
+  }, [meetup?.id, onTurboMode]);
 
   const handleRemove = useCallback(() => {
     Alert.alert(
@@ -274,7 +292,7 @@ const MeetupCard: React.FC<MeetupCardProps> = ({
             {meetup?.eventName || 'Untitled Meetup'}
           </Text>
           {meetup.ongoing && (
-            <View style={styles.livebadge}>
+            <View style={styles.liveBadge}>
               <Text style={styles.liveBadgeText}>LIVE</Text>
             </View>
           )}
@@ -294,24 +312,40 @@ const MeetupCard: React.FC<MeetupCardProps> = ({
             />
           </TouchableOpacity>
 
-          <TouchableOpacity
-            style={[
-              styles.actionButton,
-              meetup.ongoing ? styles.stopButton : styles.startButton,
-            ]}
-            onPress={handleToggleMeetup}
-            activeOpacity={0.8}
-            accessibilityLabel={meetup.ongoing ? 'Stop meetup' : 'Start meetup'}
-          >
-            <Ionicons
-              name={meetup.ongoing ? 'stop' : 'play'}
-              size={16}
-              color={COLORS.background}
-            />
-            <Text style={styles.actionButtonText}>
-              {meetup.ongoing ? 'Stop' : 'Start'}
-            </Text>
-          </TouchableOpacity>
+          {/* Action buttons container */}
+          <View style={styles.actionButtonsContainer}>
+            <TouchableOpacity
+              style={[
+                styles.actionButton,
+                meetup.ongoing ? styles.stopButton : styles.startButton,
+              ]}
+              onPress={handleToggleMeetup}
+              activeOpacity={0.8}
+              accessibilityLabel={meetup.ongoing ? 'Stop meetup' : 'Start meetup'}
+            >
+              <Ionicons
+                name={meetup.ongoing ? 'stop' : 'play'}
+                size={16}
+                color={COLORS.background}
+              />
+              <Text style={styles.actionButtonText}>
+                {meetup.ongoing ? 'Stop' : 'Start'}
+              </Text>
+            </TouchableOpacity>
+
+            {/* Turbo Mode button - show for all non-ongoing meetups */}
+            {!meetup.ongoing && onTurboMode && (
+              <TouchableOpacity
+                style={[styles.actionButton, styles.turboButton]}
+                onPress={handleTurboMode}
+                activeOpacity={0.8}
+                accessibilityLabel="Start Turbo Mode"
+              >
+                <Ionicons name="flash" size={14} color={COLORS.background} />
+                <Text style={styles.turboButtonText}>Turbo</Text>
+              </TouchableOpacity>
+            )}
+          </View>
         </View>
       </View>
 
@@ -435,7 +469,7 @@ const MeetupCard: React.FC<MeetupCardProps> = ({
               {renderMetaRow('Mood', meetup?.mood)}
               {renderMetaRow('Price', `${getPriceBadge(meetup?.priceRange)} (${meetup?.priceRange ?? 0})`)}
               {renderMetaRow('Group Size', meetup?.groupSize)}
-              {renderMetaRow('Participants', meetup?.participants?.length ?? 0)}
+              {renderMetaRow('Participants', participantCount)}
               {renderMetaRow('Created', formatDateTime(meetup?.createdAt))}
               {renderMetaRow('Meetup ID', meetup?.meetupId || meetup?.id)}
             </View>
@@ -526,8 +560,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
   headerActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-end',
     gap: SPACING.sm,
   },
   expandButton: {
@@ -536,6 +569,11 @@ const styles = StyleSheet.create({
     padding: SPACING.sm,
     borderWidth: 1,
     borderColor: COLORS.border,
+  },
+  actionButtonsContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
   },
   actionButton: {
     flexDirection: 'row',
@@ -551,10 +589,39 @@ const styles = StyleSheet.create({
   stopButton: {
     backgroundColor: COLORS.accentHover,
   },
+  turboButton: {
+    backgroundColor: COLORS.turbo,
+    paddingHorizontal: SPACING.sm, // Slightly smaller padding
+  },
+  turboButtonDisabled: {
+    backgroundColor: COLORS.surface,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
   actionButtonText: {
     color: COLORS.background,
     fontSize: 14,
     fontWeight: '700',
+  },
+  turboButtonText: {
+    color: COLORS.background,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  turboButtonTextDisabled: {
+    color: COLORS.textTertiary,
+  },
+  participantIndicator: {
+    marginBottom: SPACING.sm,
+  },
+  participantIndicatorText: {
+    color: COLORS.textSecondary,
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  participantIndicatorWarning: {
+    color: COLORS.turbo,
+    fontWeight: '600',
   },
   chipsContainer: {
     flexDirection: 'row',

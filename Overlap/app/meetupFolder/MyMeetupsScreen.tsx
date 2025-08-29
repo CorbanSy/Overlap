@@ -17,8 +17,10 @@ import { Ionicons } from '@expo/vector-icons';
 import { getUserMeetups, removeMeetup, updateMeetup } from '../../_utils/storage/meetups';
 import { getPendingMeetupInvites } from '../../_utils/storage/meetupInvites';
 import { exportMyLikesToMeetup } from '../../_utils/storage/meetupActivities';
+import { initializeTurboSession } from '../../_utils/storage/turboMeetup';
 import MeetupCard from '../../components/MeetupCard';
 import StartMeetupScreen from './startMeetUp';
+import TurboModeScreen from '../../components/turbo/TurboModeScreen';
 import { useRouter } from 'expo-router';
 
 // Types
@@ -27,6 +29,7 @@ interface Meetup {
   title?: string;
   ongoing: boolean;
   eventName?: string;
+  participants?: any[];
   // Add other meetup properties as needed
 }
 
@@ -53,6 +56,7 @@ const COLORS = {
   border: '#30363D',
   success: '#2EA043',
   warning: '#FB8500',
+  turbo: '#FF6B35',
 } as const;
 
 const SPACING = {
@@ -73,6 +77,7 @@ const MyMeetupsScreen: React.FC<Props> = ({ onBack }) => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [showStart, setShowStart] = useState(false);
+  const [showTurbo, setShowTurbo] = useState(false);
   const [currentMeetupId, setCurrentMeetupId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -178,9 +183,44 @@ const MyMeetupsScreen: React.FC<Props> = ({ onBack }) => {
     );
   }, []);
 
+  // Handle Turbo Mode
+  const handleTurboMode = useCallback(async (meetupId: string) => {
+    try {
+      const meetup = meetups.find(m => m.id === meetupId);
+      const groupSize = meetup?.participants?.length || 1;
+      
+      // Removed participant count check - turbo works with any group size
+      
+      // Initialize turbo session
+      await initializeTurboSession(meetupId, groupSize);
+      await exportMyLikesToMeetup(meetupId);
+      
+      // Set current meetup and show turbo mode
+      setCurrentMeetupId(meetupId);
+      setShowTurbo(true);
+    } catch (err) {
+      console.error('Error starting turbo mode:', err);
+      Alert.alert('Error', 'Failed to start Turbo Mode. Please try again.');
+    }
+  }, [meetups]);
+
   const handleRetry = useCallback(() => {
     fetchData();
   }, [fetchData]);
+
+  // Render TurboModeScreen if needed
+  if (showTurbo && currentMeetupId) {
+    return (
+      <TurboModeScreen
+        meetupId={currentMeetupId}
+        onExit={() => {
+          setShowTurbo(false);
+          setCurrentMeetupId(null);
+          onRefresh(); // Refresh data when returning
+        }}
+      />
+    );
+  }
 
   // Render StartMeetupScreen if needed
   if (showStart && currentMeetupId) {
@@ -285,6 +325,7 @@ const MyMeetupsScreen: React.FC<Props> = ({ onBack }) => {
                 onRemove={() => handleRemoveMeetup(meetup.id)}
                 onStart={handleStartMeetup}
                 onStop={handleStopMeetup}
+                // No turbo mode for ongoing meetups
               />
             ))}
           </View>
@@ -310,6 +351,7 @@ const MyMeetupsScreen: React.FC<Props> = ({ onBack }) => {
                 onRemove={() => handleRemoveMeetup(meetup.id)}
                 onStart={handleStartMeetup}
                 onStop={handleStopMeetup}
+                onTurboMode={handleTurboMode} // Add turbo mode support
               />
             ))}
           </View>

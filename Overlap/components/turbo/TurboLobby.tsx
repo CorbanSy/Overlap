@@ -32,8 +32,8 @@ interface Member {
   swipes: number;
   active: boolean;
   displayName?: string;
-  avatarUrl?: string | null;  // Changed this line
-  email?: string | null;      // Also make email explicitly nullable for consistency
+  avatarUrl?: string | null;
+  email?: string | null;
 }
 
 interface TurboLobbyProps {
@@ -138,7 +138,7 @@ const TurboLobby: React.FC<TurboLobbyProps> = ({
   }, [turboData.members]);
 
   const memberCount = membersWithProfiles.length;
-  const canStart = memberCount >= 3;
+  const canStart = memberCount >= 1; // Changed from 3 to 1 - any number can start
   const isUserJoined = currentUser && turboData.members?.[currentUser.uid];
   const isCreator = currentUser && turboData.createdBy === currentUser.uid;
 
@@ -184,11 +184,21 @@ const TurboLobby: React.FC<TurboLobbyProps> = ({
 
   const renderEmptyMembers = () => (
     <View style={styles.emptyMembers}>
-      <Ionicons name="people-outline" size={48} color={COLORS.textTertiary} />
-      <Text style={styles.emptyText}>No participants yet</Text>
-      <Text style={styles.emptySubtext}>Be the first to join!</Text>
+      <Ionicons name="person-outline" size={48} color={COLORS.textTertiary} />
+      <Text style={styles.emptyText}>Solo Turbo Mode</Text>
+      <Text style={styles.emptySubtext}>Ready when you are!</Text>
     </View>
   );
+
+  const getReadyMessage = () => {
+    if (memberCount === 1) {
+      return "Solo mode ready!";
+    } else if (memberCount === 2) {
+      return "Duo ready!";
+    } else {
+      return "Ready to start!";
+    }
+  };
 
   return (
     <View style={styles.container}>
@@ -208,7 +218,11 @@ const TurboLobby: React.FC<TurboLobbyProps> = ({
           <Text style={styles.infoTitle}>2-Minute Decision</Text>
         </View>
         <Text style={styles.infoDescription}>
-          Lightning-fast group decisions in 2 minutes or less! Everyone swipes simultaneously, then we vote on the top 2 options.
+          Lightning-fast decisions in 2 minutes or less! 
+          {memberCount === 1 
+            ? " Swipe through options, then pick your favorite!"
+            : " Everyone swipes simultaneously, then we vote on the top 2 options."
+          }
         </Text>
         <View style={styles.infoStats}>
           <View style={styles.statItem}>
@@ -235,18 +249,10 @@ const TurboLobby: React.FC<TurboLobbyProps> = ({
             Participants ({memberCount})
           </Text>
           <View style={styles.statusContainer}>
-            {canStart ? (
-              <View style={styles.readyStatus}>
-                <Ionicons name="checkmark-circle" size={16} color={COLORS.success} />
-                <Text style={styles.readyText}>Ready to start</Text>
-              </View>
-            ) : (
-              <View style={styles.waitingStatus}>
-                <Text style={styles.waitingText}>
-                  Need {3 - memberCount} more
-                </Text>
-              </View>
-            )}
+            <View style={styles.readyStatus}>
+              <Ionicons name="checkmark-circle" size={16} color={COLORS.success} />
+              <Text style={styles.readyText}>{getReadyMessage()}</Text>
+            </View>
           </View>
         </View>
 
@@ -291,22 +297,12 @@ const TurboLobby: React.FC<TurboLobbyProps> = ({
 
         {isCreator && (
           <TouchableOpacity 
-            style={[styles.startButton, !canStart && styles.disabledButton]} 
+            style={[styles.startButton]} 
             onPress={onStart}
-            disabled={!canStart}
-            activeOpacity={canStart ? 0.8 : 1}
+            activeOpacity={0.8}
           >
-            <Ionicons 
-              name="play" 
-              size={20} 
-              color={canStart ? COLORS.background : COLORS.textSecondary} 
-            />
-            <Text style={[
-              styles.startButtonText, 
-              !canStart && styles.disabledButtonText
-            ]}>
-              Start Session
-            </Text>
+            <Ionicons name="play" size={20} color={COLORS.background} />
+            <Text style={styles.startButtonText}>Start Session</Text>
           </TouchableOpacity>
         )}
       </View>
@@ -314,9 +310,19 @@ const TurboLobby: React.FC<TurboLobbyProps> = ({
       {/* Instructions */}
       <View style={styles.instructions}>
         <Text style={styles.instructionsTitle}>How it works:</Text>
-        <Text style={styles.instructionStep}>1. Everyone joins and swipes on activities</Text>
-        <Text style={styles.instructionStep}>2. Top 2 activities advance to final vote</Text>
-        <Text style={styles.instructionStep}>3. First option to get majority wins!</Text>
+        {memberCount === 1 ? (
+          <>
+            <Text style={styles.instructionStep}>1. Swipe through activities quickly</Text>
+            <Text style={styles.instructionStep}>2. Hit your minimum swipe target</Text>
+            <Text style={styles.instructionStep}>3. Pick your favorite from the top options!</Text>
+          </>
+        ) : (
+          <>
+            <Text style={styles.instructionStep}>1. Everyone joins and swipes on activities</Text>
+            <Text style={styles.instructionStep}>2. Top 2 activities advance to final vote</Text>
+            <Text style={styles.instructionStep}>3. First option to get majority wins!</Text>
+          </>
+        )}
       </View>
     </View>
   );
@@ -436,17 +442,6 @@ const styles = StyleSheet.create({
   readyText: {
     fontSize: 12,
     color: COLORS.success,
-    fontWeight: '600',
-  },
-  waitingStatus: {
-    backgroundColor: 'rgba(245, 166, 35, 0.2)',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-  },
-  waitingText: {
-    fontSize: 12,
-    color: COLORS.accent,
     fontWeight: '600',
   },
   membersContainer: {
@@ -597,16 +592,6 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '700',
     color: COLORS.background,
-  },
-  disabledButton: {
-    backgroundColor: COLORS.surface,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    shadowOpacity: 0,
-    elevation: 0,
-  },
-  disabledButtonText: {
-    color: COLORS.textSecondary,
   },
   instructions: {
     backgroundColor: 'rgba(245, 166, 35, 0.1)',
