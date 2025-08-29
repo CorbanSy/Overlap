@@ -20,7 +20,7 @@ import {
   endTurboDeathmatch,
 } from '../../_utils/storage/turboMeetup';
 import { getMeetupLikes } from '../../_utils/storage/meetupActivities';
-import SwipingScreen, { SwipingHandle } from '../swiping';
+import type { SwipeDeckHandle } from '../swiping/SwipeDeck';
 import TurboLobby from './TurboLobby';
 import TurboBriefing from './TurboBriefing';
 import TurboSprint from './TurboSprint';
@@ -60,7 +60,7 @@ interface Card {
 const TurboModeScreen: React.FC<TurboModeScreenProps> = ({ meetupId, onExit }) => {
   const router = useRouter();
   const auth = getAuth(); // Initialize auth here
-  const swipingRef = useRef<SwipingHandle | null>(null); // Fix ref typing
+  const swipingRef = useRef<SwipeDeckHandle | null>(null);
   
   const [turboData, setTurboData] = useState<TurboData | null>(null); // Proper typing instead of any
   const [cards, setCards] = useState<Card[]>([]); // Proper typing instead of any[]

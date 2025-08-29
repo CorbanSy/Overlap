@@ -8,10 +8,10 @@ const FriendCard = ({ item }) => (
       source={
         item.profilePicUrl 
           ? { uri: item.profilePicUrl }
-          : require('../assets/images/profile.png') // Use your default profile image
+          : require('../../assets/images/profile.png') // Use your default profile image
       }
       style={styles.friendAvatar} 
-      defaultSource={require('../assets/images/profile.png')} // Fallback for network images
+      defaultSource={require('../../assets/images/profile.png')} // Fallback for network images
     />
     <View style={styles.friendInfo}>
       <Text style={styles.friendName} numberOfLines={1}>

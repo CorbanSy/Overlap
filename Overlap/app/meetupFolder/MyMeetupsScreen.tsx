@@ -18,8 +18,8 @@ import { getPendingMeetupInvites, sendMeetupInvite } from '../../_utils/storage/
 import { exportMyLikesToMeetup } from '../../_utils/storage/meetupActivities';
 import { initializeTurboSession } from '../../_utils/storage/turboMeetup';
 import { getFriendships } from '../../_utils/storage/social';
-import MeetupCard from '../../components/MeetupCard';
-import FriendPicker from '../../components/FriendPicker';
+import MeetupCard from '../../components/meetup_components/MeetupCard';
+import FriendPicker from '../../components/meetup_components/FriendPicker';
 import StartMeetupScreen from './startMeetUp';
 import TurboModeScreen from '../../components/turbo/TurboModeScreen';
 import { useRouter } from 'expo-router';

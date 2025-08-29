@@ -1,7 +1,7 @@
 //components/leader.tsx
 import React, { useEffect, useState } from 'react';
 import { View, Text, FlatList, StyleSheet, ActivityIndicator } from 'react-native';
-import { getMeetupActivityLeaderboard } from '../_utils/storage/meetupSwipes';
+import { getMeetupActivityLeaderboard } from '../../_utils/storage/meetupSwipes';
 
 interface LeaderProps {
   meetupId: string;

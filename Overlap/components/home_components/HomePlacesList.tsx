@@ -2,7 +2,7 @@
 import React, { forwardRef, useCallback } from 'react';
 import { FlatList, ActivityIndicator, RefreshControl, StyleSheet, View, Text } from 'react-native';
 import PlaceCard from './PlaceCard';
-import ExploreMoreCard from '../ExploreMoreCard';
+import ExploreMoreCard from './ExploreMoreCard';
 import { PLACE_CATEGORIES } from '../../_utils/placeCategories';
 
 interface UserLocation {

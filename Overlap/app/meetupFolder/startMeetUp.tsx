@@ -13,9 +13,9 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import SwipingScreen, { SwipingHandle } from '../../components/swiping';
-import MeetupExploreCard from '../../components/MeetUpExploreCard';
-import Leader from '../../components/leader';
+import SwipingScreen, { SwipingHandle } from '../../components/swiping/SwipingScreen';
+import MeetupExploreCard from '../../components/meetup_components/MeetUpExploreCard';
+import Leader from '../../components/meetup_components/leader';
 import { getMeetupData, updateMeetup } from '../../_utils/storage/meetups';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -46,7 +46,7 @@ export default function StartMeetupScreen() {
   const [meetupData, setMeetupData] = useState<any>(null);
   const [refreshKey, setRefreshKey] = useState(0);
 
-  const deckRef = useRef<SwipingHandle>(null);
+  const deckRef = useRef<SwipingHandle | null>(null);
 
   // Animations
   const slideAnim = useRef(new Animated.Value(SCREEN_WIDTH)).current;

@@ -15,7 +15,7 @@ import {
   StatusBar,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { sendMeetupInvite } from '../_utils/storage/meetupInvites';
+import { sendMeetupInvite } from '../../_utils/storage/meetupInvites';
 
 // Types
 interface Friend {
@@ -220,10 +220,10 @@ const FriendPicker: React.FC<FriendPickerProps> = ({
             source={
               item.avatarUrl
                 ? { uri: item.avatarUrl }
-                : require('../assets/images/profile.png')
+                : require('../../assets/images/profile.png')
             }
             style={styles.friendAvatar}
-            defaultSource={require('../assets/images/profile.png')}
+            defaultSource={require('../../assets/images/profile.png')}
           />
           <View style={styles.friendDetails}>
             <Text style={styles.friendName} numberOfLines={1}>
@@ -386,10 +386,10 @@ const FriendPicker: React.FC<FriendPickerProps> = ({
                   source={
                     friend.avatarUrl
                       ? { uri: friend.avatarUrl }
-                      : require('../assets/images/profile.png')
+                      : require('../../assets/images/profile.png')
                   }
                   style={[styles.invitedAvatar, index > 0 && styles.overlappedAvatar]}
-                  defaultSource={require('../assets/images/profile.png')}
+                  defaultSource={require('../../assets/images/profile.png')}
                 />
               ))}
               {currentFriends.length > 5 && (

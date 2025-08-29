@@ -14,7 +14,7 @@ import {
   Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import CollectionCard from './CollectionCard';
+import CollectionCard from '../CollectionCard';
 import { getAuth, onAuthStateChanged, User } from 'firebase/auth';
 
 // ───────────────────────────────────────────────────────────────────────────────
@@ -475,10 +475,10 @@ const MeetupCard: React.FC<MeetupCardProps> = ({
           source={
             friend?.avatarUrl
               ? { uri: friend.avatarUrl }
-              : require('../assets/images/profile.png')
+              : require('../../assets/images/profile.png')
           }
           style={styles.friendAvatar}
-          defaultSource={require('../assets/images/profile.png')}
+          defaultSource={require('../../assets/images/profile.png')}
         />
         <Text numberOfLines={2} style={styles.friendName}>
           {displayName}

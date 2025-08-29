@@ -40,7 +40,7 @@ import {
 } from '../../_utils/storage/social';
 import { ensureDirectoryForCurrentUser } from '../../_utils/storage/userProfile';
 
-import FriendCard from '../../components/FriendCard';
+import FriendCard from '../../components/profile_components/FriendCard';
 
 export const options = { headerShown: false };
 

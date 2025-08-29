@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Animated } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import SwipingScreen, { SwipingHandle } from '../swiping';
+import SwipeDeck, { SwipeDeckHandle } from '../swiping/SwipeDeck';
 import MeetupParticipants from '../MeetupParticipants';
 import { getAuth } from 'firebase/auth';
 
@@ -24,7 +24,7 @@ interface TurboSprintProps {
   cards: any[];
   onSwipe: (card: any, direction: 'left' | 'right') => void;
   onExit: () => void;
-  swipingRef: React.RefObject<SwipingHandle>;
+  swipingRef: React.RefObject<SwipeDeckHandle | null>;
   meetupId: string;
 }
 
@@ -52,16 +52,14 @@ const TurboSprint: React.FC<TurboSprintProps> = ({
 
     const interval = setInterval(() => {
       const now = new Date().getTime();
-      const sprintStart = turboData.sprint.startedAt?.toDate?.()?.getTime() || 
-                         new Date(turboData.sprint.startedAt).getTime();
+      const sprintStart =
+        turboData.sprint.startedAt?.toDate?.()?.getTime() ||
+        new Date(turboData.sprint.startedAt).getTime();
       const elapsed = Math.floor((now - sprintStart) / 1000);
       const remaining = Math.max(0, 120 - elapsed);
-      
-      setTimeRemaining(remaining);
 
-      if (remaining <= 0) {
-        clearInterval(interval);
-      }
+      setTimeRemaining(remaining);
+      if (remaining <= 0) clearInterval(interval);
     }, 1000);
 
     return () => clearInterval(interval);
@@ -73,10 +71,10 @@ const TurboSprint: React.FC<TurboSprintProps> = ({
     const activeMembers = members.filter((m: any) => m.active);
     const totalSwipes = activeMembers.reduce((sum: number, m: any) => sum + (m.swipes || 0), 0);
     const benchmarkTarget = Math.ceil(0.8 * activeMembers.length * turboData.minSwipesPerPerson);
-    
+
     const progress = benchmarkTarget > 0 ? Math.min(1, totalSwipes / benchmarkTarget) : 0;
     setBenchmarkProgress(progress);
-    
+
     const remaining = Math.max(0, benchmarkTarget - totalSwipes);
     setRemainingSwipesForDeathmatch(remaining);
 
@@ -92,28 +90,16 @@ const TurboSprint: React.FC<TurboSprintProps> = ({
       shownOnceRef.current = true;
       setShowBenchmarkHit(true);
       Animated.sequence([
-        Animated.timing(benchmarkHitAnim, {
-          toValue: 1,
-          duration: 300,
-          useNativeDriver: true,
-        }),
+        Animated.timing(benchmarkHitAnim, { toValue: 1, duration: 300, useNativeDriver: true }),
         Animated.delay(2000),
-        Animated.timing(benchmarkHitAnim, {
-          toValue: 0,
-          duration: 300,
-          useNativeDriver: true,
-        }),
-      ]).start(() => {
-        setShowBenchmarkHit(false);
-      });
+        Animated.timing(benchmarkHitAnim, { toValue: 0, duration: 300, useNativeDriver: true }),
+      ]).start(() => setShowBenchmarkHit(false));
     }
-  }, [turboData.members, turboData.minSwipesPerPerson]);
+  }, [turboData.members, turboData.minSwipesPerPerson, progressBarAnim, benchmarkHitAnim]);
 
   // If state flips, make sure overlay is hidden
   useEffect(() => {
-    if ((turboData as any)?.state === 'deathmatch') {
-      setShowBenchmarkHit(false);
-    }
+    if ((turboData as any)?.state === 'deathmatch') setShowBenchmarkHit(false);
   }, [turboData]);
 
   const formatTime = (seconds: number) => {
@@ -127,7 +113,6 @@ const TurboSprint: React.FC<TurboSprintProps> = ({
     if (!currentUser || !turboData.members?.[currentUser.uid]) {
       return { swipes: 0, minSwipes: turboData.minSwipesPerPerson };
     }
-    
     return {
       swipes: turboData.members[currentUser.uid].swipes || 0,
       minSwipes: turboData.minSwipesPerPerson,
@@ -147,9 +132,12 @@ const TurboSprint: React.FC<TurboSprintProps> = ({
     return COLORS.textSecondary;
   };
 
-  const handleCardSwipe = useCallback((card: any, direction: 'left' | 'right') => {
-    onSwipe(card, direction);
-  }, [onSwipe]);
+  const handleCardSwipe = useCallback(
+    (card: any, direction: 'left' | 'right') => {
+      onSwipe(card, direction);
+    },
+    [onSwipe]
+  );
 
   const { swipes: userSwipes, minSwipes } = getUserProgress();
   const userProgressPercent = Math.min(100, (userSwipes / minSwipes) * 100);
@@ -165,9 +153,7 @@ const TurboSprint: React.FC<TurboSprintProps> = ({
         </TouchableOpacity>
 
         <View style={styles.timerContainer}>
-          <Text style={[styles.timerText, { color: getTimerColor() }]}>
-            {formatTime(timeRemaining)}
-          </Text>
+          <Text style={[styles.timerText, { color: getTimerColor() }]}>{formatTime(timeRemaining)}</Text>
           <Text style={styles.timerLabel}>left</Text>
         </View>
 
@@ -182,23 +168,22 @@ const TurboSprint: React.FC<TurboSprintProps> = ({
       {/* Benchmark Progress Bar */}
       <View style={styles.benchmarkContainer}>
         <View style={styles.benchmarkBar}>
-          <Animated.View 
+          <Animated.View
             style={[
-              styles.benchmarkFill, 
-              { 
+              styles.benchmarkFill,
+              {
                 width: progressBarAnim.interpolate({
                   inputRange: [0, 1],
                   outputRange: ['0%', '100%'],
                 }),
-              }
-            ]} 
+              },
+            ]}
           />
         </View>
         <Text style={styles.benchmarkText}>
-          {remainingSwipesForDeathmatch > 0 
+          {remainingSwipesForDeathmatch > 0
             ? `Deathmatch in ${remainingSwipesForDeathmatch} swipes`
-            : 'Ready for deathmatch!'
-          }
+            : 'Ready for deathmatch!'}
         </Text>
       </View>
 
@@ -210,14 +195,14 @@ const TurboSprint: React.FC<TurboSprintProps> = ({
       {/* User Progress Indicator */}
       <View style={styles.userProgressContainer}>
         <View style={styles.userProgressBar}>
-          <View 
+          <View
             style={[
-              styles.userProgressFill, 
-              { 
+              styles.userProgressFill,
+              {
                 width: `${userProgressPercent}%`,
                 backgroundColor: getProgressColor(),
-              }
-            ]} 
+              },
+            ]}
           />
         </View>
         <View style={styles.userProgressInfo}>
@@ -227,27 +212,27 @@ const TurboSprint: React.FC<TurboSprintProps> = ({
               <Text style={styles.onTrackText}>You're on track!</Text>
             </View>
           ) : (
-            <Text style={styles.progressHint}>
-              {minSwipes - userSwipes} more swipes to be active
-            </Text>
+            <Text style={styles.progressHint}>{minSwipes - userSwipes} more swipes to be active</Text>
           )}
         </View>
       </View>
 
       {/* Benchmark Hit Notification */}
       {showBenchmarkHit && (
-        <Animated.View 
+        <Animated.View
           style={[
             styles.benchmarkHitOverlay,
             {
               opacity: benchmarkHitAnim,
-              transform: [{
-                scale: benchmarkHitAnim.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [0.8, 1],
-                }),
-              }],
-            }
+              transform: [
+                {
+                  scale: benchmarkHitAnim.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0.8, 1],
+                  }),
+                },
+              ],
+            },
           ]}
         >
           <View style={styles.benchmarkHitContent}>
@@ -260,13 +245,14 @@ const TurboSprint: React.FC<TurboSprintProps> = ({
 
       {/* Swiping Area */}
       <View style={styles.swipingContainer}>
-        <SwipingScreen
-          ref={swipingRef}
+        <SwipeDeck
+          ref={swipingRef as React.RefObject<SwipeDeckHandle>}
+          cards={cards}
           meetupId={meetupId}
+          turboMode
           onSwipeLeft={(card) => handleCardSwipe(card, 'left')}
           onSwipeRight={(card) => handleCardSwipe(card, 'right')}
-          showInternalButtons={false}
-          turboMode={true}
+          // Optionally: onCardTap={(card) => router.push(`/moreInfo?placeId=${card.id}`)}
         />
       </View>
 
@@ -308,10 +294,7 @@ const TurboSprint: React.FC<TurboSprintProps> = ({
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: COLORS.background,
-  },
+  container: { flex: 1, backgroundColor: COLORS.background },
   sprintHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -331,37 +314,13 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     backgroundColor: COLORS.surface,
   },
-  exitText: {
-    fontSize: 12,
-    color: COLORS.textSecondary,
-    fontWeight: '500',
-  },
-  timerContainer: {
-    alignItems: 'center',
-  },
-  timerText: {
-    fontSize: 32,
-    fontWeight: '700',
-    lineHeight: 36,
-  },
-  timerLabel: {
-    fontSize: 12,
-    color: COLORS.textSecondary,
-    fontWeight: '500',
-  },
-  progressContainer: {
-    alignItems: 'center',
-  },
-  progressText: {
-    fontSize: 18,
-    fontWeight: '700',
-    lineHeight: 20,
-  },
-  progressLabel: {
-    fontSize: 12,
-    color: COLORS.textSecondary,
-    fontWeight: '500',
-  },
+  exitText: { fontSize: 12, color: COLORS.textSecondary, fontWeight: '500' },
+  timerContainer: { alignItems: 'center' },
+  timerText: { fontSize: 32, fontWeight: '700', lineHeight: 36 },
+  timerLabel: { fontSize: 12, color: COLORS.textSecondary, fontWeight: '500' },
+  progressContainer: { alignItems: 'center' },
+  progressText: { fontSize: 18, fontWeight: '700', lineHeight: 20 },
+  progressLabel: { fontSize: 12, color: COLORS.textSecondary, fontWeight: '500' },
   benchmarkContainer: {
     paddingHorizontal: 16,
     paddingVertical: 12,
@@ -376,17 +335,8 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     marginBottom: 8,
   },
-  benchmarkFill: {
-    height: '100%',
-    backgroundColor: COLORS.accent,
-    borderRadius: 3,
-  },
-  benchmarkText: {
-    fontSize: 14,
-    color: COLORS.textSecondary,
-    textAlign: 'center',
-    fontWeight: '600',
-  },
+  benchmarkFill: { height: '100%', backgroundColor: COLORS.accent, borderRadius: 3 },
+  benchmarkText: { fontSize: 14, color: COLORS.textSecondary, textAlign: 'center', fontWeight: '600' },
   participantsContainer: {
     paddingVertical: 8,
     alignItems: 'center',
@@ -394,11 +344,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: COLORS.border,
   },
-  userProgressContainer: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    backgroundColor: COLORS.surface,
-  },
+  userProgressContainer: { paddingHorizontal: 16, paddingVertical: 8, backgroundColor: COLORS.surface },
   userProgressBar: {
     height: 4,
     backgroundColor: COLORS.background,
@@ -406,103 +352,35 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     marginBottom: 6,
   },
-  userProgressFill: {
-    height: '100%',
-    borderRadius: 2,
-  },
-  userProgressInfo: {
-    alignItems: 'center',
-  },
-  onTrackIndicator: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-  onTrackText: {
-    fontSize: 12,
-    color: COLORS.success,
-    fontWeight: '600',
-  },
-  progressHint: {
-    fontSize: 12,
-    color: COLORS.textSecondary,
-    fontWeight: '500',
-  },
+  userProgressFill: { height: '100%', borderRadius: 2 },
+  userProgressInfo: { alignItems: 'center' },
+  onTrackIndicator: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  onTrackText: { fontSize: 12, color: COLORS.success, fontWeight: '600' },
+  progressHint: { fontSize: 12, color: COLORS.textSecondary, fontWeight: '500' },
   benchmarkHitOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.8)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    zIndex: 1000,
+    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.8)', justifyContent: 'center', alignItems: 'center', zIndex: 1000,
   },
   benchmarkHitContent: {
-    alignItems: 'center',
-    gap: 16,
-    backgroundColor: COLORS.surface,
-    borderRadius: 20,
-    padding: 32,
-    borderWidth: 2,
-    borderColor: COLORS.accent,
+    alignItems: 'center', gap: 16, backgroundColor: COLORS.surface,
+    borderRadius: 20, padding: 32, borderWidth: 2, borderColor: COLORS.accent,
   },
-  benchmarkHitTitle: {
-    fontSize: 32,
-    fontWeight: '700',
-    color: COLORS.text,
-  },
-  benchmarkHitSubtitle: {
-    fontSize: 16,
-    color: COLORS.textSecondary,
-    textAlign: 'center',
-  },
-  swipingContainer: {
-    flex: 1,
-  },
+  benchmarkHitTitle: { fontSize: 32, fontWeight: '700', color: COLORS.text },
+  benchmarkHitSubtitle: { fontSize: 16, color: COLORS.textSecondary, textAlign: 'center' },
+  swipingContainer: { flex: 1 },
   controls: {
-    flexDirection: 'row',
-    justifyContent: 'space-around',
-    paddingHorizontal: 40,
-    paddingVertical: 20,
-    backgroundColor: COLORS.surface,
+    flexDirection: 'row', justifyContent: 'space-around',
+    paddingHorizontal: 40, paddingVertical: 20, backgroundColor: COLORS.surface,
   },
   controlButton: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.25,
-    shadowRadius: 8,
-    elevation: 6,
+    width: 60, height: 60, borderRadius: 30, justifyContent: 'center', alignItems: 'center',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.25, shadowRadius: 8, elevation: 6,
   },
-  passButton: {
-    backgroundColor: COLORS.danger,
-  },
-  likeButton: {
-    backgroundColor: COLORS.success,
-  },
-  infoButton: {
-    backgroundColor: COLORS.accent,
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-  },
-  sprintTips: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    backgroundColor: COLORS.surface,
-    alignItems: 'center',
-  },
-  tipsText: {
-    fontSize: 12,
-    color: COLORS.textSecondary,
-    fontStyle: 'italic',
-  },
+  passButton: { backgroundColor: COLORS.danger },
+  likeButton: { backgroundColor: COLORS.success },
+  infoButton: { backgroundColor: COLORS.accent, width: 48, height: 48, borderRadius: 24 },
+  sprintTips: { paddingHorizontal: 16, paddingVertical: 8, backgroundColor: COLORS.surface, alignItems: 'center' },
+  tipsText: { fontSize: 12, color: COLORS.textSecondary, fontStyle: 'italic' },
 });
 
 export default TurboSprint;
