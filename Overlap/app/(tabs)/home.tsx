@@ -1,4 +1,4 @@
-// home.tsx (paginated + deferred search + server-side prefilter)
+// home.tsx (optimized for performance)
 import React, { useState, useEffect, useCallback, useRef, useMemo, useDeferredValue } from 'react';
 import { View, StyleSheet, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -64,6 +64,7 @@ interface Place {
   preferenceScore?: number;
   openingHours?: string[];
   priceLevel?: number;
+  distanceKm?: number; // Pre-calculated distance
 }
 
 // Constants
@@ -73,7 +74,8 @@ const FUSE_OPTIONS = {
   threshold: 0.4,
   includeScore: true,
 };
-const PAGE_SIZE = 30; // tune this (20–40 is a good range)
+const PAGE_SIZE = 30;
+const DEBOUNCE_DELAY = 300;
 
 // Helpers
 const deg2rad = (deg: number) => deg * (Math.PI / 180);
@@ -122,19 +124,41 @@ const calculatePlaceScore = (place: Place, currentCategory: string): number => {
 };
 
 const checkIfPlaceIsOpen = (place: Place): boolean => {
-  if (!place.openingHours?.length) return true; // Assume open if no hours data
+  if (!place.openingHours?.length) return true;
   const now = new Date();
   const currentDay = now.getDay();
   const todayHours = place.openingHours[currentDay];
   if (!todayHours || todayHours.includes('Closed')) return false;
-  // Simplified - in production, you'd parse actual times
   return true;
 };
 
-const matchesPriceLevel = (place: Place, priceRange: string): boolean => {
-  if (!priceRange || !place.priceLevel) return true;
-  const targetLevel = priceRange.length;
-  return place.priceLevel === targetLevel;
+// Custom debounce hook
+const useDebouncedValue = <T,>(value: T, delay: number): T => {
+  const [debouncedValue, setDebouncedValue] = useState(value);
+
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedValue(value);
+    }, delay);
+
+    return () => {
+      clearTimeout(handler);
+    };
+  }, [value, delay]);
+
+  return debouncedValue;
+};
+
+// Background function to fetch and store details without blocking UI
+const fetchAndStoreDetailsBackground = async (placeId: string) => {
+  try {
+    const details = await fetchPlaceDetails(placeId);
+    if (details.reviews?.length) {
+      await storeReviewsForPlace(placeId, details.reviews);
+    }
+  } catch (error) {
+    console.error('Background fetch failed:', error);
+  }
 };
 
 export default function HomeScreen() {
@@ -148,9 +172,9 @@ export default function HomeScreen() {
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [exhausted, setExhausted] = useState(false); // no more pages
+  const [exhausted, setExhausted] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const deferredSearchQuery = useDeferredValue(searchQuery); // smoother typing
+  const deferredSearchQuery = useDeferredValue(searchQuery);
   const [currentCategory, setCurrentCategory] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
 
@@ -162,6 +186,10 @@ export default function HomeScreen() {
   const [userLikes, setUserLikes] = useState<Record<string, boolean>>({});
   const [userSaves, setUserSaves] = useState<Record<string, boolean>>({});
   const [userCollections, setUserCollections] = useState<Record<string, any>>({});
+
+  // Debounced user data to reduce render frequency
+  const debouncedUserLikes = useDebouncedValue(userLikes, DEBOUNCE_DELAY);
+  const debouncedUserSaves = useDebouncedValue(userSaves, DEBOUNCE_DELAY);
 
   // Modal state
   const [collectionModalVisible, setCollectionModalVisible] = useState(false);
@@ -191,6 +219,21 @@ export default function HomeScreen() {
       (filterState.sort && filterState.sort !== 'recommended')
     );
   }, [filterState]);
+
+  // Pre-calculate distances when places or location change
+  const placesWithDistance = useMemo(() => {
+    if (!userLocation || !places.length) return places;
+    
+    return places.map(place => ({
+      ...place,
+      distanceKm: getDistanceFromLatLonInKm(
+        userLocation.lat,
+        userLocation.lng,
+        place.location.lat,
+        place.location.lng
+      )
+    }));
+  }, [places, userLocation]);
 
   // Initialize user preferences
   useEffect(() => {
@@ -233,11 +276,12 @@ export default function HomeScreen() {
     setupLocation();
   }, []);
 
-  // Listen to likes & collections
+  // Listen to likes & collections with error handling
   useEffect(() => {
     if (!user) return;
 
     const unsubscribers: (() => void)[] = [];
+    
     try {
       const likesUnsub = onSnapshot(
         collection(db, 'users', user.uid, 'likes'),
@@ -246,7 +290,10 @@ export default function HomeScreen() {
           snap.forEach((docSnap) => { newLikes[docSnap.id] = true; });
           setUserLikes(newLikes);
         },
-        (error) => console.error('Error listening to likes:', error)
+        (error) => {
+          console.error('Error listening to likes:', error);
+          setError('Failed to sync likes');
+        }
       );
       unsubscribers.push(likesUnsub);
 
@@ -263,7 +310,10 @@ export default function HomeScreen() {
           setUserSaves(newSaves);
           setUserCollections(collections);
         },
-        (error) => console.error('Error listening to collections:', error)
+        (error) => {
+          console.error('Error listening to collections:', error);
+          setError('Failed to sync collections');
+        }
       );
       unsubscribers.push(savesUnsub);
     } catch (err) {
@@ -274,28 +324,21 @@ export default function HomeScreen() {
     return () => unsubscribers.forEach(u => u());
   }, [user]);
 
-  /**
-   * Build a Firestore query that prefilters server-side
-   * We avoid multiple range filters; keep it indexable.
-   */
+  // Build Firestore query with server-side prefilters
   const buildPlacesQuery = useCallback(
     (opts?: { startAfterDoc?: QueryDocumentSnapshot<DocumentData> | null }) => {
       const constraints: any[] = [];
 
-      // Primary order: most popular first (reduces client work)
+      // Primary order: most popular first
       constraints.push(orderBy('userRatingsTotal', 'desc'));
 
-      // Server-side filters we can index cheaply:
+      // Server-side filters
       if (filterState.selectedTypes?.length) {
-        // array-contains-any supports up to 10 elements
         constraints.push(where('types', 'array-contains-any', filterState.selectedTypes.slice(0, 10)));
       }
       if (filterState.priceRange) {
-        // priceLevel is 1..4; priceRange is '$', '$$', ...
         constraints.push(where('priceLevel', '==', filterState.priceRange.length));
       }
-      // We *could* also do rating >= X, but that forces orderBy('rating') and more composite indexes.
-      // To keep it simple/reliable, we’ll filter by rating client-side.
 
       constraints.push(limit(PAGE_SIZE));
       if (opts?.startAfterDoc) {
@@ -307,9 +350,9 @@ export default function HomeScreen() {
     [filterState.selectedTypes, filterState.priceRange]
   );
 
-  // Initial page (and refetch on filter changes)
+  // Initial page load
   const loadInitial = useCallback(async () => {
-    if (inFlightRef.current) return;     // hard guard against re-entry
+    if (inFlightRef.current) return;
     inFlightRef.current = true;
 
     setLoading(true);
@@ -334,9 +377,9 @@ export default function HomeScreen() {
       setLoading(false);
       inFlightRef.current = false;
     }
-  }, [buildPlacesQuery]);  // ← no `loading` here
+  }, [buildPlacesQuery]);
 
-  // Load next page
+  // Load more pages
   const loadMore = useCallback(async () => {
     if (loadingMore || exhausted || !lastDoc) return;
     setLoadingMore(true);
@@ -359,83 +402,74 @@ export default function HomeScreen() {
     }
   }, [buildPlacesQuery, loadingMore, exhausted, lastDoc]);
 
-  // Run initial load and re-run when server-side filter knobs change
+  // Load initial data when filters change
   useEffect(() => {
     loadInitial();
-  }, [buildPlacesQuery]);   // re-load when server-side filters change
+  }, [buildPlacesQuery]);
 
-  // Setup search index
+  // Setup search index - only when places change significantly
   useEffect(() => {
-    if (places.length) {
-      fuseRef.current = new Fuse(places, FUSE_OPTIONS);
+    if (placesWithDistance.length) {
+      fuseRef.current = new Fuse(placesWithDistance, FUSE_OPTIONS);
     } else {
       fuseRef.current = null;
     }
-  }, [places]);
+  }, [placesWithDistance]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     setError(null);
     try {
-      await loadInitial(); // re-run first page with current filters
+      await loadInitial();
     } finally {
       setRefreshing(false);
     }
   }, [loadInitial]);
 
-  // Filtering/sorting (client-side only for what Firestore can't do)
-  const getDisplayedPlaces = useCallback(() => {
-    let filteredPlaces = places;
+  // Split filtering logic to reduce dependencies and recalculations
+  const baseFilteredPlaces = useMemo(() => {
+    let filtered = placesWithDistance;
 
-    // Defer search to prevent heavy recompute on each keystroke
+    // Search filtering (most expensive - use deferred value)
     if (deferredSearchQuery && fuseRef.current) {
       const searchResults = fuseRef.current.search(deferredSearchQuery);
-      filteredPlaces = searchResults.map((r) => r.item);
+      filtered = searchResults.map((r) => r.item);
     }
 
-    // Apply rating filter client-side (keeps Firestore query simple)
+    // Client-side filters that don't need server-side indexing
     if (filterState.minRating && filterState.minRating > 0) {
-      filteredPlaces = filteredPlaces.filter(p => (p.rating || 0) >= filterState.minRating!);
+      filtered = filtered.filter(p => (p.rating || 0) >= filterState.minRating!);
     }
 
-    // Distance filter and sort: only compute distances when needed
-    const needDistance =
-      !!filterState.maxDistance ||
-      (filterState.sort === 'distance' && userLocation);
-
-    if (needDistance && userLocation) {
-      filteredPlaces = filteredPlaces.filter((place) => {
-        const d = getDistanceFromLatLonInKm(
-          userLocation.lat, userLocation.lng,
-          place.location.lat, place.location.lng
-        );
-        // Annotate distance on the fly to re-use below
-        (place as any).__distanceKm = d;
-        return !filterState.maxDistance || d <= filterState.maxDistance!;
-      });
+    if (filterState.maxDistance && userLocation) {
+      filtered = filtered.filter(place => 
+        (place.distanceKm || 0) <= filterState.maxDistance!
+      );
     }
 
     if (filterState.openNow) {
-      filteredPlaces = filteredPlaces.filter(place => checkIfPlaceIsOpen(place));
+      filtered = filtered.filter(place => checkIfPlaceIsOpen(place));
     }
 
-    // Apply sorting
+    return filtered;
+  }, [placesWithDistance, deferredSearchQuery, filterState.minRating, filterState.maxDistance, filterState.openNow, userLocation]);
+
+  // Separate sorting logic to minimize recalculations
+  const sortedPlaces = useMemo(() => {
     const sortType = filterState.sort || 'recommended';
+    let sorted = [...baseFilteredPlaces];
+
     if (sortType === 'recommended') {
-      filteredPlaces = filteredPlaces
+      sorted = sorted
         .map((place) => ({
           ...place,
           preferenceScore: calculatePlaceScore(place, currentCategory)
         }))
         .sort((a, b) => (b.preferenceScore || 0) - (a.preferenceScore || 0));
     } else if (sortType === 'distance' && userLocation) {
-      filteredPlaces = [...filteredPlaces].sort((a: any, b: any) => {
-        const da = a.__distanceKm ?? getDistanceFromLatLonInKm(userLocation.lat, userLocation.lng, a.location.lat, a.location.lng);
-        const db = b.__distanceKm ?? getDistanceFromLatLonInKm(userLocation.lat, userLocation.lng, b.location.lat, b.location.lng);
-        return da - db;
-      });
+      sorted = sorted.sort((a, b) => (a.distanceKm || 0) - (b.distanceKm || 0));
     } else if (sortType === 'rating') {
-      filteredPlaces = [...filteredPlaces].sort((a, b) => {
+      sorted = sorted.sort((a, b) => {
         if ((b.rating || 0) !== (a.rating || 0)) {
           return (b.rating || 0) - (a.rating || 0);
         }
@@ -443,28 +477,20 @@ export default function HomeScreen() {
       });
     }
 
-    // Add user interaction flags
-    return filteredPlaces.map((place) => ({
+    return sorted;
+  }, [baseFilteredPlaces, filterState.sort, currentCategory, userLocation]);
+
+  // Final display data with user interaction flags
+  const displayedPlaces = useMemo(() => {
+    return sortedPlaces.map((place) => ({
       ...place,
-      liked: !!userLikes[place.id],
-      saved: !!userSaves[place.id],
+      liked: !!debouncedUserLikes[place.id],
+      saved: !!debouncedUserSaves[place.id],
     }));
-  }, [
-    places,
-    deferredSearchQuery,
-    filterState.minRating,
-    filterState.maxDistance,
-    filterState.openNow,
-    filterState.sort,
-    userLikes,
-    userSaves,
-    userLocation,
-    currentCategory,
-  ]);
+  }, [sortedPlaces, debouncedUserLikes, debouncedUserSaves]);
 
   // Insert ExploreMore cards
   const getFinalData = useCallback(() => {
-    const displayedPlaces = getDisplayedPlaces();
     const finalData: any[] = [];
     displayedPlaces.forEach((place, index) => {
       finalData.push(place);
@@ -476,30 +502,37 @@ export default function HomeScreen() {
       finalData.push({ _type: 'exploreMoreCard', key: 'exploreMore_end' });
     }
     return finalData;
-  }, [getDisplayedPlaces]);
+  }, [displayedPlaces]);
 
-  // Event handlers
+  // Optimized like handler with optimistic updates
   const handleLikePress = useCallback(async (place: Place) => {
     if (!user) return;
-    const isLiked = !!userLikes[place.id];
+    
+    const wasLiked = !!userLikes[place.id];
+    
+    // Optimistic update
+    setUserLikes(prev => ({ ...prev, [place.id]: !wasLiked }));
+    
     try {
-      if (isLiked) {
+      if (wasLiked) {
         await deleteDoc(doc(db, 'users', user.uid, 'likes', place.id));
       } else {
-        const details = await fetchPlaceDetails(place.id);
-        if (details.reviews?.length) {
-          await storeReviewsForPlace(place.id, details.reviews);
-        }
+        // Like immediately, fetch details in background
         await likePlace({
           id: place.id,
-          name: details.name,
-          rating: details.rating,
-          userRatingsTotal: details.userRatingsTotal,
-          photos: details.photos,
-          types: details.types,
+          name: place.name,
+          rating: place.rating,
+          userRatingsTotal: place.userRatingsTotal,
+          photos: place.photos,
+          types: place.types,
         });
+        
+        // Fetch additional details in background without blocking
+        fetchAndStoreDetailsBackground(place.id);
       }
     } catch (error) {
+      // Revert optimistic update on error
+      setUserLikes(prev => ({ ...prev, [place.id]: wasLiked }));
       console.error('Failed to toggle like:', error);
       Alert.alert('Error', 'Failed to update like status');
     }
@@ -543,10 +576,9 @@ export default function HomeScreen() {
   const handleTypesFilter = useCallback(() => setTypesModalVisible(true), []);
   const handlePriceFilter = useCallback(() => setPriceModalVisible(true), []);
 
-  // Filter modal apply handlers
+  // Filter modal apply handlers with scroll reset
   const applyDistanceFilter = useCallback((distance: number) => {
     updateFilters({ maxDistance: distance || undefined });
-    // Reset list to reflect new (potentially expensive) client filter
     flatListRef.current?.scrollToOffset?.({ offset: 0, animated: false });
   }, [updateFilters]);
 
@@ -557,13 +589,11 @@ export default function HomeScreen() {
 
   const applyTypesFilter = useCallback((types: string[]) => {
     updateFilters({ selectedTypes: types.length > 0 ? types : undefined });
-    // Server-side filter -> relaunch initial page
     flatListRef.current?.scrollToOffset?.({ offset: 0, animated: false });
   }, [updateFilters]);
 
   const applyPriceFilter = useCallback((priceRange: string) => {
     updateFilters({ priceRange: priceRange || undefined });
-    // Server-side filter -> relaunch initial page
     flatListRef.current?.scrollToOffset?.({ offset: 0, animated: false });
   }, [updateFilters]);
 
@@ -574,7 +604,7 @@ export default function HomeScreen() {
 
   const finalData = useMemo(() => getFinalData(), [getFinalData]);
 
-  // Error + Loader
+  // Error handling
   if (error && places.length === 0) {
     return (
       <SafeAreaView style={styles.container}>
@@ -619,15 +649,14 @@ export default function HomeScreen() {
         onSavePress={handleSavePress}
         onCategoryPress={setCurrentCategory}
         getDistance={getDistanceFromLatLonInKm}
-
-        // 🔽 Infinite scroll hooks (ensure HomePlacesList forwards to its FlatList)
+        
+        // Infinite scroll with performance optimizations
         onEndReached={loadMore}
         onEndReachedThreshold={0.6}
-        // You can also pass windowing hints if your list component supports them:
-        // initialNumToRender={10}
-        // maxToRenderPerBatch={10}
-        // windowSize={7}
-        // removeClippedSubviews
+        initialNumToRender={8}
+        maxToRenderPerBatch={5}
+        windowSize={10}
+        removeClippedSubviews={true}
       />
 
       {/* Loading overlay */}

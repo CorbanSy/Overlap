@@ -33,7 +33,7 @@ interface Collection {
   name?: string;
   activityCount?: number;
   previewUrl?: string | null;
-  activities?: any[]; // optional, if present
+  activities?: any[];
 }
 
 interface Meetup {
@@ -75,22 +75,24 @@ interface MeetupCardProps {
 }
 
 // ───────────────────────────────────────────────────────────────────────────────
-// UI constants
+// UI constants - Cleaner color palette
 // ───────────────────────────────────────────────────────────────────────────────
 const COLORS = {
-  background: '#0D1117',
-  card: '#0F141A',
-  surface: '#161B22',
-  surfaceHover: '#1B2230',
-  primary: '#2EA043',
-  primaryHover: '#3FB95A',
-  accent: '#FFC107',
-  danger: '#F85149',
+  background: '#0F0F0F',
+  card: '#1A1A1A',
+  surface: '#262626',
+  surfaceHover: '#2D2D2D',
+  primary: '#00D9FF',
+  primaryHover: '#00B8D4',
+  accent: '#FFB800',
+  danger: '#FF453A',
+  success: '#32D74B',
   text: '#FFFFFF',
-  textSecondary: '#C9D1D9',
-  textTertiary: '#8B949E',
-  border: 'rgba(240,246,252,0.08)',
-  turbo: '#FF6B35',
+  textSecondary: '#A1A1A6',
+  textTertiary: '#6D6D70',
+  border: 'rgba(255,255,255,0.08)',
+  divider: 'rgba(255,255,255,0.05)',
+  overlay: 'rgba(0,0,0,0.6)',
 } as const;
 
 const SPACING = {
@@ -100,11 +102,12 @@ const SPACING = {
   lg: 16,
   xl: 20,
   xxl: 24,
+  xxxl: 32,
 } as const;
 
-const FRIEND_PREVIEW_COUNT = 8;
-const COLLECTION_PREVIEW_COUNT = 6;
-const DESCRIPTION_PREVIEW_LENGTH = 120;
+const FRIEND_PREVIEW_COUNT = 6;
+const COLLECTION_PREVIEW_COUNT = 4;
+const DESCRIPTION_PREVIEW_LENGTH = 100;
 const WIDE_LAYOUT_BREAKPOINT = 560;
 
 // ───────────────────────────────────────────────────────────────────────────────
@@ -434,7 +437,7 @@ const MeetupCard: React.FC<MeetupCardProps> = ({
       }
       Alert.alert(
         'Remove Collection',
-        `Remove “${name || 'this collection'}” from this meetup?`,
+        `Remove "${name || 'this collection'}" from this meetup?`,
         [
           { text: 'Cancel', style: 'cancel' },
           { text: 'Remove', style: 'destructive', onPress: () => onRemoveCollection?.(meetup.id, collectionId) },
@@ -445,18 +448,6 @@ const MeetupCard: React.FC<MeetupCardProps> = ({
   );
 
   // Render helpers
-  const renderMetaRow = useCallback(
-    (label: string, value?: string | number) => (
-      <View key={label} style={styles.metaRow}>
-        <Text style={styles.metaLabel}>{label}</Text>
-        <Text style={styles.metaValue} numberOfLines={1}>
-          {value ?? 'N/A'}
-        </Text>
-      </View>
-    ),
-    []
-  );
-
   const renderCollectionItem = useCallback(
     ({ item }: { item: Collection }) => {
       const label = item.title || item.name || 'Untitled';
@@ -465,29 +456,28 @@ const MeetupCard: React.FC<MeetupCardProps> = ({
 
       return (
         <View style={styles.collectionWrap} key={item.id}>
-          <View style={styles.meetupCollectionCard}>
-            <View style={styles.cardPreviewSection}>
+          <View style={styles.collectionCard}>
+            <View style={styles.collectionPreview}>
               {preview ? (
-                <Image source={{ uri: preview }} style={styles.cardPreviewImageFull} />
+                <Image source={{ uri: preview }} style={styles.collectionPreviewImage} />
               ) : (
-                <View style={styles.cardDefaultPreview}>
-                  <Ionicons name="folder-outline" size={24} color={COLORS.accent} />
+                <View style={styles.collectionPreviewPlaceholder}>
+                  <Ionicons name="folder-outline" size={20} color={COLORS.accent} />
                 </View>
               )}
             </View>
 
-            <View style={styles.collectionHeader}>
-              <Ionicons name="folder" size={14} color={COLORS.accent} />
+            <View style={styles.collectionInfo}>
               <Text style={styles.collectionTitle} numberOfLines={1}>{label}</Text>
+              <Text style={styles.collectionCount}>
+                {count} {count === 1 ? 'activity' : 'activities'}
+              </Text>
             </View>
-            <Text style={styles.activityCountText}>
-              {count} {count === 1 ? 'activity' : 'activities'}
-            </Text>
           </View>
 
           {isHost && onRemoveCollection && (
             <TouchableOpacity
-              style={styles.removeCollectionButton}
+              style={styles.removeButton}
               onPress={() => handleRemoveCollection(item.id, label)}
               activeOpacity={0.7}
               accessibilityLabel={`Remove collection ${label}`}
@@ -509,10 +499,9 @@ const MeetupCard: React.FC<MeetupCardProps> = ({
 
       return (
         <View key={`friend-${friend.uid}-${index}`} style={styles.friendCard}>
-          {/* Remove button for hosts */}
           {isHost && onRemoveFriend && (
             <TouchableOpacity
-              style={styles.removeFriendButton}
+              style={styles.removeButton}
               onPress={() => handleRemoveFriend(friend.uid, friend.name || friend.email)}
               activeOpacity={0.7}
               accessibilityLabel={`Remove ${friend.name || friend.email || 'friend'}`}
@@ -552,103 +541,132 @@ const MeetupCard: React.FC<MeetupCardProps> = ({
   // ───────────────────────────────────────────────────────────────────────────
   return (
     <View style={styles.cardContainer} onLayout={handleLayout}>
-      {/* Left status rail if live */}
-      {meetup.ongoing && <View style={styles.statusRail} />}
+      {/* Live indicator */}
+      {meetup.ongoing && (
+        <View style={styles.liveIndicator}>
+          <View style={styles.liveDot} />
+          <Text style={styles.liveText}>LIVE</Text>
+        </View>
+      )}
 
       {/* Header */}
       <View style={styles.header}>
-        <View style={styles.titleContainer}>
+        <View style={styles.titleSection}>
           <Text style={styles.title} numberOfLines={2}>
             {meetup.eventName || 'Untitled Meetup'}
           </Text>
-        </View>
-
-        <View style={styles.headerActions}>
-          <TouchableOpacity
-            style={styles.expandButton}
-            onPress={handleToggleExpanded}
-            activeOpacity={0.8}
-            accessibilityLabel={expanded ? 'Collapse details' : 'Expand details'}
-            accessibilityRole="button"
-          >
-            <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={18} color={COLORS.textSecondary} />
-          </TouchableOpacity>
-
-          <View style={styles.actionButtonsContainer}>
-            {isHost ? (
-              <>
-                <TouchableOpacity
-                  style={styles.ctaPrimary}
-                  onPress={handleToggleMeetup}
-                  activeOpacity={0.85}
-                  accessibilityLabel={meetup.ongoing ? 'Stop meetup' : 'Start meetup'}
-                  accessibilityRole="button"
-                >
-                  <Ionicons name={meetup.ongoing ? 'stop' : 'play'} size={16} color={COLORS.background} />
-                  <Text style={styles.ctaPrimaryText}>{meetup.ongoing ? 'Stop' : 'Start'}</Text>
-                </TouchableOpacity>
-
-                {!meetup.ongoing && onTurboMode && (
-                  <TouchableOpacity
-                    style={styles.ctaGhost}
-                    onPress={handleTurboMode}
-                    activeOpacity={0.85}
-                    accessibilityLabel="Start Turbo Mode"
-                    accessibilityRole="button"
-                  >
-                    <Ionicons name="flash" size={14} color={COLORS.textSecondary} />
-                    <Text style={styles.ctaGhostText}>Turbo</Text>
-                  </TouchableOpacity>
-                )}
-              </>
-            ) : (
-              meetup.ongoing &&
-              onJoin && (
-                <TouchableOpacity
-                  style={styles.ctaPrimary}
-                  onPress={handleJoin}
-                  activeOpacity={0.85}
-                  accessibilityLabel="Join live meetup"
-                  accessibilityRole="button"
-                >
-                  <Ionicons name="enter" size={16} color={COLORS.background} />
-                  <Text style={styles.ctaPrimaryText}>Join</Text>
-                </TouchableOpacity>
-              )
+          
+          {/* Key info badges */}
+          <View style={styles.badgeRow}>
+            {meetup.date && (
+              <View style={styles.badge}>
+                <Ionicons name="calendar-outline" size={12} color={COLORS.primary} />
+                <Text style={styles.badgeText}>{formatDate(meetup.date)}</Text>
+              </View>
+            )}
+            {meetup.time && (
+              <View style={styles.badge}>
+                <Ionicons name="time-outline" size={12} color={COLORS.primary} />
+                <Text style={styles.badgeText}>{formatTime(meetup.time)}</Text>
+              </View>
+            )}
+            {meetup.location && (
+              <View style={[styles.badge, { maxWidth: 120 }]}>
+                <Ionicons name="location-outline" size={12} color={COLORS.primary} />
+                <Text numberOfLines={1} style={styles.badgeText}>{meetup.location}</Text>
+              </View>
             )}
           </View>
         </View>
+
+        <View style={styles.headerActions}>
+          {isHost ? (
+            <View style={styles.hostActions}>
+              <TouchableOpacity
+                style={[styles.primaryButton, meetup.ongoing && styles.primaryButtonStop]}
+                onPress={handleToggleMeetup}
+                activeOpacity={0.8}
+                accessibilityLabel={meetup.ongoing ? 'Stop meetup' : 'Start meetup'}
+              >
+                <Ionicons 
+                  name={meetup.ongoing ? 'stop' : 'play'} 
+                  size={16} 
+                  color={COLORS.background} 
+                />
+                <Text style={styles.primaryButtonText}>
+                  {meetup.ongoing ? 'Stop' : 'Start'}
+                </Text>
+              </TouchableOpacity>
+              
+              {!meetup.ongoing && onTurboMode && (
+                <TouchableOpacity
+                  style={styles.turboButton}
+                  onPress={handleTurboMode}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons name="flash" size={14} color={COLORS.accent} />
+                  <Text style={styles.turboButtonText}>Turbo</Text>
+                </TouchableOpacity>
+              )}
+              
+              <TouchableOpacity
+                style={styles.expandButton}
+                onPress={handleToggleExpanded}
+                activeOpacity={0.8}
+              >
+                <Ionicons 
+                  name={expanded ? 'chevron-up' : 'chevron-down'} 
+                  size={18} 
+                  color={COLORS.textSecondary} 
+                />
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <View style={styles.guestActions}>
+              {meetup.ongoing && onJoin && (
+                <TouchableOpacity
+                  style={styles.joinButton}
+                  onPress={handleJoin}
+                  activeOpacity={0.8}
+                >
+                  <Ionicons name="enter-outline" size={16} color={COLORS.background} />
+                  <Text style={styles.joinButtonText}>Join Live</Text>
+                </TouchableOpacity>
+              )}
+              
+              <TouchableOpacity
+                style={styles.expandButton}
+                onPress={handleToggleExpanded}
+                activeOpacity={0.8}
+              >
+                <Ionicons 
+                  name={expanded ? 'chevron-up' : 'chevron-down'} 
+                  size={18} 
+                  color={COLORS.textSecondary} 
+                />
+              </TouchableOpacity>
+            </View>
+          )}
+        </View>
       </View>
 
-      {/* Compact meta row (one line) */}
-      <View style={styles.metaCompact}>
-        {meetup.date && (
-          <View style={styles.metaItem}>
-            <Ionicons name="calendar-outline" size={12} color={COLORS.textTertiary} />
-            <Text style={styles.metaCompactText}>{formatDate(meetup.date)}</Text>
-          </View>
-        )}
-        {meetup.time && meetup.date && <View style={styles.metaDivider} />}
-        {meetup.time && (
-          <View style={styles.metaItem}>
-            <Ionicons name="time-outline" size={12} color={COLORS.textTertiary} />
-            <Text style={styles.metaCompactText}>{formatTime(meetup.time)}</Text>
-          </View>
-        )}
-        {meetup.location && (meetup.date || meetup.time) && <View style={styles.metaDivider} />}
-        {meetup.location && (
-          <View style={[styles.metaItem, { maxWidth: '40%' }]}>
-            <Ionicons name="location-outline" size={12} color={COLORS.textTertiary} />
-            <Text numberOfLines={1} style={styles.metaCompactText}>{meetup.location}</Text>
-          </View>
-        )}
-        {meetup.code && (meetup.location || meetup.time || meetup.date) && <View style={styles.metaDivider} />}
-        {meetup.code && (
-          <View style={styles.metaItem}>
-            <Ionicons name="key-outline" size={12} color={COLORS.textTertiary} />
-            <Text style={styles.metaCompactText}>Code: {meetup.code}</Text>
-          </View>
-        )}
+      {/* Quick stats */}
+      <View style={styles.statsRow}>
+        <View style={styles.stat}>
+          <Ionicons name="people-outline" size={14} color={COLORS.textTertiary} />
+          <Text style={styles.statText}>{participantCount}</Text>
+        </View>
+        <View style={styles.stat}>
+          <Ionicons name="folder-outline" size={14} color={COLORS.textTertiary} />
+          <Text style={styles.statText}>{collections.length}</Text>
+        </View>
+        <View style={styles.stat}>
+          <Ionicons name="person-outline" size={14} color={COLORS.textTertiary} />
+          <Text style={styles.statText}>{filteredFriends.length}</Text>
+        </View>
+        <View style={styles.stat}>
+          <Text style={styles.priceText}>{getPriceBadge(meetup.priceRange)}</Text>
+        </View>
       </View>
 
       {/* Description preview */}
@@ -658,160 +676,165 @@ const MeetupCard: React.FC<MeetupCardProps> = ({
 
       {/* Expanded content */}
       {expanded && (
-        <View style={[styles.expandedContent, !isWideLayout && styles.expandedContentStacked]}>
-          {/* Main content */}
-          <View style={styles.mainContent}>
-            <Text style={styles.description}>{meetup.description || 'No description provided.'}</Text>
-
-            {/* Collections section */}
+        <View style={styles.expandedContent}>
+          {/* Description */}
+          {meetup.description && (
             <View style={styles.section}>
-              <View style={styles.sectionHeader}>
-                <Text style={styles.sectionTitle}>Collections</Text>
-                <View style={styles.sectionHeaderActions}>
-                  {collections.length > 0 && (
-                    <View style={styles.countBadge}>
-                      <Text style={styles.countBadgeText}>{collections.length}</Text>
-                    </View>
-                  )}
-                  {isHost && onAddCollection && (
-                    <TouchableOpacity
-                      style={styles.addFriendButton}
-                      onPress={handleAddCollection}
-                      activeOpacity={0.7}
-                      accessibilityLabel="Add collections to meetup"
-                      accessibilityRole="button"
-                    >
-                      <Ionicons name="folder-open" size={16} color={COLORS.primary} />
-                    </TouchableOpacity>
-                  )}
-                </View>
+              <Text style={styles.description}>{meetup.description}</Text>
+            </View>
+          )}
+
+          {/* Collections */}
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Collections</Text>
+              <View style={styles.sectionActions}>
+                {collections.length > 0 && (
+                  <View style={styles.countBadge}>
+                    <Text style={styles.countBadgeText}>{collections.length}</Text>
+                  </View>
+                )}
+                {isHost && onAddCollection && (
+                  <TouchableOpacity
+                    style={styles.addButton}
+                    onPress={handleAddCollection}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons name="add" size={16} color={COLORS.primary} />
+                  </TouchableOpacity>
+                )}
               </View>
-
-              {collectionsToShow.length > 0 ? (
-                <FlatList
-                  horizontal
-                  data={collectionsToShow}
-                  keyExtractor={(item) => item?.id || `collection-${Math.random()}`}
-                  renderItem={renderCollectionItem}
-                  showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={styles.horizontalList}
-                />
-              ) : (
-                <Text style={styles.emptyText}>No collections added yet.</Text>
-              )}
-
-              {collections.length > COLLECTION_PREVIEW_COUNT && (
-                <TouchableOpacity
-                  style={styles.toggleButton}
-                  onPress={handleToggleCollections}
-                  activeOpacity={0.7}
-                  accessibilityRole="button"
-                >
-                  <Text style={styles.toggleButtonText}>
-                    {showAllCollections ? 'Show fewer' : `Show all ${collections.length} collections`}
-                  </Text>
-                </TouchableOpacity>
-              )}
             </View>
 
-            {/* Friends section */}
-            <View style={styles.section}>
-              <View style={styles.sectionHeader}>
-                <Text style={styles.sectionTitle}>Invited Friends</Text>
-                <View style={styles.sectionHeaderActions}>
-                  {filteredFriends.length > 0 && (
-                    <View style={styles.countBadge}>
-                      <Text style={styles.countBadgeText}>{filteredFriends.length}</Text>
-                    </View>
-                  )}
-                  {isHost && onAddFriend && (
-                    <TouchableOpacity
-                      style={styles.addFriendButton}
-                      onPress={handleAddFriend}
-                      activeOpacity={0.7}
-                      accessibilityLabel="Add friend to meetup"
-                      accessibilityRole="button"
-                    >
-                      <Ionicons name="person-add" size={16} color={COLORS.primary} />
-                    </TouchableOpacity>
-                  )}
-                </View>
-              </View>
+            {collectionsToShow.length > 0 ? (
+              <FlatList
+                horizontal
+                data={collectionsToShow}
+                keyExtractor={(item) => item?.id || `collection-${Math.random()}`}
+                renderItem={renderCollectionItem}
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.horizontalList}
+              />
+            ) : (
+              <Text style={styles.emptyText}>No collections yet</Text>
+            )}
 
-              {friendsToShow.length > 0 ? (
-                <View style={styles.friendsGrid}>{friendsToShow.map(renderFriendCard)}</View>
-              ) : (
-                <View style={styles.emptyStateContainer}>
-                  <Text style={styles.emptyText}>No friends invited yet.</Text>
-                  {isHost && onAddFriend && (
-                    <TouchableOpacity
-                      style={styles.emptyStateButton}
-                      onPress={handleAddFriend}
-                      activeOpacity={0.7}
-                      accessibilityRole="button"
-                    >
-                      <Ionicons name="person-add" size={16} color={COLORS.primary} />
-                      <Text style={styles.emptyStateButtonText}>Invite Friends</Text>
-                    </TouchableOpacity>
-                  )}
+            {collections.length > COLLECTION_PREVIEW_COUNT && (
+              <TouchableOpacity
+                style={styles.toggleButton}
+                onPress={handleToggleCollections}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.toggleButtonText}>
+                  {showAllCollections ? 'Show less' : `Show all ${collections.length}`}
+                </Text>
+              </TouchableOpacity>
+            )}
+          </View>
+
+          {/* Friends */}
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <Text style={styles.sectionTitle}>Friends</Text>
+              <View style={styles.sectionActions}>
+                {filteredFriends.length > 0 && (
+                  <View style={styles.countBadge}>
+                    <Text style={styles.countBadgeText}>{filteredFriends.length}</Text>
+                  </View>
+                )}
+                {isHost && onAddFriend && (
+                  <TouchableOpacity
+                    style={styles.addButton}
+                    onPress={handleAddFriend}
+                    activeOpacity={0.7}
+                  >
+                    <Ionicons name="add" size={16} color={COLORS.primary} />
+                  </TouchableOpacity>
+                )}
+              </View>
+            </View>
+
+            {friendsToShow.length > 0 ? (
+              <View style={styles.friendsGrid}>
+                {friendsToShow.map(renderFriendCard)}
+              </View>
+            ) : (
+              <Text style={styles.emptyText}>No friends invited yet</Text>
+            )}
+
+            {filteredFriends.length > FRIEND_PREVIEW_COUNT && (
+              <TouchableOpacity
+                style={styles.toggleButton}
+                onPress={handleToggleFriends}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.toggleButtonText}>
+                  {showAllFriends ? 'Show less' : `Show all ${filteredFriends.length}`}
+                </Text>
+              </TouchableOpacity>
+            )}
+          </View>
+
+          {/* Details grid */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Details</Text>
+            <View style={styles.detailsGrid}>
+              <View style={styles.detailItem}>
+                <Text style={styles.detailLabel}>Host</Text>
+                <Text style={styles.detailValue} numberOfLines={1}>{hostDisplay}</Text>
+              </View>
+              {meetup.category && (
+                <View style={styles.detailItem}>
+                  <Text style={styles.detailLabel}>Category</Text>
+                  <Text style={styles.detailValue}>{meetup.category}</Text>
                 </View>
               )}
-
-              {filteredFriends.length > FRIEND_PREVIEW_COUNT && (
-                <TouchableOpacity
-                  style={styles.toggleButton}
-                  onPress={handleToggleFriends}
-                  activeOpacity={0.7}
-                  accessibilityRole="button"
-                >
-                  <Text style={styles.toggleButtonText}>
-                    {showAllFriends ? 'Show fewer' : `Show all ${filteredFriends.length} friends`}
-                  </Text>
-                </TouchableOpacity>
+              {meetup.mood && (
+                <View style={styles.detailItem}>
+                  <Text style={styles.detailLabel}>Mood</Text>
+                  <Text style={styles.detailValue}>{meetup.mood}</Text>
+                </View>
+              )}
+              {meetup.groupSize && (
+                <View style={styles.detailItem}>
+                  <Text style={styles.detailLabel}>Group Size</Text>
+                  <Text style={styles.detailValue}>{meetup.groupSize}</Text>
+                </View>
+              )}
+              {meetup.code && (
+                <View style={styles.detailItem}>
+                  <Text style={styles.detailLabel}>Code</Text>
+                  <Text style={styles.detailValue}>{meetup.code}</Text>
+                </View>
               )}
             </View>
           </View>
 
-          {/* Sidebar */}
-          <View style={styles.sidebar}>
-            <Text style={styles.sidebarTitle}>Details</Text>
-
-            <View style={styles.metaContainer}>
-              {renderMetaRow('Host', hostDisplay)}
-              {renderMetaRow('Category', meetup.category)}
-              {renderMetaRow('Mood', meetup.mood)}
-              {renderMetaRow('Price', `${getPriceBadge(meetup.priceRange)} (${meetup.priceRange ?? 0})`)}
-              {renderMetaRow('Group Size', meetup.groupSize?.toString())}
-              {renderMetaRow('Participants', participantCount.toString())}
-              {renderMetaRow('Created', formatDateTime(meetup.createdAt))}
-              {renderMetaRow('Meetup ID', meetup.meetupId || meetup.id)}
-            </View>
-
-            <View style={styles.sidebarActions}>
+          {/* Admin actions */}
+          {(onEdit || onRemove) && (
+            <View style={styles.adminActions}>
               {onEdit && (
                 <TouchableOpacity
-                  style={[styles.iconButton, styles.editButton]}
+                  style={styles.editButton}
                   onPress={onEdit}
                   activeOpacity={0.7}
-                  accessibilityLabel="Edit meetup"
-                  accessibilityRole="button"
                 >
-                  <Ionicons name="pencil" size={18} color={COLORS.primary} />
+                  <Ionicons name="pencil-outline" size={16} color={COLORS.primary} />
+                  <Text style={styles.editButtonText}>Edit</Text>
                 </TouchableOpacity>
               )}
               {onRemove && (
                 <TouchableOpacity
-                  style={[styles.iconButton, styles.removeButton]}
+                  style={styles.deleteButton}
                   onPress={handleRemove}
                   activeOpacity={0.7}
-                  accessibilityLabel="Remove meetup"
-                  accessibilityRole="button"
                 >
-                  <Ionicons name="trash" size={18} color={COLORS.danger} />
+                  <Ionicons name="trash-outline" size={16} color={COLORS.danger} />
+                  <Text style={styles.deleteButtonText}>Remove</Text>
                 </TouchableOpacity>
               )}
             </View>
-          </View>
+          )}
         </View>
       )}
     </View>
@@ -824,198 +847,347 @@ const MeetupCard: React.FC<MeetupCardProps> = ({
 const styles = StyleSheet.create({
   cardContainer: {
     backgroundColor: COLORS.card,
-    borderRadius: 16,
+    borderRadius: 20,
     padding: SPACING.xl,
     marginBottom: SPACING.lg,
     borderWidth: 1,
     borderColor: COLORS.border,
     position: 'relative',
-    shadowOpacity: 0,
-    elevation: 0,
+    shadowColor: COLORS.background,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.1,
+    shadowRadius: 24,
+    elevation: 8,
   },
+
   errorContainer: {
     alignItems: 'center',
     justifyContent: 'center',
     padding: SPACING.xl,
   },
+
   errorText: {
     color: COLORS.danger,
     fontSize: 14,
     fontWeight: '500',
   },
-  statusRail: {
+
+  liveIndicator: {
     position: 'absolute',
-    top: 0,
-    bottom: 0,
-    left: 0,
-    width: 4,
-    backgroundColor: COLORS.primary,
-    borderTopLeftRadius: 16,
-    borderBottomLeftRadius: 16,
+    top: SPACING.lg,
+    right: SPACING.lg,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.success,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 4,
+    borderRadius: 12,
+    gap: 4,
   },
+
+  liveDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: COLORS.background,
+  },
+
+  liveText: {
+    color: COLORS.background,
+    fontSize: 10,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+  },
+
   header: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
     justifyContent: 'space-between',
-    marginBottom: SPACING.md,
+    alignItems: 'flex-start',
+    marginBottom: SPACING.lg,
   },
-  titleContainer: {
+
+  titleSection: {
     flex: 1,
-    marginRight: SPACING.md,
+    marginRight: SPACING.lg,
   },
+
   title: {
     color: COLORS.text,
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: '700',
-    lineHeight: 24,
-    letterSpacing: -0.2,
+    lineHeight: 28,
+    marginBottom: SPACING.sm,
   },
-  headerActions: {
-    alignItems: 'flex-end',
+
+  badgeRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
     gap: SPACING.sm,
   },
-  expandButton: {
+
+  badge: {
+    flexDirection: 'row',
+    alignItems: 'center',
     backgroundColor: COLORS.surface,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 4,
     borderRadius: 8,
-    padding: SPACING.sm,
+    gap: 4,
     borderWidth: 1,
     borderColor: COLORS.border,
   },
-  actionButtonsContainer: {
+
+  badgeText: {
+    color: COLORS.textSecondary,
+    fontSize: 12,
+    fontWeight: '500',
+  },
+
+  headerActions: {
+    alignItems: 'flex-end',
+  },
+
+  hostActions: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.sm,
   },
-  // Primary/ghost CTA styles
-  ctaPrimary: {
+
+  guestActions: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: SPACING.sm,
-    paddingHorizontal: SPACING.lg,
-    borderRadius: 20,
-    gap: SPACING.xs,
-    backgroundColor: COLORS.primary,
+    gap: SPACING.sm,
   },
-  ctaPrimaryText: {
+
+  primaryButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.primary,
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.sm,
+    borderRadius: 16,
+    gap: 6,
+  },
+
+  primaryButtonStop: {
+    backgroundColor: COLORS.danger,
+  },
+
+  primaryButtonText: {
     color: COLORS.background,
     fontSize: 14,
     fontWeight: '700',
   },
-  ctaGhost: {
+
+  joinButton: {
     flexDirection: 'row',
     alignItems: 'center',
+    backgroundColor: COLORS.success,
+    paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.sm,
-    paddingHorizontal: SPACING.md,
-    borderRadius: 20,
-    gap: SPACING.xs,
-    backgroundColor: 'transparent',
-    borderWidth: 1,
-    borderColor: COLORS.border,
+    borderRadius: 16,
+    gap: 6,
   },
-  ctaGhostText: {
-    color: COLORS.textSecondary,
+
+  joinButtonText: {
+    color: COLORS.background,
+    fontSize: 14,
+    fontWeight: '700',
+  },
+
+  turboButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 184, 0, 0.1)',
+    borderWidth: 1,
+    borderColor: COLORS.accent,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    borderRadius: 16,
+    gap: 4,
+  },
+
+  turboButtonText: {
+    color: COLORS.accent,
     fontSize: 12,
     fontWeight: '700',
   },
 
-  // Compact meta
-  metaCompact: {
+  expandButton: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 12,
+    padding: SPACING.sm,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+
+  statsRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    flexWrap: 'nowrap',
-    gap: SPACING.sm,
-    marginTop: SPACING.sm,
-    marginBottom: SPACING.md,
+    gap: SPACING.lg,
+    marginBottom: SPACING.lg,
+    paddingVertical: SPACING.sm,
   },
-  metaItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  metaDivider: { width: 1, height: 12, backgroundColor: COLORS.border, opacity: 0.7 },
-  metaCompactText: { color: COLORS.textTertiary, fontSize: 13, fontWeight: '500' },
+
+  stat: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+
+  statText: {
+    color: COLORS.textTertiary,
+    fontSize: 13,
+    fontWeight: '500',
+  },
+
+  priceText: {
+    color: COLORS.accent,
+    fontSize: 13,
+    fontWeight: '700',
+  },
 
   previewDescription: {
     color: COLORS.textSecondary,
-    fontSize: 14,
-    lineHeight: 20,
+    fontSize: 15,
+    lineHeight: 22,
     marginBottom: SPACING.sm,
   },
+
   expandedContent: {
-    flexDirection: 'row',
     gap: SPACING.xl,
   },
-  expandedContentStacked: {
-    flexDirection: 'column',
-  },
-  mainContent: {
-    flex: 1,
-  },
-  description: {
-    color: COLORS.textSecondary,
-    fontSize: 14,
-    lineHeight: 20,
-    marginBottom: SPACING.lg,
-  },
+
   section: {
-    marginBottom: SPACING.lg,
+    gap: SPACING.md,
   },
+
   sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: SPACING.sm,
   },
-  sectionHeaderActions: {
+
+  sectionActions: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.sm,
   },
+
   sectionTitle: {
     color: COLORS.text,
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: '600',
   },
+
   countBadge: {
     backgroundColor: COLORS.surface,
-    borderRadius: 12,
+    borderRadius: 10,
     paddingHorizontal: SPACING.sm,
     paddingVertical: 2,
     borderWidth: 1,
     borderColor: COLORS.border,
   },
+
   countBadgeText: {
-    color: COLORS.text,
+    color: COLORS.textSecondary,
     fontSize: 12,
     fontWeight: '600',
   },
+
+  addButton: {
+    backgroundColor: 'rgba(0, 217, 255, 0.1)',
+    borderWidth: 1,
+    borderColor: COLORS.primary,
+    borderRadius: 10,
+    padding: SPACING.sm,
+  },
+
+  description: {
+    color: COLORS.textSecondary,
+    fontSize: 15,
+    lineHeight: 22,
+  },
+
   horizontalList: {
-    gap: SPACING.sm,
+    gap: SPACING.md,
     paddingVertical: SPACING.xs,
   },
+
   collectionWrap: {
     position: 'relative',
   },
-  removeCollectionButton: {
+
+  removeButton: {
     position: 'absolute',
-    top: 4,
-    right: 4,
-    backgroundColor: COLORS.background,
-    borderRadius: 10,
-    width: 20,
-    height: 20,
+    top: 6,
+    right: 6,
+    backgroundColor: COLORS.card,
+    borderRadius: 12,
+    width: 24,
+    height: 24,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
     borderColor: COLORS.danger,
     zIndex: 1,
   },
+
+  collectionCard: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 16,
+    padding: SPACING.md,
+    width: 140,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+
+  collectionPreview: {
+    height: 80,
+    borderRadius: 12,
+    marginBottom: SPACING.sm,
+    overflow: 'hidden',
+    backgroundColor: COLORS.card,
+  },
+
+  collectionPreviewImage: {
+    width: '100%',
+    height: '100%',
+  },
+
+  collectionPreviewPlaceholder: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+
+  collectionInfo: {
+    gap: 4,
+  },
+
+  collectionTitle: {
+    color: COLORS.text,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+
+  collectionCount: {
+    color: COLORS.textTertiary,
+    fontSize: 12,
+    fontWeight: '500',
+  },
+
   friendsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: SPACING.sm,
+    gap: SPACING.md,
   },
+
   friendCard: {
-    width: 80,
+    width: 90,
     height: 100,
     backgroundColor: COLORS.surface,
-    borderRadius: 12,
+    borderRadius: 16,
     padding: SPACING.sm,
     alignItems: 'center',
     justifyContent: 'center',
@@ -1023,161 +1195,119 @@ const styles = StyleSheet.create({
     borderColor: COLORS.border,
     position: 'relative',
   },
-  removeFriendButton: {
-    position: 'absolute',
-    top: 2,
-    right: 2,
-    backgroundColor: COLORS.background,
-    borderRadius: 10,
-    width: 20,
-    height: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: COLORS.danger,
-    zIndex: 1,
-  },
-  addFriendButton: {
-    backgroundColor: 'rgba(46, 160, 67, 0.12)',
-    borderRadius: 8,
-    padding: SPACING.sm,
-    borderWidth: 1,
-    borderColor: COLORS.primary,
-  },
+
   friendAvatar: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 40,
+    height: 40,
+    borderRadius: 20,
     marginBottom: SPACING.xs,
   },
+
   friendName: {
     color: COLORS.text,
-    fontSize: 10,
+    fontSize: 11,
     textAlign: 'center',
-    lineHeight: 12,
+    lineHeight: 14,
+    fontWeight: '500',
   },
+
   emptyText: {
     color: COLORS.textTertiary,
     fontSize: 14,
     fontStyle: 'italic',
+    textAlign: 'center',
+    paddingVertical: SPACING.md,
   },
-  emptyStateContainer: {
-    alignItems: 'center',
-    gap: SPACING.md,
-  },
-  emptyStateButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(46, 160, 67, 0.12)',
-    borderRadius: 8,
-    paddingVertical: SPACING.sm,
-    paddingHorizontal: SPACING.md,
-    borderWidth: 1,
-    borderColor: COLORS.primary,
-    gap: SPACING.xs,
-  },
-  emptyStateButtonText: {
-    color: COLORS.primary,
-    fontSize: 14,
-    fontWeight: '600',
-  },
+
   toggleButton: {
-    alignSelf: 'flex-start',
+    alignSelf: 'center',
     backgroundColor: COLORS.surface,
-    borderRadius: 8,
+    borderRadius: 12,
     paddingVertical: SPACING.sm,
     paddingHorizontal: SPACING.md,
     marginTop: SPACING.sm,
     borderWidth: 1,
     borderColor: COLORS.border,
   },
+
   toggleButtonText: {
-    color: COLORS.text,
-    fontSize: 12,
+    color: COLORS.primary,
+    fontSize: 13,
     fontWeight: '600',
   },
-  sidebar: {
-    minWidth: 200,
-    maxWidth: 280,
-    backgroundColor: COLORS.surface,
-    borderRadius: 12,
-    padding: SPACING.md,
-    alignSelf: 'flex-start',
-    borderWidth: 1,
-    borderColor: COLORS.border,
+
+  detailsGrid: {
+    gap: SPACING.sm,
   },
-  sidebarTitle: {
-    color: COLORS.text,
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: SPACING.md,
-  },
-  metaContainer: {
-    marginBottom: SPACING.lg,
-  },
-  metaRow: {
+
+  detailItem: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     paddingVertical: SPACING.sm,
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
+    borderBottomColor: COLORS.divider,
   },
-  metaLabel: {
+
+  detailLabel: {
     color: COLORS.textTertiary,
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '500',
   },
-  metaValue: {
+
+  detailValue: {
     color: COLORS.text,
-    fontSize: 12,
+    fontSize: 13,
     fontWeight: '600',
     textAlign: 'right',
     flex: 1,
-    marginLeft: SPACING.sm,
+    marginLeft: SPACING.md,
   },
-  sidebarActions: {
+
+  adminActions: {
     flexDirection: 'row',
-    justifyContent: 'flex-end',
-    gap: SPACING.sm,
-  },
-  iconButton: {
-    padding: SPACING.sm,
-    borderRadius: 8,
-    borderWidth: 1,
-  },
-  editButton: {
-    backgroundColor: 'rgba(46, 160, 67, 0.12)',
-    borderColor: COLORS.primary,
-  },
-  removeButton: {
-    backgroundColor: 'rgba(248, 81, 73, 0.12)',
-    borderColor: COLORS.danger,
-  },
-  meetupCollectionCard: {
-    backgroundColor: COLORS.surface,
-    borderRadius: 8,
-    padding: SPACING.md,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    width: 140,
-  },
-  cardPreviewSection: {
-    height: 60,
-    borderRadius: 8,
-    marginBottom: SPACING.sm,
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: COLORS.border,
     justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: '#20262d',
+    gap: SPACING.md,
+    paddingTop: SPACING.md,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.divider,
   },
-  cardPreviewImageFull: { width: '100%', height: '100%' },
-  cardDefaultPreview: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  collectionHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 4 },
-  collectionTitle: { color: COLORS.text, marginLeft: 6, fontWeight: '600', fontSize: 13, flex: 1 },
-  activityCountText: { color: COLORS.textTertiary, fontSize: 11, fontWeight: '500' },
+
+  editButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 217, 255, 0.1)',
+    borderWidth: 1,
+    borderColor: COLORS.primary,
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.sm,
+    borderRadius: 12,
+    gap: 6,
+  },
+
+  editButtonText: {
+    color: COLORS.primary,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+
+  deleteButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 69, 58, 0.1)',
+    borderWidth: 1,
+    borderColor: COLORS.danger,
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.sm,
+    borderRadius: 12,
+    gap: 6,
+  },
+
+  deleteButtonText: {
+    color: COLORS.danger,
+    fontSize: 14,
+    fontWeight: '600',
+  },
 });
 
 export default MeetupCard;
