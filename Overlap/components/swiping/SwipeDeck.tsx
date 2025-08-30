@@ -1,9 +1,9 @@
-//components/swiping/SwipingDeck.tsx - Fixed version
+// components/swiping/SwipingDeck.tsx - Fixed version
 import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { Animated, PanResponder } from 'react-native';
 import ActivityCard, { Card } from './ActivityCard';
-import { recordSwipe } from '../../_utils/storage/meetupSwipes';
 import { getAuth } from 'firebase/auth';
+import { recordVoteWithAggregation } from '../../_utils/storage/liveRecommendations';
 
 const PHOTO_SWIPE_THRESHOLD = 50;
 
@@ -17,6 +17,7 @@ type Props = {
   cards: Card[];
   meetupId: string;
   turboMode?: boolean;
+  currentIndex?: number; // New: controlled by session state
   onSwipeLeft?: (card: Card) => void;
   onSwipeRight?: (card: Card) => void;
   onCardTap?: (card: Card) => void;
@@ -25,7 +26,7 @@ type Props = {
 };
 
 const SwipeDeck = forwardRef<SwipeDeckHandle, Props>(function SwipeDeck(
-  { cards, meetupId, turboMode, onSwipeLeft, onSwipeRight, onCardTap, onIndexChange, onAnimatingChange },
+  { cards, meetupId, turboMode, currentIndex: externalIndex, onSwipeLeft, onSwipeRight, onCardTap, onIndexChange, onAnimatingChange },
   ref
 ) {
   const position = useRef(new Animated.ValueXY()).current;
@@ -34,7 +35,10 @@ const SwipeDeck = forwardRef<SwipeDeckHandle, Props>(function SwipeDeck(
   const nextCardOpacity = useRef(new Animated.Value(0.8)).current;
   const photoTransition = useRef(new Animated.Value(1)).current;
 
-  const [index, setIndex] = useState(0);
+  // Use external index if provided (for live recommendations), otherwise internal state
+  const [internalIndex, setInternalIndex] = useState(0);
+  const index = externalIndex !== undefined ? externalIndex : internalIndex;
+  
   const [photoIndex, setPhotoIndex] = useState(0);
   const [isAnimating, setIsAnimating] = useState(false);
 
@@ -48,11 +52,11 @@ const SwipeDeck = forwardRef<SwipeDeckHandle, Props>(function SwipeDeck(
 
   // Reset both index and photoIndex when cards change
   useEffect(() => {
-    setIndex(0);
+    setInternalIndex(0);
     setPhotoIndex(0);
   }, [cards]);
 
-  // Reset photo index when card index changes (NEW)
+  // Reset photo index when card index changes
   useEffect(() => {
     setPhotoIndex(0);
   }, [index]);
@@ -103,22 +107,27 @@ const SwipeDeck = forwardRef<SwipeDeckHandle, Props>(function SwipeDeck(
       try {
         const user = getAuth().currentUser;
         if (user && !turboMode) {
-          await recordSwipe(meetupId, user.uid, card.id, direction, card.name);
+          // Record the vote but DON'T call checkAutoAdvance here
+          // Let the session management in SwipingScreen handle auto-advance
+          await recordVoteWithAggregation(meetupId, user.uid, card.id, direction, card.name);
         }
 
         animateNextCard();
         setTimeout(() => {
           resetAnimations();
-          setIndex((p) => p + 1);
-          // Removed setPhotoIndex(0) from here - it's handled by useEffect now
+          // Only update internal index if not controlled externally
+          if (externalIndex === undefined) {
+            setInternalIndex((p) => p + 1);
+          }
           setIsAnimating(false);
         }, 200);
       } catch (e) {
+        console.error('Error recording swipe:', e);
         resetAnimations();
         setIsAnimating(false);
       }
     },
-    [animateNextCard, cards, index, isAnimating, meetupId, onSwipeLeft, onSwipeRight, resetAnimations, turboMode]
+    [animateNextCard, cards, index, isAnimating, meetupId, onSwipeLeft, onSwipeRight, resetAnimations, turboMode, externalIndex]
   );
 
   const cyclePhoto = useCallback(
@@ -188,7 +197,7 @@ const SwipeDeck = forwardRef<SwipeDeckHandle, Props>(function SwipeDeck(
           card={nextCard}
           isActive={false}
           wrapperStyle={nextStyle}
-          currentPhotoIndex={0} // Always start next card at photo 0
+          currentPhotoIndex={0}
           photoTransition={photoTransition}
           onMoreInfo={() => {}}
         />

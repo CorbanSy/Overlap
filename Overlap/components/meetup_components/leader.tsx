@@ -1,7 +1,7 @@
-//components/leader.tsx
+// components/leader.tsx - Fixed version
 import React, { useEffect, useState } from 'react';
 import { View, Text, FlatList, StyleSheet, ActivityIndicator } from 'react-native';
-import { getMeetupActivityLeaderboard } from '../../_utils/storage/meetupSwipes';
+import { getFinalRecommendations, subscribeToMeetupItems } from '../../_utils/storage/liveRecommendations';
 
 interface LeaderProps {
   meetupId: string;
@@ -22,26 +22,62 @@ const Leader: React.FC<LeaderProps> = ({ meetupId }) => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    async function loadActivityLeaderboard() {
-      console.log('Loading leaderboard for meetupId:', meetupId);
-      try {
-        const board = await getMeetupActivityLeaderboard(meetupId);
-        console.log('Leaderboard data:', board);
-        // Sort by yes percentage (most liked first), then by total votes
-        const sorted = board.sort((a, b) => {
+    console.log('Setting up real-time leaderboard subscription for:', meetupId);
+    
+    // Subscribe to real-time updates
+    const unsubscribe = subscribeToMeetupItems(meetupId, (items) => {
+      console.log('Received real-time items update:', items);
+      
+      const board = Object.values(items)
+        .filter(item => item && item.activityId) // Filter out invalid items
+        .map(item => ({
+          activityId: item.activityId,
+          activityName: item.activityName || 'Unknown Activity',
+          yesCount: item.likes || 0,
+          noCount: item.noes || 0,
+          totalVotes: (item.likes || 0) + (item.noes || 0),
+          yesPercentage: (item.likes || 0) + (item.noes || 0) > 0 
+            ? ((item.likes || 0) / ((item.likes || 0) + (item.noes || 0))) * 100 
+            : 0
+        }))
+        .sort((a, b) => {
+          // Sort by percentage first, then total votes
           if (b.yesPercentage !== a.yesPercentage) {
             return b.yesPercentage - a.yesPercentage;
           }
           return b.totalVotes - a.totalVotes;
         });
-        setData(sorted);
+      
+      setData(board);
+      setLoading(false);
+    });
+
+    // Also try to load initial data in case real-time doesn't have data yet
+    const loadInitialData = async () => {
+      try {
+        const recommendations = await getFinalRecommendations(meetupId);
+        if (recommendations.length > 0) {
+          const board = recommendations.map(item => ({
+            activityId: item.activityId,
+            activityName: item.activityName || 'Unknown Activity',
+            yesCount: item.likes || 0,
+            noCount: item.noes || 0,
+            totalVotes: (item.likes || 0) + (item.noes || 0),
+            yesPercentage: item.percentage || 0
+          }));
+          setData(board);
+        }
       } catch (err) {
-        console.error('Failed to load activity leaderboard:', err);
+        console.warn('Failed to load initial recommendations:', err);
       } finally {
-        setLoading(false);
+        // Set loading to false after a delay if no real-time data comes in
+        setTimeout(() => setLoading(false), 2000);
       }
-    }
-    loadActivityLeaderboard();
+    };
+
+    loadInitialData();
+    
+    return unsubscribe;
   }, [meetupId]);
 
   const getRankDisplay = (index: number) => {
@@ -66,49 +102,49 @@ const Leader: React.FC<LeaderProps> = ({ meetupId }) => {
         Activity Leaderboard
       </Text>
       <FlatList
-      data={data}
-      keyExtractor={(item) => item.activityId}
-      renderItem={({ item, index }) => (
-        <View style={[styles.row, index < 3 && styles.topThree]}>
-          <View style={styles.rankSection}>
-            <Text style={styles.rank}>{getRankDisplay(index)}</Text>
-          </View>
-          
-          <View style={styles.activityInfo}>
-            <Text style={styles.activityName} numberOfLines={2}>
-              {item.activityName}
-            </Text>
-            <View style={styles.statsRow}>
-              <Text style={styles.percentage}>
-                {item.yesPercentage.toFixed(0)}% liked
+        data={data}
+        keyExtractor={(item) => item.activityId}
+        renderItem={({ item, index }) => (
+          <View style={[styles.row, index < 3 && styles.topThree]}>
+            <View style={styles.rankSection}>
+              <Text style={styles.rank}>{getRankDisplay(index)}</Text>
+            </View>
+            
+            <View style={styles.activityInfo}>
+              <Text style={styles.activityName} numberOfLines={2}>
+                {item.activityName}
               </Text>
-              <Text style={styles.totalVotes}>
-                ({item.totalVotes} vote{item.totalVotes !== 1 ? 's' : ''})
-              </Text>
+              <View style={styles.statsRow}>
+                <Text style={styles.percentage}>
+                  {item.yesPercentage.toFixed(0)}% liked
+                </Text>
+                <Text style={styles.totalVotes}>
+                  ({item.totalVotes} vote{item.totalVotes !== 1 ? 's' : ''})
+                </Text>
+              </View>
+            </View>
+            
+            <View style={styles.tallies}>
+              <View style={styles.tallyItem}>
+                <Text style={[styles.tally, styles.yes]}>👍</Text>
+                <Text style={[styles.tallyCount, styles.yes]}>{item.yesCount}</Text>
+              </View>
+              <View style={styles.tallyItem}>
+                <Text style={[styles.tally, styles.no]}>👎</Text>
+                <Text style={[styles.tallyCount, styles.no]}>{item.noCount}</Text>
+              </View>
             </View>
           </View>
-          
-          <View style={styles.tallies}>
-            <View style={styles.tallyItem}>
-              <Text style={[styles.tally, styles.yes]}>👍</Text>
-              <Text style={[styles.tallyCount, styles.yes]}>{item.yesCount}</Text>
-            </View>
-            <View style={styles.tallyItem}>
-              <Text style={[styles.tally, styles.no]}>👎</Text>
-              <Text style={[styles.tallyCount, styles.no]}>{item.noCount}</Text>
-            </View>
+        )}
+        ListEmptyComponent={
+          <View style={styles.emptyContainer}>
+            <Text style={styles.empty}>No activity votes yet.</Text>
+            <Text style={styles.emptySubtext}>Start swiping to see results!</Text>
           </View>
-        </View>
-      )}
-      ListEmptyComponent={
-        <View style={styles.emptyContainer}>
-          <Text style={styles.empty}>No activity votes yet.</Text>
-          <Text style={styles.emptySubtext}>Start swiping to see results!</Text>
-        </View>
-      }
-      showsVerticalScrollIndicator={false}
-      contentContainerStyle={styles.container}
-    />
+        }
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.container}
+      />
     </View>
   );
 };

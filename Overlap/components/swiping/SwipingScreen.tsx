@@ -1,4 +1,4 @@
-//components/swiping/SwipingScreen.tsx
+// components/swiping/SwipingScreen.tsx - Updated with compact notifications
 import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { View, Text, StyleSheet, ActivityIndicator, StatusBar, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -7,8 +7,16 @@ import { useRouter } from 'expo-router';
 import SwipingHeader from './SwipingHeader';
 import SwipeDeck, { SwipeDeckHandle } from './SwipeDeck';
 import ActionRow from './ActionRow';
+import RecommendationNotification from './RecommendationNotification'; // New compact component
 
 import { getMeetupActivitiesFromPlacesWithCategory } from '../../_utils/storage/meetupActivities';
+import { getMeetupParticipantsCount } from '../../_utils/storage/meetupParticipants';
+import { 
+  initializeMeetupMeta, 
+  subscribeToMeetupSession, 
+  subscribeToMeetupItems,
+  finalizeRecommendation 
+} from '../../_utils/storage/liveRecommendations';
 
 const COLORS = {
   background: '#0D1117',
@@ -69,13 +77,20 @@ const useCardData = (meetupId: string, category?: string, forceRefresh?: number)
       const userLng = -117.1611;
       const targetCategory = category || 'Dining';
 
+      // Get participant count for session initialization
+      const participantCount = await getMeetupParticipantsCount(meetupId);
+
       const activities = await getMeetupActivitiesFromPlacesWithCategory(meetupId, userLat, userLng, targetCategory);
+      
       if (!activities || activities.length === 0) {
         setError(`No ${targetCategory.toLowerCase()} activities found for this location and preferences`);
       } else {
-        setCards(activities);
+        // Initialize live recommendation session
+        const cappedActivities = await initializeMeetupMeta(meetupId, participantCount, activities);
+        setCards(cappedActivities);
       }
     } catch (err) {
+      console.error('Error loading cards:', err);
       setError('Failed to load activities. Please try again.');
     } finally {
       setLoading(false);
@@ -97,13 +112,50 @@ const SwipingScreen = forwardRef<SwipingHandle, Props>(function SwipingScreen(
   const { cards, loading, error, loadCards } = useCardData(meetupId, category, forceRefresh);
 
   const deckRef = useRef<SwipeDeckHandle>(null);
-  const [deckIndex, setDeckIndex] = useState(0);
-  const [isAnimating, setIsAnimating] = useState(false);
+  
+  // Live recommendation state
+  const [session, setSession] = useState(null);
+  const [items, setItems] = useState({});
+  const [currentBanner, setCurrentBanner] = useState(null);
+
+  // Subscribe to real-time updates
+  useEffect(() => {
+    if (!meetupId || turboMode) return;
+
+    const unsubscribeSession = subscribeToMeetupSession(meetupId, (sessionData) => {
+      setSession(sessionData);
+      
+      // Set banner from session data
+      if (sessionData?.currentBanner) {
+        setCurrentBanner(sessionData.currentBanner);
+      }
+    });
+
+    const unsubscribeItems = subscribeToMeetupItems(meetupId, (itemsData) => {
+      setItems(itemsData);
+    });
+
+    return () => {
+      unsubscribeSession();
+      unsubscribeItems();
+    };
+  }, [meetupId, turboMode]);
 
   const handleOpenInfo = useCallback((card: Card) => {
     onCardTap?.(card);
     router.push(`/moreInfo?placeId=${card.id}`);
   }, [onCardTap, router]);
+
+  const handleFinalize = useCallback(async () => {
+    if (currentBanner) {
+      await finalizeRecommendation(meetupId, currentBanner.activityId);
+      setCurrentBanner(null);
+    }
+  }, [meetupId, currentBanner]);
+
+  const handleDismissNotification = useCallback(() => {
+    setCurrentBanner(null);
+  }, []);
 
   useImperativeHandle(ref, () => ({
     swipeLeft: () => deckRef.current?.swipeLeft(),
@@ -111,7 +163,7 @@ const SwipingScreen = forwardRef<SwipingHandle, Props>(function SwipingScreen(
     openInfo: () => deckRef.current?.openInfo(),
   }), []);
 
-  // Loading / Error / Completed states
+  // Loading / Error states
   if (loading) {
     return (
       <View style={styles.container}>
@@ -140,15 +192,18 @@ const SwipingScreen = forwardRef<SwipingHandle, Props>(function SwipingScreen(
     );
   }
 
-  if (cards.length === 0 || deckIndex >= cards.length) {
+  // Session completed
+  if (session?.finished || (cards.length === 0 || (session && session.currentIndex >= session.totalActivities))) {
     return (
       <View style={styles.container}>
         <StatusBar barStyle="light-content" backgroundColor={COLORS.background} />
         <View style={styles.centerContainer}>
           <Ionicons name="checkmark-circle-outline" size={64} color={COLORS.success} />
-          <Text style={styles.completedTitle}>All Done!</Text>
+          <Text style={styles.completedTitle}>Session Complete!</Text>
           <Text style={styles.completedText}>
-            You've reviewed all {category?.toLowerCase() || 'selected'} activities. Check the leaderboard to see the results!
+            {session?.finalizedActivity 
+              ? 'Great choice! Your group has decided on a place.' 
+              : 'All done reviewing activities. Check the results!'}
           </Text>
         </View>
       </View>
@@ -159,7 +214,18 @@ const SwipingScreen = forwardRef<SwipingHandle, Props>(function SwipingScreen(
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor={COLORS.background} />
 
-      <SwipingHeader currentIndex={deckIndex} total={cards.length} meetupId={meetupId} />
+      {/* Compact Recommendation Notification */}
+      <RecommendationNotification
+        banner={currentBanner}
+        onFinalize={handleFinalize}
+        onDismiss={handleDismissNotification}
+      />
+
+      <SwipingHeader 
+        currentIndex={session?.currentIndex || 0} 
+        total={session?.totalActivities || cards.length} 
+        meetupId={meetupId} 
+      />
 
       <View style={styles.cardContainer}>
         <SwipeDeck
@@ -167,17 +233,16 @@ const SwipingScreen = forwardRef<SwipingHandle, Props>(function SwipingScreen(
           cards={cards}
           meetupId={meetupId}
           turboMode={turboMode}
+          // Remove currentIndex prop - let deck manage its own progression
           onSwipeLeft={onSwipeLeft}
           onSwipeRight={onSwipeRight}
           onCardTap={handleOpenInfo}
-          onIndexChange={setDeckIndex}
-          onAnimatingChange={setIsAnimating}
         />
       </View>
 
       {showInternalButtons && (
         <ActionRow
-          disabled={isAnimating}
+          disabled={false}
           onPass={() => deckRef.current?.swipeLeft()}
           onInfo={() => deckRef.current?.openInfo()}
           onLike={() => deckRef.current?.swipeRight()}
