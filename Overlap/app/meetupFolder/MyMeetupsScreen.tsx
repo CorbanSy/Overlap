@@ -9,7 +9,7 @@ import {
   StatusBar,
   RefreshControl,
   Alert,
-  SectionList,
+  FlatList,
   TextInput,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -28,7 +28,8 @@ import { getAuth } from 'firebase/auth';
 import { getUserCollections } from '../../_utils/storage/likesCollections';
 import CollectionSelectionModal from '../../components/meetup_components/modals/CollectionSelectionModal';
 
-// Types
+type TabKey = 'active' | 'host' | 'participant';
+
 interface Friend {
   uid: string;
   name?: string;
@@ -36,14 +37,12 @@ interface Friend {
   avatarUrl?: string;
   displayName?: string;
 }
-
 interface Collection {
   id: string;
   name?: string;
   title?: string;
   activities?: any[];
 }
-
 interface Meetup {
   id: string;
   title?: string;
@@ -55,16 +54,15 @@ interface Meetup {
   collections?: Collection[];
   description?: string;
 }
-
 interface PendingInvite {
   id: string;
 }
-
 interface Props {
   onBack: () => void;
+  /** Which tab to open on mount; passed by meetupHome stat cards */
+  initialTab?: TabKey;
 }
 
-// Constants
 const COLORS = {
   background: '#0D1117',
   surface: '#161B22',
@@ -81,20 +79,13 @@ const COLORS = {
   turbo: '#FF6B35',
 } as const;
 
-const SPACING = {
-  xs: 4,
-  sm: 8,
-  md: 12,
-  lg: 16,
-  xl: 20,
-  xxl: 24,
-} as const;
+const SPACING = { xs: 4, sm: 8, md: 12, lg: 16, xl: 20, xxl: 24 } as const;
 
-const MyMeetupsScreen: React.FC<Props> = ({ onBack }) => {
+const MyMeetupsScreen: React.FC<Props> = ({ onBack, initialTab = 'active' }) => {
   const insets = useSafeAreaInsets();
   const router = useRouter();
 
-  // State management
+  // --- State ---
   const [meetups, setMeetups] = useState<Meetup[]>([]);
   const authUid = getAuth()?.currentUser?.uid || null;
   const [pendingInvites, setPendingInvites] = useState<PendingInvite[]>([]);
@@ -105,22 +96,26 @@ const MyMeetupsScreen: React.FC<Props> = ({ onBack }) => {
   const [currentMeetupId, setCurrentMeetupId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // Search state
+  // Search
   const [searchQuery, setSearchQuery] = useState('');
   const [showSearchBar, setShowSearchBar] = useState(false);
 
-  // Friend picker state
+  // NEW: Tab control
+  const [activeTab, setActiveTab] = useState<TabKey>(initialTab);
+  useEffect(() => setActiveTab(initialTab), [initialTab]);
+
+  // Friend picker
   const [friendPickerVisible, setFriendPickerVisible] = useState(false);
   const [currentMeetupForInvite, setCurrentMeetupForInvite] = useState<string | null>(null);
   const [userFriends, setUserFriends] = useState<Friend[]>([]);
 
-  // Collection picker state
+  // Collection picker
   const [collectionPickerVisible, setCollectionPickerVisible] = useState(false);
   const [currentMeetupForCollections, setCurrentMeetupForCollections] = useState<string | null>(null);
   const [availableCollections, setAvailableCollections] = useState<Collection[]>([]);
   const [tempSelectedCollections, setTempSelectedCollections] = useState<Collection[]>([]);
 
-  // Fetch data functions
+  // --- Data fetch ---
   const fetchMeetups = useCallback(async () => {
     try {
       setError(null);
@@ -163,7 +158,6 @@ const MyMeetupsScreen: React.FC<Props> = ({ onBack }) => {
           }
         });
       });
-
       setUserFriends(friends);
     } catch (err) {
       console.error('Error fetching user friends:', err);
@@ -186,6 +180,7 @@ const MyMeetupsScreen: React.FC<Props> = ({ onBack }) => {
     fetchData();
   }, [fetchData]);
 
+  // --- Navigation to a specific meetup session ---
   const handleJoinMeetup = useCallback(
     (meetupId: string) => {
       router.push({ pathname: '/meetupFolder/startMeetUp', params: { meetupId } });
@@ -193,33 +188,44 @@ const MyMeetupsScreen: React.FC<Props> = ({ onBack }) => {
     [router]
   );
 
-  // Filter meetups based on search query
+  // --- Search filtering ---
   const filteredMeetups = useMemo(() => {
     if (!searchQuery.trim()) return meetups;
-    
-    const query = searchQuery.toLowerCase();
-    return meetups.filter(meetup => {
-      const eventName = (meetup.eventName || '').toLowerCase();
-      const description = (meetup.description || '').toLowerCase();
-      return eventName.includes(query) || description.includes(query);
-    });
+    const q = searchQuery.toLowerCase();
+    return meetups.filter((m) =>
+      ((m.eventName || '').toLowerCase().includes(q)) ||
+      ((m.description || '').toLowerCase().includes(q))
+    );
   }, [meetups, searchQuery]);
 
-  // Search handlers
-  const handleSearchPress = useCallback(() => {
-    setShowSearchBar(true);
-  }, []);
+  const isHost = useCallback((m: Meetup) => authUid && m.creatorId === authUid, [authUid]);
 
-  const handleSearchClose = useCallback(() => {
-    setShowSearchBar(false);
-    setSearchQuery('');
-  }, []);
+  // Build groups for tabs
+  const hostMeetups = useMemo(() => filteredMeetups.filter((m) => isHost(m)), [filteredMeetups, isHost]);
+  const participantMeetups = useMemo(() => filteredMeetups.filter((m) => !isHost(m)), [filteredMeetups, isHost]);
+  const activeMeetups = useMemo(() => filteredMeetups.filter((m) => m.ongoing), [filteredMeetups]);
 
-  const handleClearSearch = useCallback(() => {
-    setSearchQuery('');
-  }, []);
+  const counts = {
+    active: activeMeetups.length,
+    host: hostMeetups.length,
+    participant: participantMeetups.length,
+    total: meetups.length,
+  };
 
-  // Event handlers (keeping existing logic...)
+  const dataForTab = useMemo(() => {
+    switch (activeTab) {
+      case 'host': return hostMeetups;
+      case 'participant': return participantMeetups;
+      default: return activeMeetups;
+    }
+  }, [activeTab, hostMeetups, participantMeetups, activeMeetups]);
+
+  // --- Search handlers ---
+  const handleSearchPress = useCallback(() => setShowSearchBar(true), []);
+  const handleSearchClose = useCallback(() => { setShowSearchBar(false); setSearchQuery(''); }, []);
+  const handleClearSearch = useCallback(() => setSearchQuery(''), []);
+
+  // --- Mutations / actions ---
   const handleRemoveMeetup = useCallback(async (meetupId: string) => {
     Alert.alert('Remove Meetup', 'Are you sure you want to remove this meetup? This action cannot be undone.', [
       { text: 'Cancel', style: 'cancel' },
@@ -229,7 +235,7 @@ const MyMeetupsScreen: React.FC<Props> = ({ onBack }) => {
         onPress: async () => {
           try {
             await removeMeetup(meetupId);
-            setMeetups((prev) => prev.filter((meetup) => meetup.id !== meetupId));
+            setMeetups((prev) => prev.filter((m) => m.id !== meetupId));
           } catch (err) {
             console.error('Error removing meetup:', err);
             Alert.alert('Error', 'Failed to remove meetup. Please try again.');
@@ -239,21 +245,17 @@ const MyMeetupsScreen: React.FC<Props> = ({ onBack }) => {
     ]);
   }, []);
 
-  const handleStartMeetup = useCallback(
-    async (meetupId: string) => {
-      try {
-        await updateMeetup({ id: meetupId, ongoing: true });
-        await exportMyLikesToMeetup(meetupId);
-        setMeetups((prev) => prev.map((m) => (m.id === meetupId ? { ...m, ongoing: true } : m)));
-
-        router.push({ pathname: '/meetupFolder/startMeetUp', params: { meetupId } });
-      } catch (err) {
-        console.error('Error starting meetup:', err);
-        Alert.alert('Error', 'Failed to start meetup. Please try again.');
-      }
-    },
-    [router]
-  );
+  const handleStartMeetup = useCallback(async (meetupId: string) => {
+    try {
+      await updateMeetup({ id: meetupId, ongoing: true });
+      await exportMyLikesToMeetup(meetupId);
+      setMeetups((prev) => prev.map((m) => (m.id === meetupId ? { ...m, ongoing: true } : m)));
+      router.push({ pathname: '/meetupFolder/startMeetUp', params: { meetupId } });
+    } catch (err) {
+      console.error('Error starting meetup:', err);
+      Alert.alert('Error', 'Failed to start meetup. Please try again.');
+    }
+  }, [router]);
 
   const handleStopMeetup = useCallback(async (meetupId: string) => {
     Alert.alert('Stop Meetup', 'Are you sure you want to stop this meetup?', [
@@ -274,72 +276,52 @@ const MyMeetupsScreen: React.FC<Props> = ({ onBack }) => {
     ]);
   }, []);
 
-  // Handle Turbo Mode
-  const handleTurboMode = useCallback(
-    async (meetupId: string) => {
-      try {
-        const meetup = meetups.find((m) => m.id === meetupId);
-        const groupSize = meetup?.participants?.length || 1;
+  const handleTurboMode = useCallback(async (meetupId: string) => {
+    try {
+      const meetup = meetups.find((m) => m.id === meetupId);
+      const groupSize = meetup?.participants?.length || 1;
+      await initializeTurboSession(meetupId, groupSize);
+      await exportMyLikesToMeetup(meetupId);
+      setCurrentMeetupId(meetupId);
+      setShowTurbo(true);
+    } catch (err) {
+      console.error('Error starting turbo mode:', err);
+      Alert.alert('Error', 'Failed to start Turbo Mode. Please try again.');
+    }
+  }, [meetups]);
 
-        await initializeTurboSession(meetupId, groupSize);
-        await exportMyLikesToMeetup(meetupId);
-
-        setCurrentMeetupId(meetupId);
-        setShowTurbo(true);
-      } catch (err) {
-        console.error('Error starting turbo mode:', err);
-        Alert.alert('Error', 'Failed to start Turbo Mode. Please try again.');
-      }
-    },
-    [meetups]
-  );
-
-  // Friend management handlers
-  const handleAddFriend = useCallback(async (meetupId: string) => {
+  const handleAddFriend = useCallback((meetupId: string) => {
     setCurrentMeetupForInvite(meetupId);
     setFriendPickerVisible(true);
   }, []);
 
-  const handleRemoveFriend = useCallback(
-    async (meetupId: string, friendUid: string) => {
-      try {
-        const meetup = meetups.find((m) => m.id === meetupId);
-        if (!meetup) throw new Error('Meetup not found');
+  const handleRemoveFriend = useCallback(async (meetupId: string, friendUid: string) => {
+    try {
+      const meetup = meetups.find((m) => m.id === meetupId);
+      if (!meetup) throw new Error('Meetup not found');
+      const updatedFriends = (meetup.friends || []).filter((f: Friend) => f.uid !== friendUid);
+      await updateMeetup({ id: meetupId, friends: updatedFriends });
+      setMeetups((prev) => prev.map((m) => (m.id === meetupId ? { ...m, friends: updatedFriends } : m)));
+    } catch (err) {
+      console.error('Error removing friend:', err);
+      Alert.alert('Error', 'Failed to remove friend. Please try again.');
+    }
+  }, [meetups]);
 
-        const updatedFriends = (meetup.friends || []).filter((friend: Friend) => friend.uid !== friendUid);
-
-        await updateMeetup({ id: meetupId, friends: updatedFriends });
-
-        setMeetups((prev) => prev.map((m) => (m.id === meetupId ? { ...m, friends: updatedFriends } : m)));
-      } catch (error) {
-        console.error('Error removing friend:', error);
-        Alert.alert('Error', 'Failed to remove friend. Please try again.');
-      }
-    },
-    [meetups]
-  );
-
-  // Collection management handlers
-  const handleAddCollection = useCallback(
-    async (meetupId: string) => {
-      try {
-        const all = await getUserCollections();
-        const m = meetups.find((mm) => mm.id === meetupId);
-        setAvailableCollections(all);
-
-        // Use full objects for selection modal (better previews)
-        const preselected: Collection[] = Array.isArray(m?.collections) ? m!.collections! : [];
-        setTempSelectedCollections(preselected);
-
-        setCurrentMeetupForCollections(meetupId);
-        setCollectionPickerVisible(true);
-      } catch (e) {
-        console.error('Error loading collections', e);
-        Alert.alert('Error', 'Unable to load your collections.');
-      }
-    },
-    [meetups]
-  );
+  const handleAddCollection = useCallback(async (meetupId: string) => {
+    try {
+      const all = await getUserCollections();
+      const m = meetups.find((mm) => mm.id === meetupId);
+      setAvailableCollections(all);
+      const preselected: Collection[] = Array.isArray(m?.collections) ? (m!.collections as Collection[]) : [];
+      setTempSelectedCollections(preselected);
+      setCurrentMeetupForCollections(meetupId);
+      setCollectionPickerVisible(true);
+    } catch (err) {
+      console.error('Error loading collections', err);
+      Alert.alert('Error', 'Unable to load your collections.');
+    }
+  }, [meetups]);
 
   const toggleTempCollection = useCallback((col: Collection) => {
     setTempSelectedCollections((prev) => {
@@ -352,7 +334,6 @@ const MyMeetupsScreen: React.FC<Props> = ({ onBack }) => {
   const handleCollectionsConfirm = useCallback(async () => {
     if (!currentMeetupForCollections) return;
     try {
-      // Persist minimal + preview so UI can render without extra fetches
       const minimal = tempSelectedCollections.map((c) => ({
         id: c.id,
         title: c.title || c.name || 'Untitled Collection',
@@ -360,14 +341,11 @@ const MyMeetupsScreen: React.FC<Props> = ({ onBack }) => {
         previewUrl: c.activities?.[0]?.image || c.activities?.[0]?.photoUrls?.[0] || null,
       }));
       await updateMeetup({ id: currentMeetupForCollections, collections: minimal });
-
-      setMeetups(prev =>
-        prev.map(m =>
-          m.id === currentMeetupForCollections ? { ...m, collections: minimal } : m
-        )
+      setMeetups((prev) =>
+        prev.map((m) => (m.id === currentMeetupForCollections ? { ...m, collections: minimal } : m))
       );
-    } catch (e) {
-      console.error('Failed updating collections', e);
+    } catch (err) {
+      console.error('Failed updating collections', err);
       Alert.alert('Error', 'Failed to update collections.');
     } finally {
       setCollectionPickerVisible(false);
@@ -375,60 +353,31 @@ const MyMeetupsScreen: React.FC<Props> = ({ onBack }) => {
     }
   }, [currentMeetupForCollections, tempSelectedCollections]);
 
-  const handleRemoveCollection = useCallback(
-    async (meetupId: string, collectionId: string) => {
-      try {
-        const m = meetups.find((mm) => mm.id === meetupId);
-        const next = (m?.collections || []).filter((c: any) => c.id !== collectionId);
-        await updateMeetup({ id: meetupId, collections: next });
-        setMeetups((prev) => prev.map((mm) => (mm.id === meetupId ? { ...mm, collections: next } : mm)));
-      } catch (e) {
-        console.error('Could not remove collection', e);
-        Alert.alert('Error', 'Could not remove collection.');
-      }
-    },
-    [meetups]
-  );
+  const handleRemoveCollection = useCallback(async (meetupId: string, collectionId: string) => {
+    try {
+      const m = meetups.find((mm) => mm.id === meetupId);
+      const next = (m?.collections || []).filter((c: any) => c.id !== collectionId);
+      await updateMeetup({ id: meetupId, collections: next });
+      setMeetups((prev) => prev.map((mm) => (mm.id === meetupId ? { ...mm, collections: next } : mm)));
+    } catch (err) {
+      console.error('Could not remove collection', err);
+      Alert.alert('Error', 'Could not remove collection.');
+    }
+  }, [meetups]);
 
-  // Handle when invites are sent from FriendPicker
-  const handleInvitesSent = useCallback(
-    (invitedCount: number) => {
-      fetchData();
-      console.log(`Successfully sent ${invitedCount} invitations`);
-    },
-    [fetchData]
-  );
-
-  // Get current friends for a specific meetup
-  const getCurrentMeetupFriends = useCallback(
-    (meetupId: string) => {
-      const meetup = meetups.find((m) => m.id === meetupId);
-      return meetup?.friends || [];
-    },
-    [meetups]
-  );
-
-  const handleRetry = useCallback(() => {
+  const handleInvitesSent = useCallback((invitedCount: number) => {
     fetchData();
+    console.log(`Successfully sent ${invitedCount} invitations`);
   }, [fetchData]);
 
-  // Derived lists + sections (using filtered meetups)
-  const regularMeetups = useMemo(() => filteredMeetups.filter((m) => !m.ongoing), [filteredMeetups]);
-  const ongoingMeetups = useMemo(() => filteredMeetups.filter((m) => m.ongoing), [filteredMeetups]);
-  const totalMeetups = meetups.length;
+  const getCurrentMeetupFriends = useCallback((meetupId: string) => {
+    const m = meetups.find((x) => x.id === meetupId);
+    return m?.friends || [];
+  }, [meetups]);
 
-  const sections = useMemo(() => {
-    const arr: Array<{ title: string; data: Meetup[]; icon: keyof typeof Ionicons.glyphMap; badgeColor: string }> = [];
-    if (ongoingMeetups.length) {
-      arr.push({ title: 'Live Sessions', data: ongoingMeetups, icon: 'radio', badgeColor: COLORS.success });
-    }
-    if (regularMeetups.length) {
-      arr.push({ title: 'Upcoming Meetups', data: regularMeetups, icon: 'calendar', badgeColor: COLORS.primary });
-    }
-    return arr;
-  }, [ongoingMeetups, regularMeetups]);
+  const handleRetry = useCallback(() => fetchData(), [fetchData]);
 
-  // Render TurboModeScreen if needed
+  // --- Alternate screens ---
   if (showTurbo && currentMeetupId) {
     return (
       <TurboModeScreen
@@ -442,7 +391,6 @@ const MyMeetupsScreen: React.FC<Props> = ({ onBack }) => {
     );
   }
 
-  // Render StartMeetupScreen if needed
   if (showStart && currentMeetupId) {
     return (
       <StartMeetupScreen
@@ -456,11 +404,11 @@ const MyMeetupsScreen: React.FC<Props> = ({ onBack }) => {
     );
   }
 
-  // Loading state
+  // --- Loading / Error ---
   if (loading && !refreshing) {
     return (
       <SafeAreaView style={styles.safeArea}>
-        <View style={styles.centerContainer}>
+        <View className="center" style={styles.centerContainer}>
           <ActivityIndicator size="large" color={COLORS.primary} />
           <Text style={styles.loadingText}>Loading your meetups...</Text>
         </View>
@@ -468,7 +416,6 @@ const MyMeetupsScreen: React.FC<Props> = ({ onBack }) => {
     );
   }
 
-  // Error state
   if (error && !loading) {
     return (
       <SafeAreaView style={styles.safeArea}>
@@ -486,18 +433,27 @@ const MyMeetupsScreen: React.FC<Props> = ({ onBack }) => {
     );
   }
 
-  // Render empty state
-  const ListEmpty = () => (
+  // --- Empty state for current tab ---
+  const EmptyForTab = () => (
     <View style={styles.emptyStateContainer}>
       <Ionicons name="calendar-outline" size={64} color={COLORS.textTertiary} />
       <Text style={styles.emptyStateTitle}>
-        {searchQuery ? 'No matching meetups' : 'No Meetups Yet'}
+        {searchQuery
+          ? 'No matching meetups'
+          : activeTab === 'active'
+          ? 'No Active Meetups'
+          : activeTab === 'host'
+          ? 'No Hosted Meetups'
+          : 'No Participant Meetups'}
       </Text>
       <Text style={styles.emptyStateSubtitle}>
-        {searchQuery 
+        {searchQuery
           ? `No meetups match "${searchQuery}"`
-          : 'Create your first meetup to get started connecting with others!'
-        }
+          : activeTab === 'active'
+          ? 'Start or join a session to see it here.'
+          : activeTab === 'host'
+          ? 'Create a meetup to host your friends.'
+          : 'Join a meetup to participate.'}
       </Text>
       {searchQuery && (
         <TouchableOpacity style={styles.clearSearchButton} onPress={handleClearSearch}>
@@ -521,22 +477,31 @@ const MyMeetupsScreen: React.FC<Props> = ({ onBack }) => {
 
             <View style={styles.headerText}>
               <Text style={styles.title}>My Meetups</Text>
-              {totalMeetups > 0 && !showSearchBar && (
+              {!showSearchBar && (
                 <Text style={styles.subtitle}>
-                  {totalMeetups} meetup{totalMeetups !== 1 ? 's' : ''} total
-                  {ongoingMeetups.length > 0 && <Text style={styles.liveIndicator}> • {ongoingMeetups.length} live</Text>}
+                  {counts.total} meetup{counts.total !== 1 ? 's' : ''} total
+                  {counts.active > 0 && <Text style={styles.liveIndicator}> • {counts.active} active</Text>}
                 </Text>
               )}
             </View>
 
             <View style={styles.headerActions}>
               {!showSearchBar && (
-                <TouchableOpacity style={styles.searchButton} onPress={handleSearchPress} activeOpacity={0.7}>
+                <TouchableOpacity style={styles.iconButton} onPress={handleSearchPress} activeOpacity={0.7}>
                   <Ionicons name="search" size={20} color={COLORS.textSecondary} />
                 </TouchableOpacity>
               )}
-              <TouchableOpacity style={styles.refreshButton} onPress={onRefresh} disabled={refreshing} activeOpacity={0.7}>
-                <Ionicons name="refresh" size={20} color={refreshing ? COLORS.textTertiary : COLORS.textSecondary} />
+              <TouchableOpacity
+                style={styles.iconButton}
+                onPress={onRefresh}
+                disabled={refreshing}
+                activeOpacity={0.7}
+              >
+                <Ionicons
+                  name="refresh"
+                  size={20}
+                  color={refreshing ? COLORS.textTertiary : COLORS.textSecondary}
+                />
               </TouchableOpacity>
             </View>
           </View>
@@ -567,56 +532,65 @@ const MyMeetupsScreen: React.FC<Props> = ({ onBack }) => {
           </View>
         )}
 
+        {/* NEW: Segmented Tabs */}
+        <View style={styles.tabsContainer}>
+          {(['active', 'host', 'participant'] as TabKey[]).map((key) => {
+            const label = key === 'active' ? 'Active' : key === 'host' ? 'Host' : 'Participant';
+            const count = key === 'active' ? counts.active : key === 'host' ? counts.host : counts.participant;
+            const selected = activeTab === key;
+            return (
+              <TouchableOpacity
+                key={key}
+                onPress={() => setActiveTab(key)}
+                activeOpacity={0.9}
+                style={[styles.tabPill, selected && styles.tabPillSelected]}
+              >
+                <Text style={[styles.tabText, selected && styles.tabTextSelected]}>{label}</Text>
+                <View style={[styles.tabBadge, selected && styles.tabBadgeSelected]}>
+                  <Text style={[styles.tabBadgeText, selected && styles.tabBadgeTextSelected]}>{count}</Text>
+                </View>
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+
         {/* Search Results Info */}
         {searchQuery.length > 0 && (
           <View style={styles.searchResultsInfo}>
             <Text style={styles.searchResultsText}>
-              {filteredMeetups.length === 0 
+              {dataForTab.length === 0
                 ? `No results for "${searchQuery}"`
-                : `${filteredMeetups.length} result${filteredMeetups.length !== 1 ? 's' : ''} for "${searchQuery}"`
-              }
+                : `${dataForTab.length} result${dataForTab.length !== 1 ? 's' : ''} for "${searchQuery}"`}
             </Text>
           </View>
         )}
 
-        {/* Main Content: SectionList for virtualization + sticky headers */}
-        <SectionList
-          sections={sections}
+        {/* Main List (per tab) */}
+        <FlatList
+          data={dataForTab}
           keyExtractor={(item) => item.id}
-          renderSectionHeader={({ section }) => (
-            <View style={styles.sectionHeader}>
-              <View style={styles.sectionTitleContainer}>
-                <Ionicons name={section.icon} size={20} color={section.badgeColor} />
-                <Text style={styles.sectionTitle}>{section.title}</Text>
-              </View>
-              <View style={[styles.badge, { borderColor: COLORS.border, backgroundColor: COLORS.surface }]}>
-                <Text style={styles.badgeText}>{section.data.length}</Text>
-              </View>
-            </View>
-          )}
           renderItem={({ item: meetup }) => {
-            const isHost = authUid === meetup.creatorId;
+            const amHost = !!authUid && meetup.creatorId === authUid;
             return (
               <MeetupCard
                 meetup={meetup}
                 onRemove={() => handleRemoveMeetup(meetup.id)}
-                onStart={isHost ? handleStartMeetup : undefined}
-                onStop={isHost ? handleStopMeetup : undefined}
-                onTurboMode={isHost ? handleTurboMode : undefined}
-                isHost={isHost}
-                onJoin={!isHost ? handleJoinMeetup : undefined}
-                onAddFriend={isHost ? handleAddFriend : undefined}
-                onRemoveFriend={isHost ? handleRemoveFriend : undefined}
-                onAddCollection={isHost ? handleAddCollection : undefined}
-                onRemoveCollection={isHost ? handleRemoveCollection : undefined}
+                onStart={amHost ? handleStartMeetup : undefined}
+                onStop={amHost ? handleStopMeetup : undefined}
+                onTurboMode={amHost ? handleTurboMode : undefined}
+                isHost={amHost}
+                onJoin={!amHost ? handleJoinMeetup : undefined}
+                onAddFriend={amHost ? handleAddFriend : undefined}
+                onRemoveFriend={amHost ? handleRemoveFriend : undefined}
+                onAddCollection={amHost ? handleAddCollection : undefined}
+                onRemoveCollection={amHost ? handleRemoveCollection : undefined}
                 currentUserId={authUid || undefined}
                 currentUserEmail={getAuth()?.currentUser?.email || undefined}
               />
             );
           }}
-          stickySectionHeadersEnabled
-          contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 100 }]}
-          ListEmptyComponent={ListEmpty}
+          contentContainerStyle={{ paddingHorizontal: SPACING.lg, paddingBottom: insets.bottom + 100, paddingTop: SPACING.lg }}
+          ListEmptyComponent={EmptyForTab}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
@@ -628,7 +602,7 @@ const MyMeetupsScreen: React.FC<Props> = ({ onBack }) => {
           showsVerticalScrollIndicator={false}
         />
 
-        {/* Friend Picker Modal */}
+        {/* Friend Picker */}
         <FriendPicker
           visible={friendPickerVisible}
           onClose={() => {
@@ -641,7 +615,7 @@ const MyMeetupsScreen: React.FC<Props> = ({ onBack }) => {
           availableFriends={userFriends}
         />
 
-        {/* Collection Selection Modal */}
+        {/* Collection Picker */}
         <CollectionSelectionModal
           visible={collectionPickerVisible}
           collectionsList={availableCollections}
@@ -659,20 +633,10 @@ const MyMeetupsScreen: React.FC<Props> = ({ onBack }) => {
 };
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: COLORS.background,
-  },
-  container: {
-    flex: 1,
-  },
-  centerContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: SPACING.xl,
-    gap: SPACING.lg,
-  },
+  safeArea: { flex: 1, backgroundColor: COLORS.background },
+  container: { flex: 1 },
+  centerContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: SPACING.xl, gap: SPACING.lg },
+
   header: {
     backgroundColor: COLORS.background,
     paddingHorizontal: SPACING.lg,
@@ -681,102 +645,79 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: COLORS.border,
   },
-  headerContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
+  headerContent: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   backIconButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: COLORS.surface,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: COLORS.border,
+    width: 40, height: 40, borderRadius: 20, backgroundColor: COLORS.surface,
+    justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: COLORS.border,
   },
-  headerText: {
-    flex: 1,
-    alignItems: 'center',
-    paddingHorizontal: SPACING.lg,
+  headerText: { flex: 1, alignItems: 'center', paddingHorizontal: SPACING.lg },
+  title: { fontSize: 24, fontWeight: '700', color: COLORS.text, marginBottom: 2, letterSpacing: -0.3 },
+  subtitle: { fontSize: 14, color: COLORS.textSecondary, textAlign: 'center' },
+  liveIndicator: { color: COLORS.success, fontWeight: '600' },
+
+  headerActions: { flexDirection: 'row', gap: SPACING.sm },
+  iconButton: {
+    width: 40, height: 40, borderRadius: 20, backgroundColor: COLORS.surface,
+    justifyContent: 'center', alignItems: 'center', borderWidth: 1, borderColor: COLORS.border,
   },
-  title: {
-    fontSize: 24,
-    fontWeight: '700',
-    color: COLORS.text,
-    marginBottom: 2,
-    letterSpacing: -0.3,
-  },
-  subtitle: {
-    fontSize: 14,
-    color: COLORS.textSecondary,
-    textAlign: 'center',
-  },
-  liveIndicator: {
-    color: COLORS.success,
-    fontWeight: '600',
-  },
-  headerActions: {
-    flexDirection: 'row',
-    gap: SPACING.sm,
-  },
-  searchButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: COLORS.surface,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  refreshButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: COLORS.surface,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
+
   searchContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.md,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
-    gap: SPACING.sm,
+    flexDirection: 'row', alignItems: 'center',
+    paddingHorizontal: SPACING.lg, paddingVertical: SPACING.md,
+    borderBottomWidth: 1, borderBottomColor: COLORS.border, gap: SPACING.sm,
   },
   searchInputContainer: {
-    flex: 1,
+    flex: 1, flexDirection: 'row', alignItems: 'center',
+    backgroundColor: COLORS.surface, borderRadius: 12,
+    paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm,
+    borderWidth: 1, borderColor: COLORS.border, gap: SPACING.sm,
+  },
+  searchInput: { flex: 1, color: COLORS.text, fontSize: 16, fontWeight: '400' },
+  cancelButton: { paddingVertical: SPACING.sm, paddingHorizontal: SPACING.md },
+  cancelButtonText: { color: COLORS.primary, fontSize: 16, fontWeight: '500' },
+
+  // NEW: Tabs
+  tabsContainer: {
+    flexDirection: 'row',
+    gap: SPACING.sm,
+    paddingHorizontal: SPACING.lg,
+    paddingTop: SPACING.md,
+    paddingBottom: SPACING.sm,
+    backgroundColor: COLORS.background,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  tabPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: COLORS.surface,
-    borderRadius: 12,
+    gap: SPACING.xs,
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.sm,
+    borderRadius: 999,
+    backgroundColor: COLORS.surface,
     borderWidth: 1,
     borderColor: COLORS.border,
-    gap: SPACING.sm,
   },
-  searchInput: {
-    flex: 1,
-    color: COLORS.text,
-    fontSize: 16,
-    fontWeight: '400',
+  tabPillSelected: {
+    backgroundColor: COLORS.primary,
+    borderColor: 'transparent',
   },
-  cancelButton: {
-    paddingVertical: SPACING.sm,
-    paddingHorizontal: SPACING.md,
+  tabText: { color: COLORS.textSecondary, fontWeight: '600' },
+  tabTextSelected: { color: COLORS.background },
+  tabBadge: {
+    minWidth: 22,
+    height: 22,
+    borderRadius: 11,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.surfaceElevated,
   },
-  cancelButtonText: {
-    color: COLORS.primary,
-    fontSize: 16,
-    fontWeight: '500',
+  tabBadgeSelected: {
+    backgroundColor: 'rgba(0,0,0,0.2)',
   },
+  tabBadgeText: { color: COLORS.textTertiary, fontSize: 12, fontWeight: '700' },
+  tabBadgeTextSelected: { color: COLORS.background },
+
   searchResultsInfo: {
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.sm,
@@ -784,116 +725,29 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: COLORS.border,
   },
-  searchResultsText: {
-    fontSize: 14,
-    color: COLORS.textSecondary,
-    fontStyle: 'italic',
-  },
-  scrollContent: {
-    paddingHorizontal: SPACING.lg,
-    paddingTop: SPACING.lg,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: SPACING.lg,
-    paddingHorizontal: SPACING.xs,
-  },
-  sectionTitleContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.sm,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: COLORS.text,
-  },
-  badge: {
-    borderRadius: 12,
-    paddingHorizontal: SPACING.sm,
-    paddingVertical: SPACING.xs,
-    minWidth: 28,
-    alignItems: 'center',
-    borderWidth: 1,
-  },
-  badgeText: {
-    fontSize: 12,
-    fontWeight: '700',
-    color: COLORS.text,
-  },
+  searchResultsText: { fontSize: 14, color: COLORS.textSecondary, fontStyle: 'italic' },
+
   emptyStateContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingVertical: SPACING.xxl * 2,
-    paddingHorizontal: SPACING.xl,
-    gap: SPACING.lg,
+    flex: 1, justifyContent: 'center', alignItems: 'center',
+    paddingVertical: SPACING.xxl * 2, paddingHorizontal: SPACING.xl, gap: SPACING.lg,
   },
-  emptyStateTitle: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: COLORS.textSecondary,
-    textAlign: 'center',
-  },
-  emptyStateSubtitle: {
-    fontSize: 14,
-    color: COLORS.textTertiary,
-    textAlign: 'center',
-    lineHeight: 20,
-  },
+  emptyStateTitle: { fontSize: 20, fontWeight: '600', color: COLORS.textSecondary, textAlign: 'center' },
+  emptyStateSubtitle: { fontSize: 14, color: COLORS.textTertiary, textAlign: 'center', lineHeight: 20 },
   clearSearchButton: {
-    backgroundColor: COLORS.surface,
-    borderRadius: 8,
-    paddingVertical: SPACING.sm,
-    paddingHorizontal: SPACING.md,
-    borderWidth: 1,
-    borderColor: COLORS.border,
+    backgroundColor: COLORS.surface, borderRadius: 8, paddingVertical: SPACING.sm, paddingHorizontal: SPACING.md,
+    borderWidth: 1, borderColor: COLORS.border,
   },
-  clearSearchText: {
-    color: COLORS.primary,
-    fontSize: 14,
-    fontWeight: '500',
-  },
+  clearSearchText: { color: COLORS.primary, fontSize: 14, fontWeight: '500' },
+
   backButton: {
-    backgroundColor: COLORS.surface,
-    borderRadius: 12,
-    paddingVertical: SPACING.md,
-    paddingHorizontal: SPACING.xl,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    minWidth: 160,
-    alignItems: 'center',
+    backgroundColor: COLORS.surface, borderRadius: 12, paddingVertical: SPACING.md, paddingHorizontal: SPACING.xl,
+    borderWidth: 1, borderColor: COLORS.border, minWidth: 160, alignItems: 'center',
   },
-  backButtonText: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: COLORS.text,
-  },
-  retryButton: {
-    backgroundColor: COLORS.primary,
-    borderRadius: 12,
-    paddingVertical: SPACING.md,
-    paddingHorizontal: SPACING.xl,
-    minWidth: 160,
-    alignItems: 'center',
-  },
-  retryButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: COLORS.text,
-  },
-  loadingText: {
-    fontSize: 16,
-    color: COLORS.textSecondary,
-  },
-  errorText: {
-    fontSize: 16,
-    color: COLORS.accent,
-    textAlign: 'center',
-    lineHeight: 22,
-  },
+  backButtonText: { fontSize: 16, fontWeight: '500', color: COLORS.text },
+  retryButton: { backgroundColor: COLORS.primary, borderRadius: 12, paddingVertical: SPACING.md, paddingHorizontal: SPACING.xl, minWidth: 160, alignItems: 'center' },
+  retryButtonText: { fontSize: 16, fontWeight: '600', color: COLORS.text },
+  loadingText: { fontSize: 16, color: COLORS.textSecondary },
+  errorText: { fontSize: 16, color: COLORS.accent, textAlign: 'center', lineHeight: 22 },
 });
 
-export default MyMeetupsScreen;//app/(tabs)/meetupHome.tsx
+export default MyMeetupsScreen;
