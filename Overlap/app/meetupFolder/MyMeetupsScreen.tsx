@@ -10,6 +10,7 @@ import {
   RefreshControl,
   Alert,
   SectionList,
+  TextInput,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -66,15 +67,15 @@ interface Props {
 // Constants
 const COLORS = {
   background: '#0D1117',
-  surface: '#1B1F24',
-  surfaceHover: '#21262D',
+  surface: '#161B22',
+  surfaceElevated: '#21262D',
   primary: '#238636',
   primaryHover: '#2EA043',
   text: '#FFFFFF',
   textSecondary: '#8B949E',
   textTertiary: '#6E7681',
   accent: '#F85149',
-  border: '#30363D',
+  border: 'rgba(240,246,252,0.1)',
   success: '#2EA043',
   warning: '#FB8500',
   turbo: '#FF6B35',
@@ -103,6 +104,10 @@ const MyMeetupsScreen: React.FC<Props> = ({ onBack }) => {
   const [showTurbo, setShowTurbo] = useState(false);
   const [currentMeetupId, setCurrentMeetupId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // Search state
+  const [searchQuery, setSearchQuery] = useState('');
+  const [showSearchBar, setShowSearchBar] = useState(false);
 
   // Friend picker state
   const [friendPickerVisible, setFriendPickerVisible] = useState(false);
@@ -188,7 +193,33 @@ const MyMeetupsScreen: React.FC<Props> = ({ onBack }) => {
     [router]
   );
 
-  // Event handlers
+  // Filter meetups based on search query
+  const filteredMeetups = useMemo(() => {
+    if (!searchQuery.trim()) return meetups;
+    
+    const query = searchQuery.toLowerCase();
+    return meetups.filter(meetup => {
+      const eventName = (meetup.eventName || '').toLowerCase();
+      const description = (meetup.description || '').toLowerCase();
+      return eventName.includes(query) || description.includes(query);
+    });
+  }, [meetups, searchQuery]);
+
+  // Search handlers
+  const handleSearchPress = useCallback(() => {
+    setShowSearchBar(true);
+  }, []);
+
+  const handleSearchClose = useCallback(() => {
+    setShowSearchBar(false);
+    setSearchQuery('');
+  }, []);
+
+  const handleClearSearch = useCallback(() => {
+    setSearchQuery('');
+  }, []);
+
+  // Event handlers (keeping existing logic...)
   const handleRemoveMeetup = useCallback(async (meetupId: string) => {
     Alert.alert('Remove Meetup', 'Are you sure you want to remove this meetup? This action cannot be undone.', [
       { text: 'Cancel', style: 'cancel' },
@@ -381,9 +412,9 @@ const MyMeetupsScreen: React.FC<Props> = ({ onBack }) => {
     fetchData();
   }, [fetchData]);
 
-  // Derived lists + sections
-  const regularMeetups = useMemo(() => meetups.filter((m) => !m.ongoing), [meetups]);
-  const ongoingMeetups = useMemo(() => meetups.filter((m) => m.ongoing), [meetups]);
+  // Derived lists + sections (using filtered meetups)
+  const regularMeetups = useMemo(() => filteredMeetups.filter((m) => !m.ongoing), [filteredMeetups]);
+  const ongoingMeetups = useMemo(() => filteredMeetups.filter((m) => m.ongoing), [filteredMeetups]);
   const totalMeetups = meetups.length;
 
   const sections = useMemo(() => {
@@ -459,10 +490,20 @@ const MyMeetupsScreen: React.FC<Props> = ({ onBack }) => {
   const ListEmpty = () => (
     <View style={styles.emptyStateContainer}>
       <Ionicons name="calendar-outline" size={64} color={COLORS.textTertiary} />
-      <Text style={styles.emptyStateTitle}>No Meetups Yet</Text>
-      <Text style={styles.emptyStateSubtitle}>
-        Create your first meetup to get started connecting with others!
+      <Text style={styles.emptyStateTitle}>
+        {searchQuery ? 'No matching meetups' : 'No Meetups Yet'}
       </Text>
+      <Text style={styles.emptyStateSubtitle}>
+        {searchQuery 
+          ? `No meetups match "${searchQuery}"`
+          : 'Create your first meetup to get started connecting with others!'
+        }
+      </Text>
+      {searchQuery && (
+        <TouchableOpacity style={styles.clearSearchButton} onPress={handleClearSearch}>
+          <Text style={styles.clearSearchText}>Clear search</Text>
+        </TouchableOpacity>
+      )}
     </View>
   );
 
@@ -480,7 +521,7 @@ const MyMeetupsScreen: React.FC<Props> = ({ onBack }) => {
 
             <View style={styles.headerText}>
               <Text style={styles.title}>My Meetups</Text>
-              {totalMeetups > 0 && (
+              {totalMeetups > 0 && !showSearchBar && (
                 <Text style={styles.subtitle}>
                   {totalMeetups} meetup{totalMeetups !== 1 ? 's' : ''} total
                   {ongoingMeetups.length > 0 && <Text style={styles.liveIndicator}> • {ongoingMeetups.length} live</Text>}
@@ -488,11 +529,55 @@ const MyMeetupsScreen: React.FC<Props> = ({ onBack }) => {
               )}
             </View>
 
-            <TouchableOpacity style={styles.refreshButton} onPress={onRefresh} disabled={refreshing} activeOpacity={0.7}>
-              <Ionicons name="refresh" size={20} color={refreshing ? COLORS.textTertiary : COLORS.textSecondary} />
-            </TouchableOpacity>
+            <View style={styles.headerActions}>
+              {!showSearchBar && (
+                <TouchableOpacity style={styles.searchButton} onPress={handleSearchPress} activeOpacity={0.7}>
+                  <Ionicons name="search" size={20} color={COLORS.textSecondary} />
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity style={styles.refreshButton} onPress={onRefresh} disabled={refreshing} activeOpacity={0.7}>
+                <Ionicons name="refresh" size={20} color={refreshing ? COLORS.textTertiary : COLORS.textSecondary} />
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
+
+        {/* Search Bar */}
+        {showSearchBar && (
+          <View style={styles.searchContainer}>
+            <View style={styles.searchInputContainer}>
+              <Ionicons name="search" size={16} color={COLORS.textTertiary} />
+              <TextInput
+                style={styles.searchInput}
+                placeholder="Search meetups..."
+                placeholderTextColor={COLORS.textTertiary}
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+                autoFocus
+              />
+              {searchQuery.length > 0 && (
+                <TouchableOpacity onPress={handleClearSearch} activeOpacity={0.7}>
+                  <Ionicons name="close-circle" size={16} color={COLORS.textTertiary} />
+                </TouchableOpacity>
+              )}
+            </View>
+            <TouchableOpacity style={styles.cancelButton} onPress={handleSearchClose} activeOpacity={0.7}>
+              <Text style={styles.cancelButtonText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* Search Results Info */}
+        {searchQuery.length > 0 && (
+          <View style={styles.searchResultsInfo}>
+            <Text style={styles.searchResultsText}>
+              {filteredMeetups.length === 0 
+                ? `No results for "${searchQuery}"`
+                : `${filteredMeetups.length} result${filteredMeetups.length !== 1 ? 's' : ''} for "${searchQuery}"`
+              }
+            </Text>
+          </View>
+        )}
 
         {/* Main Content: SectionList for virtualization + sticky headers */}
         <SectionList
@@ -632,6 +717,20 @@ const styles = StyleSheet.create({
     color: COLORS.success,
     fontWeight: '600',
   },
+  headerActions: {
+    flexDirection: 'row',
+    gap: SPACING.sm,
+  },
+  searchButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: COLORS.surface,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
   refreshButton: {
     width: 40,
     height: 40,
@@ -641,6 +740,54 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     borderWidth: 1,
     borderColor: COLORS.border,
+  },
+  searchContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.md,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+    gap: SPACING.sm,
+  },
+  searchInputContainer: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.surface,
+    borderRadius: 12,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    gap: SPACING.sm,
+  },
+  searchInput: {
+    flex: 1,
+    color: COLORS.text,
+    fontSize: 16,
+    fontWeight: '400',
+  },
+  cancelButton: {
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+  },
+  cancelButtonText: {
+    color: COLORS.primary,
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  searchResultsInfo: {
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.sm,
+    backgroundColor: COLORS.surfaceElevated,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  searchResultsText: {
+    fontSize: 14,
+    color: COLORS.textSecondary,
+    fontStyle: 'italic',
   },
   scrollContent: {
     paddingHorizontal: SPACING.lg,
@@ -696,6 +843,19 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 20,
   },
+  clearSearchButton: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 8,
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  clearSearchText: {
+    color: COLORS.primary,
+    fontSize: 14,
+    fontWeight: '500',
+  },
   backButton: {
     backgroundColor: COLORS.surface,
     borderRadius: 12,
@@ -736,4 +896,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default MyMeetupsScreen;
+export default MyMeetupsScreen;//app/(tabs)/meetupHome.tsx

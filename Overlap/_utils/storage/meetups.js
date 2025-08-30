@@ -312,3 +312,41 @@ function normalizeCollections(cols = []) {
       ?? null,
   }));
 }
+export async function getMeetupStats() {
+  const auth = getAuth();
+  const user = auth.currentUser;
+  if (!user) throw new Error("No user is signed in");
+
+  try {
+    const userMeetupsRef = collection(db, 'users', user.uid, 'meetups');
+    const userMeetupsSnapshot = await getDocs(userMeetupsRef);
+    
+    let activeCount = 0;
+    let participantCount = 0;  // Changed from totalCount
+    let hostedCount = 0;
+    
+    for (const docSnap of userMeetupsSnapshot.docs) {
+      const meetupRef = docSnap.data();
+      
+      if (meetupRef.ongoing) {
+        activeCount++;
+      }
+      
+      if (meetupRef.isCreator) {
+        hostedCount++;
+      } else {
+        // Only count as participant if NOT the creator
+        participantCount++;
+      }
+    }
+    
+    return {
+      active: activeCount,
+      participant: participantCount,  // Changed from total
+      hosted: hostedCount
+    };
+  } catch (error) {
+    console.error('Error fetching meetup stats:', error);
+    return { active: 0, participant: 0, hosted: 0 };  // Changed from total
+  }
+}
