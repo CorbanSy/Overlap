@@ -1,13 +1,14 @@
-// components/swiping/SwipingScreen.tsx - Updated with compact notifications
+// components/swiping/SwipingScreen.tsx - Updated with dual notification system
 import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react';
-import { View, Text, StyleSheet, ActivityIndicator, StatusBar, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, ActivityIndicator, StatusBar, TouchableOpacity, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 
 import SwipingHeader from './SwipingHeader';
 import SwipeDeck, { SwipeDeckHandle } from './SwipeDeck';
 import ActionRow from './ActionRow';
-import RecommendationNotification from './RecommendationNotification'; // New compact component
+import RecommendationNotification from './RecommendationNotification';
+import GreatMatchNotification from './GreatMatchNotification';
 
 import { getMeetupActivitiesFromPlacesWithCategory } from '../../_utils/storage/meetupActivities';
 import { getMeetupParticipantsCount } from '../../_utils/storage/meetupParticipants';
@@ -15,7 +16,10 @@ import {
   initializeMeetupMeta, 
   subscribeToMeetupSession, 
   subscribeToMeetupItems,
-  finalizeRecommendation 
+  finalizeRecommendation,
+  resetMeetupSession,
+  isSessionFinished,
+  restartMeetupSession
 } from '../../_utils/storage/liveRecommendations';
 
 const COLORS = {
@@ -62,6 +66,7 @@ const useCardData = (meetupId: string, category?: string, forceRefresh?: number)
   const [cards, setCards] = useState<Card[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showSessionFinished, setShowSessionFinished] = useState(false);
 
   const loadCards = useCallback(async () => {
     if (!meetupId) {
@@ -72,22 +77,28 @@ const useCardData = (meetupId: string, category?: string, forceRefresh?: number)
     try {
       setError(null);
       setLoading(true);
+      setShowSessionFinished(false);
 
       const userLat = 32.7157;
       const userLng = -117.1611;
       const targetCategory = category || 'Dining';
 
-      // Get participant count for session initialization
-      const participantCount = await getMeetupParticipantsCount(meetupId);
+      const sessionFinished = await isSessionFinished(meetupId);
+      if (sessionFinished) {
+        setShowSessionFinished(true);
+        setLoading(false);
+        return;
+      }
 
+      const participantCount = await getMeetupParticipantsCount(meetupId);
       const activities = await getMeetupActivitiesFromPlacesWithCategory(meetupId, userLat, userLng, targetCategory);
       
       if (!activities || activities.length === 0) {
         setError(`No ${targetCategory.toLowerCase()} activities found for this location and preferences`);
       } else {
-        // Initialize live recommendation session
         const cappedActivities = await initializeMeetupMeta(meetupId, participantCount, activities);
         setCards(cappedActivities);
+        setShowSessionFinished(false);
       }
     } catch (err) {
       console.error('Error loading cards:', err);
@@ -97,11 +108,40 @@ const useCardData = (meetupId: string, category?: string, forceRefresh?: number)
     }
   }, [meetupId, category, forceRefresh]);
 
+  const restartSession = useCallback(async () => {
+    if (!meetupId) return;
+    
+    try {
+      setLoading(true);
+      setError(null);
+      setShowSessionFinished(false);
+
+      const userLat = 32.7157;
+      const userLng = -117.1611;
+      const targetCategory = category || 'Dining';
+
+      const participantCount = await getMeetupParticipantsCount(meetupId);
+      const activities = await getMeetupActivitiesFromPlacesWithCategory(meetupId, userLat, userLng, targetCategory);
+
+      if (!activities || activities.length === 0) {
+        setError(`No ${targetCategory.toLowerCase()} activities found for this location and preferences`);
+      } else {
+        const cappedActivities = await restartMeetupSession(meetupId, activities, participantCount);
+        setCards(cappedActivities);
+      }
+    } catch (err) {
+      console.error('Error restarting session:', err);
+      setError('Failed to restart session. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  }, [meetupId, category]);
+
   useEffect(() => {
     loadCards();
   }, [loadCards]);
 
-  return { cards, loading, error, loadCards };
+  return { cards, loading, error, showSessionFinished, loadCards, restartSession };
 };
 
 const SwipingScreen = forwardRef<SwipingHandle, Props>(function SwipingScreen(
@@ -109,25 +149,38 @@ const SwipingScreen = forwardRef<SwipingHandle, Props>(function SwipingScreen(
   ref
 ) {
   const router = useRouter();
-  const { cards, loading, error, loadCards } = useCardData(meetupId, category, forceRefresh);
+  const { cards, loading, error, showSessionFinished, loadCards, restartSession } = useCardData(meetupId, category, forceRefresh);
 
   const deckRef = useRef<SwipeDeckHandle>(null);
   
   // Live recommendation state
   const [session, setSession] = useState(null);
   const [items, setItems] = useState({});
-  const [currentBanner, setCurrentBanner] = useState(null);
+  const [perfectMatch, setPerfectMatch] = useState(null); // unanimous/near-unanimous
+  const [greatMatch, setGreatMatch] = useState(null);     // strong majority
 
   // Subscribe to real-time updates
   useEffect(() => {
-    if (!meetupId || turboMode) return;
+    if (!meetupId || turboMode || showSessionFinished) return;
 
     const unsubscribeSession = subscribeToMeetupSession(meetupId, (sessionData) => {
       setSession(sessionData);
       
-      // Set banner from session data
+      // Split banner handling based on type
       if (sessionData?.currentBanner) {
-        setCurrentBanner(sessionData.currentBanner);
+        const banner = sessionData.currentBanner;
+        
+        if (banner.type === 'unanimous' || banner.type === 'near-unanimous') {
+          setPerfectMatch(banner);
+          setGreatMatch(null); // Clear great match when we have perfect
+        } else if (banner.type === 'great-match') {
+          setGreatMatch(banner);
+          setPerfectMatch(null); // Clear perfect match when we have great
+        } else {
+          // Regular recommendation types (strong, soft) go to perfect match slot
+          setPerfectMatch(banner);
+          setGreatMatch(null);
+        }
       }
     });
 
@@ -139,22 +192,49 @@ const SwipingScreen = forwardRef<SwipingHandle, Props>(function SwipingScreen(
       unsubscribeSession();
       unsubscribeItems();
     };
-  }, [meetupId, turboMode]);
+  }, [meetupId, turboMode, showSessionFinished]);
 
   const handleOpenInfo = useCallback((card: Card) => {
     onCardTap?.(card);
     router.push(`/moreInfo?placeId=${card.id}`);
   }, [onCardTap, router]);
 
-  const handleFinalize = useCallback(async () => {
-    if (currentBanner) {
-      await finalizeRecommendation(meetupId, currentBanner.activityId);
-      setCurrentBanner(null);
+  const handleFinalizePerfect = useCallback(async () => {
+    if (perfectMatch) {
+      await finalizeRecommendation(meetupId, perfectMatch.activityId);
+      setPerfectMatch(null);
+      setGreatMatch(null);
     }
-  }, [meetupId, currentBanner]);
+  }, [meetupId, perfectMatch]);
 
-  const handleDismissNotification = useCallback(() => {
-    setCurrentBanner(null);
+  const handleGreatMatchDecision = useCallback(() => {
+    if (!greatMatch) return;
+    
+    Alert.alert(
+      'Great Match Found!',
+      `"${greatMatch.activityName}" has ${greatMatch.likes}/${greatMatch.participantCount} approval (${Math.round((greatMatch.likes / greatMatch.participantCount) * 100)}%). As the host, would you like to finalize this choice?`,
+      [
+        {
+          text: 'Keep Swiping',
+          style: 'cancel',
+          onPress: () => setGreatMatch(null)
+        },
+        {
+          text: 'Choose This Place',
+          style: 'default',
+          onPress: async () => {
+            await finalizeRecommendation(meetupId, greatMatch.activityId);
+            setGreatMatch(null);
+            setPerfectMatch(null);
+          }
+        }
+      ]
+    );
+  }, [meetupId, greatMatch]);
+
+  const handleDismissNotifications = useCallback(() => {
+    setPerfectMatch(null);
+    setGreatMatch(null);
   }, []);
 
   useImperativeHandle(ref, () => ({
@@ -163,7 +243,7 @@ const SwipingScreen = forwardRef<SwipingHandle, Props>(function SwipingScreen(
     openInfo: () => deckRef.current?.openInfo(),
   }), []);
 
-  // Loading / Error states
+  // Loading state
   if (loading) {
     return (
       <View style={styles.container}>
@@ -176,6 +256,7 @@ const SwipingScreen = forwardRef<SwipingHandle, Props>(function SwipingScreen(
     );
   }
 
+  // Error state
   if (error) {
     return (
       <View style={styles.container}>
@@ -192,8 +273,8 @@ const SwipingScreen = forwardRef<SwipingHandle, Props>(function SwipingScreen(
     );
   }
 
-  // Session completed
-  if (session?.finished || (cards.length === 0 || (session && session.currentIndex >= session.totalActivities))) {
+  // Session finished state
+  if (showSessionFinished || session?.finished || session?.finalizedActivity) {
     return (
       <View style={styles.container}>
         <StatusBar barStyle="light-content" backgroundColor={COLORS.background} />
@@ -202,9 +283,37 @@ const SwipingScreen = forwardRef<SwipingHandle, Props>(function SwipingScreen(
           <Text style={styles.completedTitle}>Session Complete!</Text>
           <Text style={styles.completedText}>
             {session?.finalizedActivity 
-              ? 'Great choice! Your group has decided on a place.' 
-              : 'All done reviewing activities. Check the results!'}
+              ? 'Your group has decided on a place!' 
+              : 'You\'ve finished reviewing activities.'}
           </Text>
+          
+          <TouchableOpacity style={styles.restartButton} onPress={restartSession}>
+            <Ionicons name="refresh" size={20} color={COLORS.background} />
+            <Text style={styles.restartButtonText}>Start New Session</Text>
+          </TouchableOpacity>
+          
+          <Text style={styles.restartHint}>
+            Try different filters or categories for fresh recommendations
+          </Text>
+        </View>
+      </View>
+    );
+  }
+
+  // No cards state
+  if (cards.length === 0) {
+    return (
+      <View style={styles.container}>
+        <StatusBar barStyle="light-content" backgroundColor={COLORS.background} />
+        <View style={styles.centerContainer}>
+          <Ionicons name="restaurant-outline" size={64} color={COLORS.textSecondary} />
+          <Text style={styles.completedTitle}>No Activities Found</Text>
+          <Text style={styles.completedText}>
+            No {category?.toLowerCase() || 'activities'} found matching your criteria.
+          </Text>
+          <TouchableOpacity style={styles.retryButton} onPress={loadCards}>
+            <Text style={styles.retryButtonText}>Try Again</Text>
+          </TouchableOpacity>
         </View>
       </View>
     );
@@ -214,11 +323,18 @@ const SwipingScreen = forwardRef<SwipingHandle, Props>(function SwipingScreen(
     <View style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor={COLORS.background} />
 
-      {/* Compact Recommendation Notification */}
+      {/* Perfect Match Notification - Top Right */}
       <RecommendationNotification
-        banner={currentBanner}
-        onFinalize={handleFinalize}
-        onDismiss={handleDismissNotification}
+        banner={perfectMatch}
+        onFinalize={handleFinalizePerfect}
+        onDismiss={handleDismissNotifications}
+      />
+
+      {/* Great Match Notification - Top Left */}
+      <GreatMatchNotification
+        greatMatch={greatMatch}
+        onHostDecision={handleGreatMatchDecision}
+        onDismiss={handleDismissNotifications}
       />
 
       <SwipingHeader 
@@ -233,7 +349,6 @@ const SwipingScreen = forwardRef<SwipingHandle, Props>(function SwipingScreen(
           cards={cards}
           meetupId={meetupId}
           turboMode={turboMode}
-          // Remove currentIndex prop - let deck manage its own progression
           onSwipeLeft={onSwipeLeft}
           onSwipeRight={onSwipeRight}
           onCardTap={handleOpenInfo}
@@ -276,6 +391,29 @@ const styles = StyleSheet.create({
   retryButtonText: { color: COLORS.background, fontSize: 16, fontWeight: '700' },
   completedTitle: { color: COLORS.text, fontSize: 24, fontWeight: '700', textAlign: 'center' },
   completedText: { color: COLORS.textSecondary, fontSize: 16, textAlign: 'center', lineHeight: 22 },
+  
+  restartButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.success,
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.xl,
+    borderRadius: 12,
+    gap: SPACING.sm,
+    marginTop: SPACING.md,
+  },
+  restartButtonText: { 
+    color: COLORS.background, 
+    fontSize: 16, 
+    fontWeight: '700' 
+  },
+  restartHint: {
+    color: COLORS.textTertiary,
+    fontSize: 14,
+    textAlign: 'center',
+    marginTop: SPACING.sm,
+    lineHeight: 18,
+  },
 });
 
 export default SwipingScreen;

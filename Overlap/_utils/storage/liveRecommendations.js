@@ -7,7 +7,8 @@ import {
   onSnapshot,
   collection,
   getDocs,
-  writeBatch
+  writeBatch,
+  deleteDoc
 } from 'firebase/firestore';
 import { db } from '../../FirebaseConfig';
 
@@ -123,7 +124,7 @@ export async function recordVoteWithAggregation(meetupId, userId, activityId, de
   await checkRecommendationUpdates(meetupId);
 }
 
-// Check and update recommendations
+// Update the checkRecommendationUpdates function to detect Great Matches
 async function checkRecommendationUpdates(meetupId) {
   const [sessionSnap, itemsSnap] = await Promise.all([
     getDoc(doc(db, 'meetups', meetupId, 'meta', 'session')),
@@ -141,6 +142,7 @@ async function checkRecommendationUpdates(meetupId) {
   let bestScore = 0;
   let hasUnanimous = false;
   let hasNearUnanimous = false;
+  let hasGreatMatch = false;
   
   // Analyze all items
   itemsSnap.docs.forEach(doc => {
@@ -149,23 +151,36 @@ async function checkRecommendationUpdates(meetupId) {
     const totalVotes = likes + noes;
     const viewerCount = viewers.length;
     
-    // Check for unanimous
+    // Check for unanimous (highest priority)
     if (likes === participantCount && viewerCount === participantCount) {
       hasUnanimous = true;
       bestItem = { ...item, type: 'unanimous', score: 1.0 };
       return;
     }
     
-    // Check for near-unanimous
-    if (noes === 0 && likes >= Math.ceil(0.9 * participantCount) && viewerCount >= Math.ceil(0.9 * participantCount)) {
-      hasNearUnanimous = true;
-      if (!bestItem || bestItem.type !== 'unanimous') {
+    // Check for Great Match (second priority)
+    if (!hasUnanimous && isGreatMatch(likes, participantCount, viewers)) {
+      if (!hasGreatMatch || likes > (bestItem?.likes || 0)) {
+        hasGreatMatch = true;
+        bestItem = { 
+          ...item, 
+          type: 'great-match', 
+          score: likes / participantCount,
+          participantCount 
+        };
+      }
+    }
+    
+    // Check for near-unanimous (third priority)
+    if (!hasUnanimous && !hasGreatMatch && noes === 0 && likes >= Math.ceil(0.9 * participantCount) && viewerCount >= Math.ceil(0.9 * participantCount)) {
+      if (!hasNearUnanimous || likes > (bestItem?.likes || 0)) {
+        hasNearUnanimous = true;
         bestItem = { ...item, type: 'near-unanimous', score: likes / participantCount };
       }
     }
     
-    // Calculate Wilson score for recommendations
-    if (viewerCount >= minExposures && totalVotes > 0) {
+    // Calculate Wilson score for regular recommendations (lowest priority)
+    if (!hasUnanimous && !hasGreatMatch && !hasNearUnanimous && viewerCount >= minExposures && totalVotes > 0) {
       const wilsonScore = wilsonLowerBound(likes, totalVotes, 0.90);
       
       // Strong recommendation
@@ -192,7 +207,10 @@ async function checkRecommendationUpdates(meetupId) {
     const currentScore = session.currentBanner?.score || 0;
     const scoreImprovement = bestItem.score - currentScore;
     
-    if (scoreImprovement >= 0.03 || hasUnanimous || hasNearUnanimous) {
+    // Always update for unanimous or great matches
+    const shouldUpdate = hasUnanimous || hasGreatMatch || hasNearUnanimous || scoreImprovement >= 0.03;
+    
+    if (shouldUpdate) {
       await updateDoc(doc(db, 'meetups', meetupId, 'meta', 'session'), {
         currentBanner: bestItem,
         lastBannerUpdate: now
@@ -200,6 +218,7 @@ async function checkRecommendationUpdates(meetupId) {
     }
   }
 }
+
 
 // Auto-advance queue when current item hits minimum exposures
 export async function checkAutoAdvance(meetupId) {
@@ -282,3 +301,117 @@ export async function finalizeRecommendation(meetupId, activityId) {
     finished: true
   });
 }
+
+// Clear all session data and start fresh
+export async function resetMeetupSession(meetupId) {
+  const batch = writeBatch(db);
+  
+  try {
+    // Delete all votes
+    const votesSnap = await getDocs(collection(db, 'meetups', meetupId, 'votes'));
+    votesSnap.docs.forEach(doc => {
+      batch.delete(doc.ref);
+    });
+    
+    // Delete all items
+    const itemsSnap = await getDocs(collection(db, 'meetups', meetupId, 'items'));
+    itemsSnap.docs.forEach(doc => {
+      batch.delete(doc.ref);
+    });
+    
+    // Delete session meta
+    const metaRef = doc(db, 'meetups', meetupId, 'meta', 'session');
+    batch.delete(metaRef);
+    
+    await batch.commit();
+    console.log(`Session reset complete for meetup ${meetupId}`);
+  } catch (error) {
+    console.error('Error resetting session:', error);
+    throw error;
+  }
+}
+
+// Check if a session exists and is finished
+export async function isSessionFinished(meetupId) {
+  const sessionSnap = await getDoc(doc(db, 'meetups', meetupId, 'meta', 'session'));
+  
+  if (!sessionSnap.exists()) {
+    return false; // No session means not finished
+  }
+  
+  const session = sessionSnap.data();
+  return session.finished === true || !!session.finalizedActivity;
+}
+
+// Restart session with new parameters (preserving participant count)
+export async function restartMeetupSession(meetupId, activities, participantCount = null) {
+  // First reset everything
+  await resetMeetupSession(meetupId);
+  
+  // Get participant count if not provided
+  let finalParticipantCount = participantCount;
+  if (!finalParticipantCount) {
+    const { getMeetupParticipantsCount } = await import('./meetupParticipants');
+    finalParticipantCount = await getMeetupParticipantsCount(meetupId);
+  }
+  
+  // Initialize new session
+  return await initializeMeetupMeta(meetupId, finalParticipantCount, activities);
+}
+
+// Check if session should be reset (when category/filters change)
+export async function shouldResetSession(meetupId, newCategory, currentCategory) {
+  const session = await getMeetupSession(meetupId);
+  
+  // Reset if:
+  // 1. Session is finished
+  // 2. Category changed
+  // 3. Session has votes but user wants to change parameters
+  
+  if (!session) return false; // No session to reset
+  
+  const isFinished = session.finished || !!session.finalizedActivity;
+  const categoryChanged = newCategory !== currentCategory;
+  const hasVotes = session.currentIndex > 0;
+  
+  return isFinished || (categoryChanged && hasVotes);
+}
+
+// Calculate if an item qualifies as a "Great Match"
+function isGreatMatch(likes, totalParticipants, viewers) {
+  // Must have significant exposure (at least 60% of participants have seen it)
+  const minViewers = Math.max(3, Math.ceil(0.6 * totalParticipants));
+  if (viewers.length < minViewers) return false;
+  
+  // Define the strong ratio thresholds
+  const greatMatchRatios = [
+    { participants: 4, requiredLikes: 3 },   // 3/4 = 75%
+    { participants: 5, requiredLikes: 4 },   // 4/5 = 80%
+    { participants: 6, requiredLikes: 5 },   // 5/6 = 83%
+    { participants: 7, requiredLikes: 5 },   // 5/7 = 71%
+    { participants: 8, requiredLikes: 6 },   // 6/8 = 75%
+    { participants: 9, requiredLikes: 7 },   // 7/9 = 78%
+    { participants: 10, requiredLikes: 8 },  // 8/10 = 80%
+    { participants: 12, requiredLikes: 9 },  // 9/12 = 75%
+    { participants: 15, requiredLikes: 11 }, // 11/15 = 73%
+    { participants: 20, requiredLikes: 15 }, // 15/20 = 75%
+  ];
+  
+  // For groups larger than 20, use 75% threshold
+  if (totalParticipants > 20) {
+    const threshold = Math.ceil(0.75 * totalParticipants);
+    return likes >= threshold && likes < totalParticipants; // Not unanimous
+  }
+  
+  // Find the matching ratio for this group size
+  const matchingRatio = greatMatchRatios.find(ratio => ratio.participants === totalParticipants);
+  if (matchingRatio) {
+    return likes >= matchingRatio.requiredLikes && likes < totalParticipants;
+  }
+  
+  // For sizes not in our predefined ratios, use 75% threshold
+  const threshold = Math.ceil(0.75 * totalParticipants);
+  return likes >= threshold && likes < totalParticipants;
+}
+
+export { isGreatMatch };
