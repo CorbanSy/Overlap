@@ -182,12 +182,16 @@ export async function updateMeetup(meetupData) {
   if (!existingSnap.exists()) throw new Error('Meetup not found');
   const existing = existingSnap.data();
 
-  // Only the creator/host can start or stop (toggle "ongoing")
-  if ((meetupData.ongoing !== undefined ||
-      meetupData.friends !== undefined ||
-      meetupData.collections !== undefined) &&
-     user.uid !== existing.creatorId) {
-    throw new Error('Only the host can start/stop this meetup.');
+  // Only the creator/host can change details
+  const isHost = user.uid === existing.creatorId;
+  const attemptedDetailFields = [
+    'eventName','mood','description','restrictions','category',
+    'groupSize','date','time','priceRange','location','code',
+    'ongoing','friends','collections'
+  ].some((k) => meetupData[k] !== undefined);
+
+  if (attemptedDetailFields && !isHost) {
+    throw new Error('Only the host can edit this meetup.');
   }
 
   // Build minimal update set
@@ -196,18 +200,30 @@ export async function updateMeetup(meetupData) {
   if (meetupData.mood !== undefined) updateFields.mood = meetupData.mood;
   if (meetupData.description !== undefined) updateFields.description = meetupData.description;
   if (meetupData.restrictions !== undefined) updateFields.restrictions = meetupData.restrictions;
+  if (meetupData.category !== undefined) updateFields.category = meetupData.category;
+  if (meetupData.groupSize !== undefined) updateFields.groupSize = meetupData.groupSize;
+  if (meetupData.date !== undefined) updateFields.date = meetupData.date;
+  if (meetupData.time !== undefined) updateFields.time = meetupData.time;
+  if (meetupData.priceRange !== undefined) updateFields.priceRange = meetupData.priceRange;
+  if (meetupData.location !== undefined) updateFields.location = meetupData.location;
+  if (meetupData.code !== undefined) updateFields.code = meetupData.code;
   if (meetupData.ongoing !== undefined) updateFields.ongoing = meetupData.ongoing;
+
   if (meetupData.friends !== undefined) updateFields.friends = meetupData.friends;
   if (meetupData.collections !== undefined) {
     updateFields.collections = normalizeCollections(meetupData.collections);
   }
-  if (Object.keys(updateFields).length === 0) return; // nothing to do
+
+  if (Object.keys(updateFields).length === 0) return; // nothing to update
 
   // Update the main meetup document
   await updateDoc(meetupRef, updateFields);
 
-  // If specific fields changed, propagate to all participants' user subcollections
-  if (meetupData.eventName !== undefined || meetupData.ongoing !== undefined) {
+  // Propagate mirrored fields to participants' user subcollections
+  const mirrorKeys = ['eventName','ongoing','category','date','time','location'];
+  const needsMirror = mirrorKeys.some((k) => updateFields[k] !== undefined);
+
+  if (needsMirror) {
     const refreshed = await getDoc(meetupRef);
     const full = refreshed.data();
 
@@ -215,10 +231,11 @@ export async function updateMeetup(meetupData) {
       const batch = writeBatch(db);
       full.participants.forEach((participantId) => {
         const userMeetupRef = doc(db, 'users', participantId, 'meetups', meetupData.id);
-        const userUpdateFields = {};
-        if (meetupData.eventName !== undefined) userUpdateFields.eventName = meetupData.eventName;
-        if (meetupData.ongoing !== undefined) userUpdateFields.ongoing = meetupData.ongoing;
-        if (Object.keys(userUpdateFields).length > 0) batch.update(userMeetupRef, userUpdateFields);
+        const mirrorUpdate = {};
+        mirrorKeys.forEach((k) => {
+          if (updateFields[k] !== undefined) mirrorUpdate[k] = updateFields[k];
+        });
+        if (Object.keys(mirrorUpdate).length > 0) batch.update(userMeetupRef, mirrorUpdate);
       });
       await batch.commit();
     }
