@@ -11,98 +11,54 @@ import { db } from '../../FirebaseConfig';
 
 export async function getMeetupParticipants(meetupId) {
   try {
-    console.log('🔍 Fetching participants for meetup:', meetupId);
-    
-    // Get the meetup document to access participants
     const meetupDoc = await getDoc(doc(db, 'meetups', meetupId));
-    
-    if (!meetupDoc.exists()) {
-      console.error('❌ Meetup not found:', meetupId);
-      throw new Error('Meetup not found');
-    }
+    if (!meetupDoc.exists()) throw new Error('Meetup not found');
 
-    const meetupData = meetupDoc.data();
-    const participantIds = meetupData.participants || [];
-    
-    console.log('✅ Found participant IDs:', participantIds);
+    const participantIds = meetupDoc.data().participants || [];
+    if (participantIds.length === 0) return [];
 
-    if (participantIds.length === 0) {
-      return [];
-    }
-
-    // Fetch user data for each participant - try userDirectory first, then users collection
     const participants = await Promise.all(
       participantIds.map(async (userId) => {
         try {
-          console.log(`🔍 Fetching data for user: ${userId}`);
-          
-          // First, try userDirectory (this is more likely to be accessible)
-          let userData = null;
-          let source = '';
-          
-          try {
-            const userDirDoc = await getDoc(doc(db, 'userDirectory', userId));
-            if (userDirDoc.exists()) {
-              userData = userDirDoc.data();
-              source = 'userDirectory';
-              console.log(`✅ Found user data in userDirectory for ${userId}`);
-            }
-          } catch (dirError) {
-            console.warn(`⚠️ Failed to fetch from userDirectory for ${userId}:`, dirError.message);
-          }
+          // 1) userDirectory
+          const dirSnap = await getDoc(doc(db, 'userDirectory', userId));
+          const fromDir = dirSnap.exists() ? dirSnap.data() : null;
 
-          // If not found in userDirectory, try users collection
-          if (!userData) {
-            try {
-              const userDoc = await getDoc(doc(db, 'users', userId));
-              if (userDoc.exists()) {
-                userData = userDoc.data();
-                source = 'users';
-                console.log(`✅ Found user data in users collection for ${userId}`);
-              }
-            } catch (userError) {
-              console.warn(`⚠️ Failed to fetch from users for ${userId}:`, userError.message);
-            }
-          }
+          // 2) users/{uid}/profile/main
+          const profSnap = await getDoc(doc(db, 'users', userId, 'profile', 'main'));
+          const fromProf = profSnap.exists() ? profSnap.data() : null;
 
-          if (userData) {
-            const participant = {
-              id: userId,
-              name: userData.displayName || userData.name || userData.usernamePublic || 'Unknown User',
-              profilePicture: userData.avatarUrl || userData.profilePicture || userData.photoURL || null,
-              email: userData.email || userData.emailLower || null,
-              source: source // for debugging
-            };
-            console.log(`✅ Built participant data for ${userId}:`, participant.name);
-            return participant;
-          }
-          
-          // Fallback if no data found
-          console.warn(`⚠️ No data found for user ${userId}, using fallback`);
-          return {
-            id: userId,
-            name: 'Unknown User',
-            profilePicture: null,
-            email: null,
-            source: 'fallback'
-          };
-          
-        } catch (error) {
-          console.error(`❌ Error fetching user data for ${userId}:`, error);
-          return {
-            id: userId,
-            name: 'Unknown User',
-            profilePicture: null,
-            email: null,
-            source: 'error'
-          };
+          // 3) legacy users root
+          const rootSnap = await getDoc(doc(db, 'users', userId));
+          const fromRoot = rootSnap.exists() ? rootSnap.data() : null;
+
+          const name =
+            fromDir?.displayName ||
+            fromProf?.name ||
+            fromProf?.username ||
+            fromRoot?.displayName ||
+            fromRoot?.name ||
+            'Unknown User';
+
+          const profilePicture =
+            (fromDir?.avatarUrl && String(fromDir.avatarUrl).trim()) ||
+            (fromProf?.avatarUrl && String(fromProf.avatarUrl).trim()) ||
+            (fromRoot?.avatarUrl && String(fromRoot.avatarUrl).trim()) ||
+            (fromRoot?.profilePicture && String(fromRoot.profilePicture).trim()) ||
+            (fromRoot?.photoURL && String(fromRoot.photoURL).trim()) ||
+            null;
+
+          const email = fromDir?.emailLower || fromProf?.email || fromRoot?.email || null;
+
+          return { id: userId, name, profilePicture, email, source: 'merged' };
+        } catch (e) {
+          console.error(`Error fetching user ${userId}:`, e);
+          return { id: userId, name: 'Unknown User', profilePicture: null, email: null, source: 'error' };
         }
       })
     );
 
-    console.log('✅ Successfully fetched all participants:', participants.length);
     return participants;
-    
   } catch (error) {
     console.error('❌ Error in getMeetupParticipants:', error);
     throw error;

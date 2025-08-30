@@ -12,7 +12,7 @@ interface Participant {
 
 interface MeetupParticipantsProps {
   meetupId: string;
-  maxVisible?: number; // Max avatars to show before showing "+X"
+  maxVisible?: number;
 }
 
 const COLORS = {
@@ -23,28 +23,25 @@ const COLORS = {
   border: '#30363D',
 } as const;
 
-const MeetupParticipants: React.FC<MeetupParticipantsProps> = ({ 
-  meetupId, 
-  maxVisible = 5 
-}) => {
+const MeetupParticipants: React.FC<MeetupParticipantsProps> = ({ meetupId, maxVisible = 5 }) => {
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!meetupId) return;
 
-    // Listen to the meetup document to get participants
     const meetupRef = doc(db, 'meetups', meetupId);
-    
+
     const unsubscribe = onSnapshot(meetupRef, async (meetupDoc) => {
       try {
         if (!meetupDoc.exists()) {
+          setParticipants([]);
           setLoading(false);
           return;
         }
-        
+
         const meetupData = meetupDoc.data();
-        const participantIds = meetupData.participants || [];
+        const participantIds: string[] = meetupData.participants || [];
 
         if (participantIds.length === 0) {
           setParticipants([]);
@@ -52,50 +49,50 @@ const MeetupParticipants: React.FC<MeetupParticipantsProps> = ({
           return;
         }
 
-        // Fetch user details for each participant
         const participantPromises = participantIds.map(async (userId: string): Promise<Participant> => {
           try {
-            // Try userDirectory first (public profiles)
-            const userDirDoc = await getDoc(doc(db, 'userDirectory', userId));
-            if (userDirDoc.exists()) {
-              const userData = userDirDoc.data();
-              return {
-                userId,
-                displayName: userData.displayName || userData.usernamePublic || 'Unknown',
-                photoURL: userData.avatarUrl && userData.avatarUrl.trim() !== '' 
-                  ? userData.avatarUrl 
-                  : undefined,
-              };
-            }
-            
-            // Fallback to users collection if userDirectory doesn't exist
-            const userDoc = await getDoc(doc(db, 'users', userId));
-            if (userDoc.exists()) {
-              const userData = userDoc.data();
-              return {
-                userId,
-                displayName: userData.displayName || userData.name || 'Unknown',
-                photoURL: userData.photoURL || userData.profilePicture || undefined,
-              };
-            }
-            
+            // 1) userDirectory
+            const userDirSnap = await getDoc(doc(db, 'userDirectory', userId));
+            const fromDir = userDirSnap.exists() ? userDirSnap.data() : null;
+
+            // 2) users/{uid}/profile/main (where you saveProfileData)
+            const profSnap = await getDoc(doc(db, 'users', userId, 'profile', 'main'));
+            const fromProf = profSnap.exists() ? profSnap.data() : null;
+
+            // 3) legacy: users/{uid} root (rarely used in your app now)
+            const rootSnap = await getDoc(doc(db, 'users', userId));
+            const fromRoot = rootSnap.exists() ? rootSnap.data() : null;
+
+            const displayName =
+              fromDir?.displayName ||
+              fromProf?.name ||
+              fromProf?.username ||
+              fromRoot?.displayName ||
+              fromRoot?.name ||
+              'Unknown';
+
+            // Prefer the first non-empty URL: directory -> profile.main -> legacy root
+            const avatarUrl =
+              (fromDir?.avatarUrl && String(fromDir.avatarUrl).trim()) ||
+              (fromProf?.avatarUrl && String(fromProf.avatarUrl).trim()) ||
+              (fromRoot?.avatarUrl && String(fromRoot.avatarUrl).trim()) ||
+              (fromRoot?.profilePicture && String(fromRoot.profilePicture).trim()) ||
+              (fromRoot?.photoURL && String(fromRoot.photoURL).trim()) ||
+              '';
+
             return {
               userId,
-              displayName: 'Unknown',
-              photoURL: undefined,
+              displayName,
+              photoURL: avatarUrl || undefined,
             };
-          } catch (error) {
-            console.error('Error fetching user data for', userId, error);
-            return {
-              userId,
-              displayName: 'Unknown',
-              photoURL: undefined,
-            };
+          } catch (e) {
+            console.error('Error fetching user data for', userId, e);
+            return { userId, displayName: 'Unknown', photoURL: undefined };
           }
         });
 
         const participantsData = await Promise.all(participantPromises);
-        setParticipants(participantsData); // All results are guaranteed to be Participant objects
+        setParticipants(participantsData);
       } catch (error) {
         console.error('Error fetching participants:', error);
       } finally {
@@ -114,9 +111,7 @@ const MeetupParticipants: React.FC<MeetupParticipantsProps> = ({
     );
   }
 
-  if (participants.length === 0) {
-    return null; // Don't show anything if no participants
-  }
+  if (participants.length === 0) return null;
 
   const visibleParticipants = participants.slice(0, maxVisible);
   const remainingCount = Math.max(0, participants.length - maxVisible);
@@ -129,10 +124,7 @@ const MeetupParticipants: React.FC<MeetupParticipantsProps> = ({
             key={participant.userId}
             style={[
               styles.avatar,
-              { 
-                zIndex: visibleParticipants.length - index,
-                marginLeft: index > 0 ? -8 : 0, // Reduced overlap for better visibility
-              }
+              { zIndex: visibleParticipants.length - index, marginLeft: index > 0 ? -8 : 0 },
             ]}
           >
             {participant.photoURL ? (
@@ -140,13 +132,8 @@ const MeetupParticipants: React.FC<MeetupParticipantsProps> = ({
                 source={{ uri: participant.photoURL }}
                 style={styles.avatarImage}
                 onError={() => {
-                  // Handle image load errors by setting photoURL to undefined
-                  setParticipants(prev => 
-                    prev.map(p => 
-                      p.userId === participant.userId 
-                        ? { ...p, photoURL: undefined }
-                        : p
-                    )
+                  setParticipants(prev =>
+                    prev.map(p => (p.userId === participant.userId ? { ...p, photoURL: undefined } : p))
                   );
                 }}
               />
@@ -159,14 +146,14 @@ const MeetupParticipants: React.FC<MeetupParticipantsProps> = ({
             )}
           </View>
         ))}
-        
+
         {remainingCount > 0 && (
           <View style={[styles.avatar, styles.countBadge, { marginLeft: -8, zIndex: 0 }]}>
             <Text style={styles.countText}>+{remainingCount}</Text>
           </View>
         )}
       </View>
-      
+
       <Text style={styles.participantCount}>
         {participants.length} participant{participants.length !== 1 ? 's' : ''}
       </Text>
@@ -175,17 +162,10 @@ const MeetupParticipants: React.FC<MeetupParticipantsProps> = ({
 };
 
 const styles = StyleSheet.create({
-  container: {
-    alignItems: 'center',
-    paddingVertical: 4, // Reduced padding
-  },
-  avatarContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 2, // Reduced margin
-  },
+  container: { alignItems: 'center', paddingVertical: 4 },
+  avatarContainer: { flexDirection: 'row', alignItems: 'center', marginBottom: 2 },
   avatar: {
-    width: 32, // Slightly smaller avatars
+    width: 32,
     height: 32,
     borderRadius: 16,
     borderWidth: 2,
@@ -193,39 +173,12 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     backgroundColor: COLORS.surface,
   },
-  avatarImage: {
-    width: '100%',
-    height: '100%',
-    borderRadius: 14,
-  },
-  defaultAvatar: {
-    width: '100%',
-    height: '100%',
-    backgroundColor: COLORS.accent,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  avatarInitials: {
-    color: '#000',
-    fontSize: 12, // Smaller font for smaller avatars
-    fontWeight: '700',
-  },
-  countBadge: {
-    backgroundColor: COLORS.surface,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderColor: COLORS.border,
-  },
-  countText: {
-    color: COLORS.text,
-    fontSize: 10, // Smaller font
-    fontWeight: '600',
-  },
-  participantCount: {
-    color: COLORS.textSecondary,
-    fontSize: 11, // Smaller font
-    fontWeight: '500',
-  },
+  avatarImage: { width: '100%', height: '100%', borderRadius: 14 },
+  defaultAvatar: { width: '100%', height: '100%', backgroundColor: COLORS.accent, justifyContent: 'center', alignItems: 'center' },
+  avatarInitials: { color: '#000', fontSize: 12, fontWeight: '700' },
+  countBadge: { backgroundColor: COLORS.surface, justifyContent: 'center', alignItems: 'center', borderColor: COLORS.border },
+  countText: { color: COLORS.text, fontSize: 10, fontWeight: '600' },
+  participantCount: { color: COLORS.textSecondary, fontSize: 11, fontWeight: '500' },
 });
 
 export default MeetupParticipants;

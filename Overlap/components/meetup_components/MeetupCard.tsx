@@ -552,7 +552,7 @@ const MeetupCard: React.FC<MeetupCardProps> = ({
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.titleSection}>
-          <Text style={styles.title} numberOfLines={2}>
+          <Text style={[styles.title, meetup.ongoing && { marginTop: 18 }]} numberOfLines={2}>
             {meetup.eventName || 'Untitled Meetup'}
           </Text>
           
@@ -875,7 +875,7 @@ const styles = StyleSheet.create({
   liveIndicator: {
     position: 'absolute',
     top: SPACING.lg,
-    right: SPACING.lg,
+    left: SPACING.lg,
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: COLORS.success,
@@ -883,6 +883,14 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
     borderRadius: 12,
     gap: 4,
+    zIndex: 1000,
+    elevation: 10,   // don't block taps to the chevron/stop buttons if the chip overlaps
+    pointerEvents: 'none',
+    // (optional) nicer shadow on iOS
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
   },
 
   liveDot: {

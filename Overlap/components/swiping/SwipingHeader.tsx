@@ -41,10 +41,10 @@ function SwipingHeader({ currentIndex, total, meetupId }: Props) {
 
   // Load participants when modal is opened
   useEffect(() => {
-    if (showParticipantsModal && participants.length === 0) {
+    if (showParticipantsModal) {
       loadParticipants();
     }
-  }, [showParticipantsModal]);
+  }, [showParticipantsModal, meetupId]);
 
   const loadParticipants = async () => {
     if (loadingParticipants) return;
