@@ -1,5 +1,5 @@
 // app/meetupFolder/MyMeetupsScreen.tsx
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -9,7 +9,7 @@ import {
   StatusBar,
   RefreshControl,
   Alert,
-  ScrollView,
+  SectionList,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -381,6 +381,22 @@ const MyMeetupsScreen: React.FC<Props> = ({ onBack }) => {
     fetchData();
   }, [fetchData]);
 
+  // Derived lists + sections
+  const regularMeetups = useMemo(() => meetups.filter((m) => !m.ongoing), [meetups]);
+  const ongoingMeetups = useMemo(() => meetups.filter((m) => m.ongoing), [meetups]);
+  const totalMeetups = meetups.length;
+
+  const sections = useMemo(() => {
+    const arr: Array<{ title: string; data: Meetup[]; icon: keyof typeof Ionicons.glyphMap; badgeColor: string }> = [];
+    if (ongoingMeetups.length) {
+      arr.push({ title: 'Live Sessions', data: ongoingMeetups, icon: 'radio', badgeColor: COLORS.success });
+    }
+    if (regularMeetups.length) {
+      arr.push({ title: 'Upcoming Meetups', data: regularMeetups, icon: 'calendar', badgeColor: COLORS.primary });
+    }
+    return arr;
+  }, [ongoingMeetups, regularMeetups]);
+
   // Render TurboModeScreen if needed
   if (showTurbo && currentMeetupId) {
     return (
@@ -439,118 +455,16 @@ const MyMeetupsScreen: React.FC<Props> = ({ onBack }) => {
     );
   }
 
-  const regularMeetups = meetups.filter((m) => !m.ongoing);
-  const ongoingMeetups = meetups.filter((m) => m.ongoing);
-  const totalMeetups = meetups.length;
-
   // Render empty state
-  const renderEmptyState = (title: string, subtitle: string, icon: string) => (
+  const ListEmpty = () => (
     <View style={styles.emptyStateContainer}>
-      <Ionicons name={icon as any} size={64} color={COLORS.textTertiary} />
-      <Text style={styles.emptyStateTitle}>{title}</Text>
-      <Text style={styles.emptyStateSubtitle}>{subtitle}</Text>
+      <Ionicons name="calendar-outline" size={64} color={COLORS.textTertiary} />
+      <Text style={styles.emptyStateTitle}>No Meetups Yet</Text>
+      <Text style={styles.emptyStateSubtitle}>
+        Create your first meetup to get started connecting with others!
+      </Text>
     </View>
   );
-
-  // Render all meetups in single scrollable list
-  const renderAllMeetups = () => {
-    const allMeetups = [...ongoingMeetups, ...regularMeetups];
-
-    if (allMeetups.length === 0) {
-      return renderEmptyState('No Meetups Yet', 'Create your first meetup to get started connecting with others!', 'calendar-outline');
-    }
-
-    return (
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 100 }]}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            colors={[COLORS.primary]}
-            tintColor={COLORS.primary}
-          />
-        }
-        showsVerticalScrollIndicator={false}
-      >
-        {/* Live Sessions Section */}
-        {ongoingMeetups.length > 0 && (
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <View style={styles.sectionTitleContainer}>
-                <Ionicons name="radio" size={20} color={COLORS.success} />
-                <Text style={styles.sectionTitle}>Live Sessions</Text>
-              </View>
-              <View style={[styles.badge, styles.liveBadge]}>
-                <Text style={styles.badgeText}>{ongoingMeetups.length}</Text>
-              </View>
-            </View>
-
-            {ongoingMeetups.map((meetup) => {
-              const isHost = authUid === meetup.creatorId;
-              return (
-                <MeetupCard
-                  key={meetup.id}
-                  meetup={meetup}
-                  onRemove={() => handleRemoveMeetup(meetup.id)}
-                  onStart={isHost ? handleStartMeetup : undefined}
-                  onStop={isHost ? handleStopMeetup : undefined}
-                  onTurboMode={isHost ? handleTurboMode : undefined}
-                  isHost={isHost}
-                  onJoin={!isHost ? handleJoinMeetup : undefined}
-                  onAddFriend={isHost ? handleAddFriend : undefined}
-                  onRemoveFriend={isHost ? handleRemoveFriend : undefined}
-                  onAddCollection={isHost ? handleAddCollection : undefined}
-                  onRemoveCollection={isHost ? handleRemoveCollection : undefined}
-                  currentUserId={authUid}
-                  currentUserEmail={getAuth()?.currentUser?.email || undefined}
-                />
-              );
-            })}
-          </View>
-        )}
-
-        {/* Active Meetups Section */}
-        {regularMeetups.length > 0 && (
-          <View style={styles.section}>
-            <View style={styles.sectionHeader}>
-              <View style={styles.sectionTitleContainer}>
-                <Ionicons name="calendar" size={20} color={COLORS.primary} />
-                <Text style={styles.sectionTitle}>Upcoming Meetups</Text>
-              </View>
-              <View style={styles.badge}>
-                <Text style={styles.badgeText}>{regularMeetups.length}</Text>
-              </View>
-            </View>
-
-            {regularMeetups.map((meetup) => {
-              const isHost = authUid === meetup.creatorId;
-              return (
-                <MeetupCard
-                  key={meetup.id}
-                  meetup={meetup}
-                  onRemove={() => handleRemoveMeetup(meetup.id)}
-                  onStart={isHost ? handleStartMeetup : undefined}
-                  onStop={isHost ? handleStopMeetup : undefined}
-                  onTurboMode={isHost ? handleTurboMode : undefined}
-                  isHost={isHost}
-                  onAddFriend={isHost ? handleAddFriend : undefined}
-                  onRemoveFriend={isHost ? handleRemoveFriend : undefined}
-                  onAddCollection={isHost ? handleAddCollection : undefined}
-                  onRemoveCollection={isHost ? handleRemoveCollection : undefined}
-                  currentUserId={authUid}
-                  currentUserEmail={getAuth()?.currentUser?.email || undefined}
-                />
-              );
-            })}
-          </View>
-        )}
-
-        <View style={styles.bottomSpacer} />
-      </ScrollView>
-    );
-  };
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
@@ -580,8 +494,54 @@ const MyMeetupsScreen: React.FC<Props> = ({ onBack }) => {
           </View>
         </View>
 
-        {/* Main Content */}
-        <View style={styles.content}>{renderAllMeetups()}</View>
+        {/* Main Content: SectionList for virtualization + sticky headers */}
+        <SectionList
+          sections={sections}
+          keyExtractor={(item) => item.id}
+          renderSectionHeader={({ section }) => (
+            <View style={styles.sectionHeader}>
+              <View style={styles.sectionTitleContainer}>
+                <Ionicons name={section.icon} size={20} color={section.badgeColor} />
+                <Text style={styles.sectionTitle}>{section.title}</Text>
+              </View>
+              <View style={[styles.badge, { borderColor: COLORS.border, backgroundColor: COLORS.surface }]}>
+                <Text style={styles.badgeText}>{section.data.length}</Text>
+              </View>
+            </View>
+          )}
+          renderItem={({ item: meetup }) => {
+            const isHost = authUid === meetup.creatorId;
+            return (
+              <MeetupCard
+                meetup={meetup}
+                onRemove={() => handleRemoveMeetup(meetup.id)}
+                onStart={isHost ? handleStartMeetup : undefined}
+                onStop={isHost ? handleStopMeetup : undefined}
+                onTurboMode={isHost ? handleTurboMode : undefined}
+                isHost={isHost}
+                onJoin={!isHost ? handleJoinMeetup : undefined}
+                onAddFriend={isHost ? handleAddFriend : undefined}
+                onRemoveFriend={isHost ? handleRemoveFriend : undefined}
+                onAddCollection={isHost ? handleAddCollection : undefined}
+                onRemoveCollection={isHost ? handleRemoveCollection : undefined}
+                currentUserId={authUid || undefined}
+                currentUserEmail={getAuth()?.currentUser?.email || undefined}
+              />
+            );
+          }}
+          stickySectionHeadersEnabled
+          contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 100 }]}
+          ListEmptyComponent={ListEmpty}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              colors={[COLORS.primary]}
+              tintColor={COLORS.primary}
+            />
+          }
+          showsVerticalScrollIndicator={false}
+        />
 
         {/* Friend Picker Modal */}
         <FriendPicker
@@ -682,18 +642,9 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.border,
   },
-  content: {
-    flex: 1,
-  },
-  scrollView: {
-    flex: 1,
-  },
   scrollContent: {
     paddingHorizontal: SPACING.lg,
     paddingTop: SPACING.lg,
-  },
-  section: {
-    marginBottom: SPACING.xxl,
   },
   sectionHeader: {
     flexDirection: 'row',
@@ -713,18 +664,12 @@ const styles = StyleSheet.create({
     color: COLORS.text,
   },
   badge: {
-    backgroundColor: COLORS.surface,
     borderRadius: 12,
     paddingHorizontal: SPACING.sm,
     paddingVertical: SPACING.xs,
     minWidth: 28,
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  liveBadge: {
-    backgroundColor: COLORS.success,
-    borderColor: COLORS.success,
   },
   badgeText: {
     fontSize: 12,
@@ -788,9 +733,6 @@ const styles = StyleSheet.create({
     color: COLORS.accent,
     textAlign: 'center',
     lineHeight: 22,
-  },
-  bottomSpacer: {
-    height: 100,
   },
 });
 

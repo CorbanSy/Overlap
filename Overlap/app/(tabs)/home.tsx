@@ -142,7 +142,7 @@ export default function HomeScreen() {
   const auth = getAuth();
   const user = auth.currentUser;
   const { filterState, updateFilters, clearAllFilters } = useFilters();
-
+  
   // Core state
   const [places, setPlaces] = useState<Place[]>([]);
   const [loading, setLoading] = useState(false);
@@ -176,6 +176,7 @@ export default function HomeScreen() {
   // Refs
   const fuseRef = useRef<Fuse<Place> | null>(null);
   const flatListRef = useRef<any>(null);
+  const inFlightRef = useRef(false);
 
   // Memo
   const showHomeLoader = useMemo(() => loading && places.length === 0, [loading, places.length]);
@@ -308,16 +309,20 @@ export default function HomeScreen() {
 
   // Initial page (and refetch on filter changes)
   const loadInitial = useCallback(async () => {
-    if (loading) return;
+    if (inFlightRef.current) return;     // hard guard against re-entry
+    inFlightRef.current = true;
+
     setLoading(true);
     setError(null);
     setExhausted(false);
     setLastDoc(null);
+
     try {
       const q = buildPlacesQuery();
       const snap = await getDocs(q);
       const docs = snap.docs;
       const list = docs.map(d => ({ id: d.id, ...(d.data() as any) })) as Place[];
+
       setPlaces(list);
       setLastDoc(docs.length ? docs[docs.length - 1] : null);
       setExhausted(docs.length < PAGE_SIZE);
@@ -327,8 +332,9 @@ export default function HomeScreen() {
       setError('Failed to load places. Please try again.');
     } finally {
       setLoading(false);
+      inFlightRef.current = false;
     }
-  }, [buildPlacesQuery, loading]);
+  }, [buildPlacesQuery]);  // ← no `loading` here
 
   // Load next page
   const loadMore = useCallback(async () => {
@@ -356,7 +362,7 @@ export default function HomeScreen() {
   // Run initial load and re-run when server-side filter knobs change
   useEffect(() => {
     loadInitial();
-  }, [loadInitial]);
+  }, [buildPlacesQuery]);   // re-load when server-side filters change
 
   // Setup search index
   useEffect(() => {
@@ -552,22 +558,19 @@ export default function HomeScreen() {
   const applyTypesFilter = useCallback((types: string[]) => {
     updateFilters({ selectedTypes: types.length > 0 ? types : undefined });
     // Server-side filter -> relaunch initial page
-    loadInitial();
     flatListRef.current?.scrollToOffset?.({ offset: 0, animated: false });
-  }, [updateFilters, loadInitial]);
+  }, [updateFilters]);
 
   const applyPriceFilter = useCallback((priceRange: string) => {
     updateFilters({ priceRange: priceRange || undefined });
     // Server-side filter -> relaunch initial page
-    loadInitial();
     flatListRef.current?.scrollToOffset?.({ offset: 0, animated: false });
-  }, [updateFilters, loadInitial]);
+  }, [updateFilters]);
 
   const handleClearSearch = useCallback(() => setSearchQuery(''), []);
   const handleClearAllFilters = useCallback(() => {
     clearAllFilters();
-    loadInitial();
-  }, [clearAllFilters, loadInitial]);
+  }, [clearAllFilters]);
 
   const finalData = useMemo(() => getFinalData(), [getFinalData]);
 

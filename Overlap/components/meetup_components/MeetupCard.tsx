@@ -14,7 +14,6 @@ import {
   Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import CollectionCard from '../CollectionCard';
 import { getAuth, onAuthStateChanged, User } from 'firebase/auth';
 
 // ───────────────────────────────────────────────────────────────────────────────
@@ -80,19 +79,17 @@ interface MeetupCardProps {
 // ───────────────────────────────────────────────────────────────────────────────
 const COLORS = {
   background: '#0D1117',
-  card: '#1B1F24',
-  surface: '#232A33',
-  surfaceHover: '#2A3441',
-  primary: '#238636',
-  primaryHover: '#2EA043',
+  card: '#0F141A',
+  surface: '#161B22',
+  surfaceHover: '#1B2230',
+  primary: '#2EA043',
+  primaryHover: '#3FB95A',
   accent: '#FFC107',
-  accentHover: '#FFD54F',
   danger: '#F85149',
   text: '#FFFFFF',
-  textSecondary: '#8B949E',
-  textTertiary: '#6E7681',
-  border: 'rgba(255,255,255,0.08)',
-  borderHover: 'rgba(255,255,255,0.12)',
+  textSecondary: '#C9D1D9',
+  textTertiary: '#8B949E',
+  border: 'rgba(240,246,252,0.08)',
   turbo: '#FF6B35',
 } as const;
 
@@ -447,19 +444,7 @@ const MeetupCard: React.FC<MeetupCardProps> = ({
     [meetup?.id, onRemoveCollection]
   );
 
-  // Render helpers with better key generation
-  const renderChip = useCallback(
-    (icon: string, text: string, key: string) => (
-      <View key={key} style={styles.chip}>
-        <Ionicons name={icon as any} size={14} color={COLORS.textSecondary} />
-        <Text style={styles.chipText} numberOfLines={1}>
-          {text}
-        </Text>
-      </View>
-    ),
-    []
-  );
-
+  // Render helpers
   const renderMetaRow = useCallback(
     (label: string, value?: string | number) => (
       <View key={label} style={styles.metaRow}>
@@ -567,8 +552,8 @@ const MeetupCard: React.FC<MeetupCardProps> = ({
   // ───────────────────────────────────────────────────────────────────────────
   return (
     <View style={styles.cardContainer} onLayout={handleLayout}>
-      {/* Status indicator */}
-      {meetup.ongoing && <View style={styles.statusIndicator} />}
+      {/* Left status rail if live */}
+      {meetup.ongoing && <View style={styles.statusRail} />}
 
       {/* Header */}
       <View style={styles.header}>
@@ -576,49 +561,43 @@ const MeetupCard: React.FC<MeetupCardProps> = ({
           <Text style={styles.title} numberOfLines={2}>
             {meetup.eventName || 'Untitled Meetup'}
           </Text>
-          {meetup.ongoing && (
-            <View style={styles.liveBadge}>
-              <Text style={styles.liveBadgeText}>LIVE</Text>
-            </View>
-          )}
         </View>
 
         <View style={styles.headerActions}>
           <TouchableOpacity
             style={styles.expandButton}
             onPress={handleToggleExpanded}
-            activeOpacity={0.7}
+            activeOpacity={0.8}
             accessibilityLabel={expanded ? 'Collapse details' : 'Expand details'}
             accessibilityRole="button"
           >
-            <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={20} color={COLORS.textSecondary} />
+            <Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={18} color={COLORS.textSecondary} />
           </TouchableOpacity>
 
-          {/* Action buttons */}
           <View style={styles.actionButtonsContainer}>
             {isHost ? (
               <>
                 <TouchableOpacity
-                  style={[styles.actionButton, meetup.ongoing ? styles.stopButton : styles.startButton]}
+                  style={styles.ctaPrimary}
                   onPress={handleToggleMeetup}
-                  activeOpacity={0.8}
+                  activeOpacity={0.85}
                   accessibilityLabel={meetup.ongoing ? 'Stop meetup' : 'Start meetup'}
                   accessibilityRole="button"
                 >
                   <Ionicons name={meetup.ongoing ? 'stop' : 'play'} size={16} color={COLORS.background} />
-                  <Text style={styles.actionButtonText}>{meetup.ongoing ? 'Stop' : 'Start'}</Text>
+                  <Text style={styles.ctaPrimaryText}>{meetup.ongoing ? 'Stop' : 'Start'}</Text>
                 </TouchableOpacity>
 
                 {!meetup.ongoing && onTurboMode && (
                   <TouchableOpacity
-                    style={[styles.actionButton, styles.turboButton]}
+                    style={styles.ctaGhost}
                     onPress={handleTurboMode}
-                    activeOpacity={0.8}
+                    activeOpacity={0.85}
                     accessibilityLabel="Start Turbo Mode"
                     accessibilityRole="button"
                   >
-                    <Ionicons name="flash" size={14} color={COLORS.background} />
-                    <Text style={styles.turboButtonText}>Turbo</Text>
+                    <Ionicons name="flash" size={14} color={COLORS.textSecondary} />
+                    <Text style={styles.ctaGhostText}>Turbo</Text>
                   </TouchableOpacity>
                 )}
               </>
@@ -626,14 +605,14 @@ const MeetupCard: React.FC<MeetupCardProps> = ({
               meetup.ongoing &&
               onJoin && (
                 <TouchableOpacity
-                  style={[styles.actionButton, styles.startButton]}
+                  style={styles.ctaPrimary}
                   onPress={handleJoin}
-                  activeOpacity={0.8}
+                  activeOpacity={0.85}
                   accessibilityLabel="Join live meetup"
                   accessibilityRole="button"
                 >
                   <Ionicons name="enter" size={16} color={COLORS.background} />
-                  <Text style={styles.actionButtonText}>Join</Text>
+                  <Text style={styles.ctaPrimaryText}>Join</Text>
                 </TouchableOpacity>
               )
             )}
@@ -641,16 +620,41 @@ const MeetupCard: React.FC<MeetupCardProps> = ({
         </View>
       </View>
 
-      {/* Chips */}
-      <View style={styles.chipsContainer}>
-        {meetup.date && renderChip('calendar-outline', formatDate(meetup.date), 'date')}
-        {meetup.time && renderChip('time-outline', formatTime(meetup.time), 'time')}
-        {meetup.location && renderChip('location-outline', meetup.location, 'location')}
-        {meetup.code && renderChip('key-outline', `Code: ${meetup.code}`, 'code')}
+      {/* Compact meta row (one line) */}
+      <View style={styles.metaCompact}>
+        {meetup.date && (
+          <View style={styles.metaItem}>
+            <Ionicons name="calendar-outline" size={12} color={COLORS.textTertiary} />
+            <Text style={styles.metaCompactText}>{formatDate(meetup.date)}</Text>
+          </View>
+        )}
+        {meetup.time && meetup.date && <View style={styles.metaDivider} />}
+        {meetup.time && (
+          <View style={styles.metaItem}>
+            <Ionicons name="time-outline" size={12} color={COLORS.textTertiary} />
+            <Text style={styles.metaCompactText}>{formatTime(meetup.time)}</Text>
+          </View>
+        )}
+        {meetup.location && (meetup.date || meetup.time) && <View style={styles.metaDivider} />}
+        {meetup.location && (
+          <View style={[styles.metaItem, { maxWidth: '40%' }]}>
+            <Ionicons name="location-outline" size={12} color={COLORS.textTertiary} />
+            <Text numberOfLines={1} style={styles.metaCompactText}>{meetup.location}</Text>
+          </View>
+        )}
+        {meetup.code && (meetup.location || meetup.time || meetup.date) && <View style={styles.metaDivider} />}
+        {meetup.code && (
+          <View style={styles.metaItem}>
+            <Ionicons name="key-outline" size={12} color={COLORS.textTertiary} />
+            <Text style={styles.metaCompactText}>Code: {meetup.code}</Text>
+          </View>
+        )}
       </View>
 
       {/* Description preview */}
-      {!expanded && truncatedDescription && <Text style={styles.previewDescription}>{truncatedDescription}</Text>}
+      {!expanded && !!truncatedDescription && (
+        <Text style={styles.previewDescription}>{truncatedDescription}</Text>
+      )}
 
       {/* Expanded content */}
       {expanded && (
@@ -821,16 +825,13 @@ const styles = StyleSheet.create({
   cardContainer: {
     backgroundColor: COLORS.card,
     borderRadius: 16,
-    padding: SPACING.lg,
-    marginBottom: SPACING.md,
+    padding: SPACING.xl,
+    marginBottom: SPACING.lg,
     borderWidth: 1,
     borderColor: COLORS.border,
     position: 'relative',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowOpacity: 0,
+    elevation: 0,
   },
   errorContainer: {
     alignItems: 'center',
@@ -842,15 +843,15 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '500',
   },
-  statusIndicator: {
+  statusRail: {
     position: 'absolute',
     top: 0,
+    bottom: 0,
     left: 0,
-    right: 0,
-    height: 3,
+    width: 4,
     backgroundColor: COLORS.primary,
     borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
+    borderBottomLeftRadius: 16,
   },
   header: {
     flexDirection: 'row',
@@ -864,23 +865,10 @@ const styles = StyleSheet.create({
   },
   title: {
     color: COLORS.text,
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: '700',
     lineHeight: 24,
-    marginBottom: SPACING.xs,
-  },
-  liveBadge: {
-    backgroundColor: COLORS.primary,
-    paddingHorizontal: SPACING.sm,
-    paddingVertical: 2,
-    borderRadius: 4,
-    alignSelf: 'flex-start',
-  },
-  liveBadgeText: {
-    color: COLORS.text,
-    fontSize: 10,
-    fontWeight: '700',
-    letterSpacing: 0.5,
+    letterSpacing: -0.2,
   },
   headerActions: {
     alignItems: 'flex-end',
@@ -898,56 +886,51 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: SPACING.sm,
   },
-  actionButton: {
+  // Primary/ghost CTA styles
+  ctaPrimary: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: SPACING.sm,
+    paddingHorizontal: SPACING.lg,
+    borderRadius: 20,
+    gap: SPACING.xs,
+    backgroundColor: COLORS.primary,
+  },
+  ctaPrimaryText: {
+    color: COLORS.background,
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  ctaGhost: {
     flexDirection: 'row',
     alignItems: 'center',
     paddingVertical: SPACING.sm,
     paddingHorizontal: SPACING.md,
     borderRadius: 20,
     gap: SPACING.xs,
-  },
-  startButton: {
-    backgroundColor: COLORS.accent,
-  },
-  stopButton: {
-    backgroundColor: COLORS.accentHover,
-  },
-  turboButton: {
-    backgroundColor: COLORS.turbo,
-    paddingHorizontal: SPACING.sm,
-  },
-  actionButtonText: {
-    color: COLORS.background,
-    fontSize: 14,
-    fontWeight: '700',
-  },
-  turboButtonText: {
-    color: COLORS.background,
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  chipsContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: SPACING.sm,
-    marginBottom: SPACING.md,
-  },
-  chip: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.xs,
-    backgroundColor: COLORS.surface,
-    borderRadius: 16,
-    paddingVertical: SPACING.xs,
-    paddingHorizontal: SPACING.sm,
+    backgroundColor: 'transparent',
     borderWidth: 1,
     borderColor: COLORS.border,
   },
-  chipText: {
+  ctaGhostText: {
     color: COLORS.textSecondary,
     fontSize: 12,
-    fontWeight: '500',
+    fontWeight: '700',
   },
+
+  // Compact meta
+  metaCompact: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'nowrap',
+    gap: SPACING.sm,
+    marginTop: SPACING.sm,
+    marginBottom: SPACING.md,
+  },
+  metaItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  metaDivider: { width: 1, height: 12, backgroundColor: COLORS.border, opacity: 0.7 },
+  metaCompactText: { color: COLORS.textTertiary, fontSize: 13, fontWeight: '500' },
+
   previewDescription: {
     color: COLORS.textSecondary,
     fontSize: 14,
@@ -1055,7 +1038,7 @@ const styles = StyleSheet.create({
     zIndex: 1,
   },
   addFriendButton: {
-    backgroundColor: 'rgba(35, 134, 54, 0.1)',
+    backgroundColor: 'rgba(46, 160, 67, 0.12)',
     borderRadius: 8,
     padding: SPACING.sm,
     borderWidth: 1,
@@ -1085,7 +1068,7 @@ const styles = StyleSheet.create({
   emptyStateButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(35, 134, 54, 0.1)',
+    backgroundColor: 'rgba(46, 160, 67, 0.12)',
     borderRadius: 8,
     paddingVertical: SPACING.sm,
     paddingHorizontal: SPACING.md,
@@ -1164,36 +1147,37 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   editButton: {
-    backgroundColor: 'rgba(35, 134, 54, 0.1)',
+    backgroundColor: 'rgba(46, 160, 67, 0.12)',
     borderColor: COLORS.primary,
   },
   removeButton: {
-    backgroundColor: 'rgba(248, 81, 73, 0.1)',
+    backgroundColor: 'rgba(248, 81, 73, 0.12)',
     borderColor: COLORS.danger,
   },
   meetupCollectionCard: {
-  backgroundColor: COLORS.surface,
-  borderRadius: 8,
-  padding: SPACING.md,
-  borderWidth: 1,
-  borderColor: COLORS.border,
-  width: 140,
-},
-cardPreviewSection: {
-  height: 60,
-  borderRadius: 8,
-  marginBottom: SPACING.sm,
-  overflow: 'hidden',
-  borderWidth: 1,
-  borderColor: COLORS.border,
-  justifyContent: 'center',
-  alignItems: 'center',
-  backgroundColor: '#20262d',
-},
-cardPreviewImageFull: { width: '100%', height: '100%' },
-collectionHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 4 },
-collectionTitle: { color: COLORS.text, marginLeft: 6, fontWeight: '600', fontSize: 13, flex: 1 },
-activityCountText: { color: COLORS.textTertiary, fontSize: 11, fontWeight: '500' },
+    backgroundColor: COLORS.surface,
+    borderRadius: 8,
+    padding: SPACING.md,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    width: 140,
+  },
+  cardPreviewSection: {
+    height: 60,
+    borderRadius: 8,
+    marginBottom: SPACING.sm,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#20262d',
+  },
+  cardPreviewImageFull: { width: '100%', height: '100%' },
+  cardDefaultPreview: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  collectionHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 4 },
+  collectionTitle: { color: COLORS.text, marginLeft: 6, fontWeight: '600', fontSize: 13, flex: 1 },
+  activityCountText: { color: COLORS.textTertiary, fontSize: 11, fontWeight: '500' },
 });
 
 export default MeetupCard;
