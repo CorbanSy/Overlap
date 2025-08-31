@@ -1,4 +1,4 @@
-// placeCategories.ts
+//_utils/placeCategories.ts
 // --------------------------------------------------
 // A single file to define your broader category buckets,
 // each with an ID/key, a display label, an image, a brief

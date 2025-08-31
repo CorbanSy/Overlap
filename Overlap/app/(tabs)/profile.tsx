@@ -1,4 +1,4 @@
-// app/(tabs)/profile.tsx (Fixed SafeArea)
+// app/(tabs)/profile.tsx - Complete integration with collaborative collections
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   SafeAreaView,
@@ -30,16 +30,38 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 // Component imports
 import ProfileListHeader from '../../components/profile_components/ProfileListHeader';
-import NewCollectionModal from '../../components/profile_components/modals/NewCollectionModal';
-import CollectionSelectionModal from '../../components/profile_components/modals/CollectionSelectionModal';
 import SettingsDropdown from '../../components/profile_components/modals/SettingsDropdown';
 import ActivityCard from '../../components/profile_components/ActivityCard';
-import CollectionCard from '../../components/CollectionCard';
+
+// New collaborative components
+import EnhancedNewCollectionModal from '../../components/profile_components/modals/EnhancedNewCollectionModal';
+import CollectionMembersModal from '../../components/profile_components/modals/CollectionMembersModal';
+import CollectionInvitationsModal from '../../components/profile_components/modals/CollectionInvitationsModal';
+import CollaborativeCollectionCard from '../../components/profile_components/CollaborativeCollectionCard';
+import CollectionSelectionModal from '../../components/profile_components/modals/CollectionSelectionModal';
 
 // Utility imports
-import { unlikePlace, deleteCollection } from '../../_utils/storage/likesCollections';
+import { unlikePlace } from '../../_utils/storage/likesCollections';
 import { saveProfileData, getProfileData } from '../../_utils/storage/userProfile';
 import { Colors } from '../../constants/colors';
+
+// Collaborative collections utilities
+import { 
+  createCollaborativeCollection,
+  subscribeToUserCollections,
+  addActivityToCollaborativeCollection,
+  removeActivityFromCollaborativeCollection,
+  deleteCollaborativeCollection,
+  leaveCollection,
+  getPendingCollectionInvitations,
+  COLLECTION_ROLES 
+} from '../../_utils/storage/collaborativeCollections';
+
+// Migration utilities
+import { 
+  migrateUserCollectionsToCollaborative, 
+  checkMigrationStatus 
+} from '../../_utils/storage/collectionsMigration';
 
 // Import shared types
 import { SharedActivity, SharedCollection } from '../../components/profile_components/profileTypes';
@@ -53,23 +75,27 @@ interface ProfilePictureProps {
   onChangeImage: (uri: string) => void;
 }
 
+interface CollaborativeCollection extends SharedCollection {
+  owner: string;
+  userRole: string;
+  members: { [key: string]: any };
+  privacy: string;
+  allowMembersToAdd: boolean;
+  totalActivities: number;
+}
+
 /* =========================
    ProfilePicture Component
    ========================= */
 
 const ProfilePicture: React.FC<ProfilePictureProps> = ({ imageUri, onChangeImage }) => {
-  /**
-   * Handles image selection from device gallery
-   */
   const pickImage = async () => {
-    // Request permissions
     const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permissionResult.granted) {
       Alert.alert('Permission required', 'Permission to access camera roll is required!');
       return;
     }
 
-    // Launch image picker
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
@@ -77,7 +103,6 @@ const ProfilePicture: React.FC<ProfilePictureProps> = ({ imageUri, onChangeImage
       quality: 1,
     });
     
-    // Handle result with updated API
     if (!result.canceled && result.assets && result.assets[0]) {
       onChangeImage(result.assets[0].uri);
     }
@@ -106,9 +131,6 @@ const ProfilePicture: React.FC<ProfilePictureProps> = ({ imageUri, onChangeImage
    Custom Hooks
    ========================= */
 
-/**
- * Hook for managing Firebase authentication state
- */
 const useAuth = () => {
   const [user, setUser] = useState<User | null>(null);
   const auth = getAuth();
@@ -123,9 +145,6 @@ const useAuth = () => {
   return { user, auth };
 };
 
-/**
- * Hook for loading and managing user profile data with real-time updates
- */
 const useProfileData = (user: User | null) => {
   const [profileData, setProfileData] = useState({
     name: '',
@@ -156,12 +175,10 @@ const useProfileData = (user: User | null) => {
     }
   };
 
-  // Initial load when user changes
   useEffect(() => {
     loadProfileData();
   }, [user]);
 
-  // Set up real-time listener for profile changes
   useEffect(() => {
     if (!user) return;
 
@@ -190,7 +207,6 @@ const useProfileData = (user: User | null) => {
     setProfileData(prev => ({ ...prev, ...updates }));
   };
 
-  // Refresh function to manually reload profile data
   const refreshProfile = () => {
     loadProfileData();
   };
@@ -204,16 +220,17 @@ const useProfileData = (user: User | null) => {
 };
 
 /**
- * Hook for managing Firestore data (likes and collections)
+ * Enhanced hook for managing both liked activities and collaborative collections
  */
-const useFirestoreData = (user: User | null) => {
+const useCollaborativeFirestoreData = (user: User | null) => {
   const [likedActivities, setLikedActivities] = useState<SharedActivity[]>([]);
-  const [collections, setCollections] = useState<SharedCollection[]>([]);
+  const [collections, setCollections] = useState<CollaborativeCollection[]>([]);
+  const [pendingInvitations, setPendingInvitations] = useState([]);
   const firestore: Firestore = getFirestore();
   const unsubscribeLikesRef = useRef<(() => void) | null>(null);
   const unsubscribeCollectionsRef = useRef<(() => void) | null>(null);
 
-  // Set up real-time listener for liked activities
+  // Set up real-time listener for liked activities (unchanged)
   useEffect(() => {
     if (!user) return;
     
@@ -247,38 +264,18 @@ const useFirestoreData = (user: User | null) => {
     };
   }, [user, firestore]);
 
-  // Set up real-time listener for collections
+  // Set up real-time listener for collaborative collections
   useEffect(() => {
     if (!user) return;
     
-    const collectionsRef = collection(firestore, `users/${user.uid}/collections`);
-    const unsubscribe = onSnapshot(
-      collectionsRef,
-      (snapshot) => {
-        setCollections(
-          snapshot.docs.map(doc => {
-            const data = doc.data();
-            return {
-              id: doc.id,
-              title: data.title || 'Untitled Collection',
-              description: data.description,
-              activities: (data.activities || []).map((activity: any) => ({
-                id: activity.id,
-                name: activity.name || activity.title || 'Unnamed Activity',
-                title: activity.title,
-                description: activity.description,
-                rating: activity.rating,
-                photos: activity.photos,
-                photoUrls: activity.photoUrls,
-                ...activity
-              })),
-              createdAt: data.createdAt?.toDate?.() || new Date(),
-            } as SharedCollection;
-          })
-        );
-      },
-      (error) => console.error("Collections listener error:", error)
-    );
+    const unsubscribe = subscribeToUserCollections((collaborativeCollections) => {
+      setCollections(collaborativeCollections.map(col => ({
+        ...col,
+        // Ensure compatibility with existing SharedCollection interface
+        title: col.title,
+        activities: col.activities || []
+      } as CollaborativeCollection)));
+    });
     
     unsubscribeCollectionsRef.current = unsubscribe;
     return () => {
@@ -287,9 +284,24 @@ const useFirestoreData = (user: User | null) => {
         unsubscribeCollectionsRef.current = null;
       }
     };
-  }, [user, firestore]);
+  }, [user]);
 
-  // Cleanup function for unmounting
+  // Load pending invitations
+  useEffect(() => {
+    if (!user) return;
+    
+    const loadInvitations = async () => {
+      try {
+        const pending = await getPendingCollectionInvitations();
+        setPendingInvitations(pending);
+      } catch (error) {
+        console.error('Error loading invitations:', error);
+      }
+    };
+
+    loadInvitations();
+  }, [user]);
+
   const cleanup = () => {
     unsubscribeLikesRef.current && unsubscribeLikesRef.current();
     unsubscribeCollectionsRef.current && unsubscribeCollectionsRef.current();
@@ -298,25 +310,21 @@ const useFirestoreData = (user: User | null) => {
   return { 
     likedActivities, 
     collections, 
+    pendingInvitations,
     setCollections, 
     firestore, 
     cleanup 
   };
 };
 
-/**
- * Hook for filtering and sorting data based on search query with relevance scoring
- */
-const useSearchFilter = (data: (SharedActivity | SharedCollection)[], searchQuery: string, activeTab: string) => {
+const useSearchFilter = (data: (SharedActivity | CollaborativeCollection)[], searchQuery: string, activeTab: string) => {
   return useMemo(() => {
     if (!searchQuery.trim()) {
-      // No search query - return original order
       return data;
     }
     
     const query = searchQuery.toLowerCase().trim();
     
-    // Score and filter items based on relevance
     const scoredItems = data
       .map((item) => {
         let score = 0;
@@ -324,11 +332,9 @@ const useSearchFilter = (data: (SharedActivity | SharedCollection)[], searchQuer
         let description = '';
         
         if (activeTab === 'Collections' && 'title' in item) {
-          // Collections
           title = item.title || '';
           description = item.description || '';
         } else {
-          // Activities
           const activity = item as SharedActivity;
           title = activity.title || activity.name || '';
           description = activity.description || '';
@@ -337,30 +343,20 @@ const useSearchFilter = (data: (SharedActivity | SharedCollection)[], searchQuer
         const titleLower = title.toLowerCase();
         const descriptionLower = description.toLowerCase();
         
-        // Scoring algorithm:
-        // 1. Exact title match (highest priority)
         if (titleLower === query) {
           score += 1000;
-        }
-        // 2. Title starts with query
-        else if (titleLower.startsWith(query)) {
+        } else if (titleLower.startsWith(query)) {
           score += 500;
-        }
-        // 3. Title contains query
-        else if (titleLower.includes(query)) {
+        } else if (titleLower.includes(query)) {
           score += 200;
         }
         
-        // 4. Description starts with query
         if (descriptionLower.startsWith(query)) {
           score += 100;
-        }
-        // 5. Description contains query
-        else if (descriptionLower.includes(query)) {
+        } else if (descriptionLower.includes(query)) {
           score += 50;
         }
         
-        // 6. Bonus points for multiple word matches
         const queryWords = query.split(' ').filter(word => word.length > 0);
         if (queryWords.length > 1) {
           queryWords.forEach(word => {
@@ -369,22 +365,17 @@ const useSearchFilter = (data: (SharedActivity | SharedCollection)[], searchQuer
           });
         }
         
-        // 7. Bonus for shorter titles (more specific matches rank higher)
         if (score > 0 && title.length < 50) {
           score += 10;
         }
         
-        return { item, score, title }; // Include title in return for sorting
+        return { item, score, title };
       })
-      .filter(({ score }) => score > 0) // Only include items with matches
+      .filter(({ score }) => score > 0)
       .sort((a, b) => {
-        // Primary sort: by relevance score (descending)
         if (b.score !== a.score) {
           return b.score - a.score;
         }
-        
-        // Secondary sort: by title length (shorter first)
-        // Now we can safely use the title we already extracted
         return a.title.length - b.title.length;
       })
       .map(({ item }) => item);
@@ -400,14 +391,10 @@ const useSearchFilter = (data: (SharedActivity | SharedCollection)[], searchQuer
 function ProfileScreen() {
   const insets = useSafeAreaInsets();
   
-  /* =========================
-     State Management
-     ========================= */
-  
   // UI state
   const [activeTab, setActiveTab] = useState('Liked Activities');
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCollection, setSelectedCollection] = useState<SharedCollection | null>(null);
+  const [selectedCollection, setSelectedCollection] = useState<CollaborativeCollection | null>(null);
   const [selectedActivity, setSelectedActivity] = useState<SharedActivity | null>(null);
   
   // Modal visibility states
@@ -415,56 +402,68 @@ function ProfileScreen() {
   const [isCollectionModalVisible, setIsCollectionModalVisible] = useState(false);
   const [isSettingsMenuVisible, setIsSettingsMenuVisible] = useState(false);
   const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [isCollectionMembersModalVisible, setIsCollectionMembersModalVisible] = useState(false);
+  const [isInvitationsModalVisible, setIsInvitationsModalVisible] = useState(false);
   
-  // Collection creation state
-  const [newCollectionName, setNewCollectionName] = useState('');
-  const [newCollectionDescription, setNewCollectionDescription] = useState('');
+  // Collection management state
+  const [selectedCollectionForMembers, setSelectedCollectionForMembers] = useState<CollaborativeCollection | null>(null);
 
-  /* =========================
-     Hooks and Data
-     ========================= */
-  
   const { user, auth } = useAuth();
   const { name, tagline, profileUri, isLoading: profileLoading, updateProfileData, refreshProfile } = useProfileData(user);
   const { 
     likedActivities, 
     collections, 
+    pendingInvitations,
     setCollections, 
     firestore, 
     cleanup 
-  } = useFirestoreData(user);
+  } = useCollaborativeFirestoreData(user);
   
   const router = useRouter();
 
-  /* =========================
-     Data Processing
-     ========================= */
-  
-  /**
-   * Get the base data for the current tab
-   */
-  const getBaseData = (): (SharedActivity | SharedCollection)[] => {
+  // Migration effect
+  useEffect(() => {
+    const runMigrationIfNeeded = async () => {
+      if (!user) return;
+      
+      try {
+        const migrationStatus = await checkMigrationStatus();
+        
+        if (migrationStatus.needsMigration) {
+          console.log('Running collections migration...');
+          const migratedCount = await migrateUserCollectionsToCollaborative();
+          console.log(`Migrated ${migratedCount} collections`);
+          
+          if (migratedCount > 0) {
+            Alert.alert(
+              'Collections Updated!', 
+              `Your ${migratedCount} collections have been updated with new collaborative features.`
+            );
+          }
+        }
+      } catch (error) {
+        console.error('Migration error:', error);
+      }
+    };
+
+    runMigrationIfNeeded();
+  }, [user]);
+
+  const getBaseData = (): (SharedActivity | CollaborativeCollection)[] => {
     if (activeTab === 'Collections') {
       return selectedCollection ? selectedCollection.activities : collections;
     }
     return likedActivities;
   };
 
-  // Apply search filter to the data
   const filteredData = useSearchFilter(
     getBaseData(), 
     searchQuery, 
     activeTab === 'Collections' && !selectedCollection ? 'Collections' : 'Activities'
   );
 
-  // Check if search is active
   const isSearchActive = searchQuery.trim().length > 0;
 
-  /* =========================
-     Side Effects
-     ========================= */
-  
-  // Clear selected collection when switching away from Collections tab
   useEffect(() => {
     if (activeTab !== 'Collections') {
       setSelectedCollection(null);
@@ -472,107 +471,100 @@ function ProfileScreen() {
   }, [activeTab]);
 
   /* =========================
-     Event Handlers
+     Event Handlers - Updated for Collaborative Collections
      ========================= */
 
-  /**
-   * Handle creating a new collection
-   */
-  const handleAddCollection = async () => {
-    if (!newCollectionName.trim() || !user) return;
+  const handleAddCollaborativeCollection = async (collectionData: {
+    title: string;
+    description: string;
+    privacy: string;
+    allowMembersToAdd: boolean;
+  }) => {
+    if (!user) return;
     
     try {
-      await addDoc(collection(firestore, `users/${user.uid}/collections`), {
-        title: newCollectionName,
-        description: newCollectionDescription,
-        activities: [],
-        createdAt: new Date(),
-      });
-      
-      // Reset form and close modal
-      setNewCollectionName('');
-      setNewCollectionDescription('');
+      await createCollaborativeCollection(collectionData);
       setIsModalVisible(false);
     } catch (error) {
-      console.error('Error adding collection:', error);
+      console.error('Error creating collection:', error);
+      Alert.alert('Error', 'Failed to create collection. Please try again.');
     }
   };
 
-  /**
-   * Handle adding an activity to a collection
-   */
-  const handleAddToCollection = async (collectionId: string) => {
+  const handleAddToCollaborativeCollection = async (collectionId: string) => {
     if (!selectedActivity || !collectionId || !user) return;
     
     try {
-      const collectionRef = doc(firestore, `users/${user.uid}/collections`, collectionId);
-      const collectionItem = collections.find((c) => c.id === collectionId);
-      
-      // Check if activity is already in collection
-      if (!collectionItem?.activities.some((activity) => activity.id === selectedActivity.id)) {
-        const updatedActivities = [...(collectionItem?.activities || []), selectedActivity];
-        await updateDoc(collectionRef, { activities: updatedActivities });
-        
-        // Update local state
-        setCollections(prevCollections =>
-          prevCollections.map(c =>
-            c.id === collectionId ? { ...c, activities: updatedActivities } : c
-          )
-        );
-      }
-      
-      // Close modal and reset selection
+      await addActivityToCollaborativeCollection(collectionId, selectedActivity);
       setIsCollectionModalVisible(false);
       setSelectedActivity(null);
     } catch (error) {
       console.error('Error adding to collection:', error);
+      Alert.alert('Error', error.message || 'Failed to add activity to collection.');
     }
   };
 
-  /**
-   * Handle removing an activity from a collection
-   */
-  const removeFromCollection = async (collectionId: string, activityId: string) => {
+  const removeFromCollaborativeCollection = async (collectionId: string, activityId: string) => {
     if (!user || !selectedCollection) return;
     
     try {
-      const collectionRef = doc(firestore, `users/${user.uid}/collections`, collectionId);
-      const updatedActivities = selectedCollection.activities.filter(act => act.id !== activityId);
-      
-      await updateDoc(collectionRef, { activities: updatedActivities });
-      setSelectedCollection(prev => prev ? { ...prev, activities: updatedActivities } : null);
+      await removeActivityFromCollaborativeCollection(collectionId, activityId);
     } catch (error) {
       console.error("Error removing from collection:", error);
+      Alert.alert('Error', error.message || 'Failed to remove activity from collection.');
     }
   };
 
-  /**
-   * Handle deleting a collection
-   */
-  const handleDeleteCollection = async (collection: SharedCollection) => {
+  const handleDeleteCollaborativeCollection = async (collection: CollaborativeCollection) => {
     if (!user || !collection.id) return;
     
-    try {
-      await deleteCollection(collection.id);
-      
-      // If currently viewing the deleted collection, go back to collections list
-      if (selectedCollection && selectedCollection.id === collection.id) {
-        setSelectedCollection(null);
-      }
-    } catch (error) {
-      console.error('Error deleting collection:', error);
-    }
+    const isOwner = collection.userRole === COLLECTION_ROLES.OWNER;
+    const actionText = isOwner ? 'delete' : 'leave';
+    const actionTitle = isOwner ? 'Delete Collection' : 'Leave Collection';
+    
+    Alert.alert(
+      actionTitle,
+      `Are you sure you want to ${actionText} this collection?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: isOwner ? 'Delete' : 'Leave',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              if (isOwner) {
+                await deleteCollaborativeCollection(collection.id);
+              } else {
+                await leaveCollection(collection.id);
+              }
+              
+              if (selectedCollection && selectedCollection.id === collection.id) {
+                setSelectedCollection(null);
+              }
+            } catch (error) {
+              console.error(`Error ${actionText}ing collection:`, error);
+              Alert.alert('Error', `Failed to ${actionText} collection. Please try again.`);
+            }
+          },
+        },
+      ]
+    );
   };
 
-  /**
-   * Handle settings menu option selection
-   */
+  const handleManageCollectionMembers = (collection: CollaborativeCollection) => {
+    setSelectedCollectionForMembers(collection);
+    setIsCollectionMembersModalVisible(true);
+  };
+
   const handleSettingsOptionPress = async (option: string) => {
     setIsSettingsMenuVisible(false);
     
     switch (option) {
+      case 'Collection Invitations':
+        setIsInvitationsModalVisible(true);
+        break;
       case 'Logout':
-        cleanup(); // Clean up listeners before logout
+        cleanup();
         try {
           await signOut(auth);
           router.replace('/');
@@ -598,9 +590,6 @@ function ProfileScreen() {
     }
   };
 
-  /**
-   * Handle unliking an activity
-   */
   const handleUnlikeActivity = async (id: string) => {
     try {
       await unlikePlace(id);
@@ -609,18 +598,11 @@ function ProfileScreen() {
     }
   };
 
-  /**
-   * Handle opening collection selection modal for an activity
-   */
   const handleAddActivityToCollection = (activity: SharedActivity) => {
     setSelectedActivity(activity);
     setIsCollectionModalVisible(true);
   };
 
-  
-  /**
-   * Handle saving profile edits
-   */
   const handleSaveProfileEdits = async () => {
     try {
       await saveProfileData({
@@ -633,8 +615,6 @@ function ProfileScreen() {
       });
       
       setIsEditingProfile(false);
-      
-      // Force refresh profile data after saving
       refreshProfile();
     } catch (error) {
       console.error("Error saving profile:", error);
@@ -646,9 +626,6 @@ function ProfileScreen() {
      Render Functions
      ========================= */
 
-  /**
-   * Render profile information section
-   */
   const renderProfileInfo = () => {
     const userEmail = user?.email || '@unknown';
     const displayName = name || 'Anonymous';
@@ -673,22 +650,25 @@ function ProfileScreen() {
           </View>
         </View>
         
-        {/* Settings Button */}
         <TouchableOpacity 
           style={profileInfoStyles.settingsButton} 
           onPress={() => setIsSettingsMenuVisible(prev => !prev)}
         >
           <View style={profileInfoStyles.settingsButtonContent}>
             <Ionicons name="ellipsis-vertical" size={20} color={Colors.text} />
+            {pendingInvitations.length > 0 && (
+              <View style={profileInfoStyles.notificationBadge}>
+                <Text style={profileInfoStyles.notificationCount}>
+                  {pendingInvitations.length}
+                </Text>
+              </View>
+            )}
           </View>
         </TouchableOpacity>
       </View>
     );
   };
 
-  /**
-   * Render search results header
-   */
   const renderSearchHeader = () => {
     if (!isSearchActive) return null;
     
@@ -704,16 +684,15 @@ function ProfileScreen() {
     );
   };
 
-  /**
-   * Render individual list items (activities or collections)
-   */
-  const renderItem = ({ item }: { item: SharedActivity | SharedCollection }) => {
+  const renderItem = ({ item }: { item: SharedActivity | CollaborativeCollection }) => {
     if (activeTab === 'Collections' && !selectedCollection) {
       return (
-        <CollectionCard 
-          collection={item as SharedCollection} 
-          onPress={() => setSelectedCollection(item as SharedCollection)}
-          onDelete={handleDeleteCollection}
+        <CollaborativeCollectionCard 
+          collection={item as CollaborativeCollection}
+          onPress={() => setSelectedCollection(item as CollaborativeCollection)}
+          onDelete={handleDeleteCollaborativeCollection}
+          onLeave={handleDeleteCollaborativeCollection}
+          onManageMembers={handleManageCollectionMembers}
         />
       );
     }
@@ -722,27 +701,19 @@ function ProfileScreen() {
       <ActivityCard
         item={item as SharedActivity}
         isInCollection={!!selectedCollection}
-        onRemoveFromCollection={(id: string) => removeFromCollection(selectedCollection?.id!, id)}
+        onRemoveFromCollection={(id: string) => removeFromCollaborativeCollection(selectedCollection?.id!, id)}
         onRemoveFromLiked={handleUnlikeActivity}
         onAddToCollection={handleAddActivityToCollection}
       />
     );
   };
 
-  /**
-   * Get unique key for FlatList re-rendering
-   */
   const getListKey = () => {
     return activeTab === 'Collections' 
       ? (selectedCollection ? 'activities' : 'collections') 
       : 'liked';
   };
 
-  /* =========================
-     Main Render
-     ========================= */
-
-  // Show loading state if user is not authenticated or profile is loading
   if (!user || profileLoading) {
     return (
       <View style={[styles.container, { paddingTop: insets.top }]}>
@@ -766,10 +737,8 @@ function ProfileScreen() {
         renderItem={renderItem}
         ListHeaderComponent={
           <View>
-            {/* Profile Information Section */}
             {renderProfileInfo()}
             
-            {/* Navigation and Controls */}
             <ProfileListHeader
               activeTab={activeTab}
               setActiveTab={setActiveTab}
@@ -780,11 +749,10 @@ function ProfileScreen() {
               searchQuery={searchQuery}
               setSearchQuery={setSearchQuery}
               resultCount={filteredData.length}
-              likedActivities={likedActivities}      // <-- add
-              collections={collections} 
+              likedActivities={likedActivities}
+              collections={collections}
             />
             
-            {/* Search Results Header */}
             {renderSearchHeader()}
           </View>
         }
@@ -806,26 +774,43 @@ function ProfileScreen() {
       {/* Settings Dropdown Menu */}
       <SettingsDropdown 
         visible={isSettingsMenuVisible} 
-        onSelectOption={handleSettingsOptionPress} 
+        onSelectOption={handleSettingsOptionPress}
+        pendingInvitationsCount={pendingInvitations.length}
       />
       
-      {/* New Collection Modal */}
-      <NewCollectionModal
+      {/* Enhanced Collection Creation Modal */}
+      <EnhancedNewCollectionModal
         visible={isModalVisible}
         onClose={() => setIsModalVisible(false)}
-        onAddCollection={handleAddCollection}
-        newCollectionName={newCollectionName}
-        setNewCollectionName={setNewCollectionName}
-        newCollectionDescription={newCollectionDescription}
-        setNewCollectionDescription={setNewCollectionDescription}
+        onCreateCollection={handleAddCollaborativeCollection}
       />
       
       {/* Collection Selection Modal */}
       <CollectionSelectionModal
         visible={isCollectionModalVisible}
         collections={collections}
-        onSelectCollection={handleAddToCollection}
+        onSelectCollection={handleAddToCollaborativeCollection}
         onClose={() => setIsCollectionModalVisible(false)}
+      />
+
+      {/* Collection Members Management Modal */}
+      <CollectionMembersModal
+        visible={isCollectionMembersModalVisible}
+        onClose={() => setIsCollectionMembersModalVisible(false)}
+        collectionId={selectedCollectionForMembers?.id || ''}
+        isOwner={selectedCollectionForMembers?.userRole === COLLECTION_ROLES.OWNER}
+      />
+
+      {/* Collection Invitations Modal */}
+      <CollectionInvitationsModal
+        visible={isInvitationsModalVisible}
+        onClose={() => setIsInvitationsModalVisible(false)}
+        onInvitationHandled={() => {
+          // Refresh invitations list
+          if (user) {
+            getPendingCollectionInvitations().then(setPendingInvitations).catch(console.error);
+          }
+        }}
       />
 
       {/* Profile Edit Modal */}
@@ -987,6 +972,7 @@ const profileInfoStyles = StyleSheet.create({
   },
   settingsButton: {
     padding: 8,
+    position: 'relative',
   },
   settingsButtonContent: {
     width: 36,
@@ -997,6 +983,24 @@ const profileInfoStyles = StyleSheet.create({
     alignItems: 'center',
     borderWidth: 1,
     borderColor: Colors.border,
+  },
+  notificationBadge: {
+    position: 'absolute',
+    top: -2,
+    right: -2,
+    backgroundColor: Colors.primary,
+    borderRadius: 10,
+    minWidth: 20,
+    height: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: Colors.background,
+  },
+  notificationCount: {
+    color: Colors.white,
+    fontSize: 12,
+    fontWeight: '600',
   },
 });
 
