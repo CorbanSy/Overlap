@@ -1,4 +1,4 @@
-// components/TabBar.tsx - FIXED VERSION
+// components/TabBar.tsx - COMPLETE IMPROVED VERSION
 import React, { useRef, useEffect, useState } from 'react';
 import { 
   View, 
@@ -6,49 +6,58 @@ import {
   TouchableOpacity, 
   StyleSheet, 
   Animated,
-  Dimensions 
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
-// Professional color palette matching home.tsx
+// Professional color palette matching your app
 const Colors = {
-  primary: '#F5A623',        // Orange from home.tsx
-  background: '#0D1117',     // Dark background from home.tsx
-  surface: '#1B1F24',        // Card background from home.tsx
-  surfaceLight: '#333333',   // Lighter surface
-  text: '#FFFFFF',          // White text from home.tsx
-  textSecondary: '#AAAAAA', // Gray text from home.tsx
-  textMuted: '#888888',     // Muted text
+  primary: '#F5A623',
+  background: '#0D1117',
+  surface: '#1B1F24',
+  surfaceLight: '#333333',
+  text: '#FFFFFF',
+  textSecondary: '#AAAAAA',
+  textMuted: '#888888',
+  border: '#30363D',
 };
 
 interface TabBarProps {
   activeTab: string;
   onTabPress: (tab: string) => void;
+  likedCount?: number;
+  collectionsCount?: number;
 }
 
-const TabBar: React.FC<TabBarProps> = ({ activeTab, onTabPress }) => {
+const TabBar: React.FC<TabBarProps> = ({ 
+  activeTab, 
+  onTabPress, 
+  likedCount = 0, 
+  collectionsCount = 0 
+}) => {
   const slideAnim = useRef(new Animated.Value(0)).current;
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const [containerWidth, setContainerWidth] = useState(0);
   const [isLayoutReady, setIsLayoutReady] = useState(false);
   
   const tabs = [
-  { 
-    key: 'Liked Activities', 
-    label: 'Liked Activities',
-    icon: 'heart-outline' as const,      // ← Added 'as const'
-    activeIcon: 'heart' as const         // ← Added 'as const'
-  },
-  { 
-    key: 'Collections', 
-    label: 'Collections',
-    icon: 'folder-outline' as const,     // ← Added 'as const'
-    activeIcon: 'folder' as const        // ← Added 'as const'
-  }
-];
+    { 
+      key: 'Liked Activities', 
+      label: 'Liked',
+      icon: 'heart-outline' as const,
+      activeIcon: 'heart' as const,
+      count: likedCount,
+    },
+    { 
+      key: 'Collections', 
+      label: 'Collections',
+      icon: 'folder-outline' as const,
+      activeIcon: 'folder' as const,
+      count: collectionsCount,
+    }
+  ];
 
   // Calculate tab width with proper padding
-  const tabWidth = containerWidth > 0 ? (containerWidth - 8) / tabs.length : 0; // Account for container padding
+  const tabWidth = containerWidth > 0 ? (containerWidth - 8) / tabs.length : 0;
 
   // Animate sliding indicator when active tab changes
   useEffect(() => {
@@ -56,10 +65,10 @@ const TabBar: React.FC<TabBarProps> = ({ activeTab, onTabPress }) => {
       const activeIndex = tabs.findIndex(tab => tab.key === activeTab);
       
       Animated.spring(slideAnim, {
-        toValue: activeIndex * tabWidth + 4, // Add 4px offset for padding
-        tension: 120,
-        friction: 7,
-        useNativeDriver: false, // Layout properties require false
+        toValue: activeIndex * tabWidth + 4,
+        tension: 100,
+        friction: 8,
+        useNativeDriver: false,
       }).start();
     }
   }, [activeTab, tabWidth, isLayoutReady]);
@@ -100,12 +109,6 @@ const TabBar: React.FC<TabBarProps> = ({ activeTab, onTabPress }) => {
     }, 50);
   };
 
-  // Calculate the indicator height dynamically
-  const getIndicatorHeight = () => {
-    // Since container has 4px padding top/bottom, indicator height should be content height
-    return 44; // Approximate height of tab content (12px padding * 2 + text/icon height)
-  };
-
   return (
     <Animated.View 
       style={[
@@ -120,8 +123,8 @@ const TabBar: React.FC<TabBarProps> = ({ activeTab, onTabPress }) => {
           style={[
             styles.slidingIndicator,
             {
-              width: tabWidth - 8, // Slightly smaller than tab for padding
-              height: getIndicatorHeight(), // Use calculated height instead of calc()
+              width: tabWidth - 8,
+              height: 44,
               transform: [{ translateX: slideAnim }],
             },
           ]}
@@ -129,7 +132,7 @@ const TabBar: React.FC<TabBarProps> = ({ activeTab, onTabPress }) => {
       )}
       
       {/* Tab Buttons */}
-      {tabs.map((tab, index) => {
+      {tabs.map((tab) => {
         const isActive = activeTab === tab.key;
         
         return (
@@ -143,7 +146,7 @@ const TabBar: React.FC<TabBarProps> = ({ activeTab, onTabPress }) => {
               {/* Icon */}
               <Ionicons 
                 name={isActive ? tab.activeIcon : tab.icon} 
-                size={20} 
+                size={18} 
                 color={isActive ? Colors.background : Colors.textSecondary}
                 style={styles.tabIcon}
               />
@@ -155,12 +158,22 @@ const TabBar: React.FC<TabBarProps> = ({ activeTab, onTabPress }) => {
               ]}>
                 {tab.label}
               </Text>
+              
+              {/* Count Badge */}
+              {tab.count > 0 && (
+                <View style={[
+                  styles.countBadge,
+                  isActive && styles.activeCountBadge
+                ]}>
+                  <Text style={[
+                    styles.countText,
+                    isActive && styles.activeCountText
+                  ]}>
+                    {tab.count > 99 ? '99+' : tab.count}
+                  </Text>
+                </View>
+              )}
             </View>
-            
-            {/* Optional: Small dot indicator for active state */}
-            {isActive && (
-              <View style={styles.activeDot} />
-            )}
           </TouchableOpacity>
         );
       })}
@@ -181,7 +194,7 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 4,
     borderWidth: 1,
-    borderColor: Colors.surfaceLight,
+    borderColor: Colors.border,
   },
   
   // Sliding background indicator
@@ -220,24 +233,38 @@ const styles = StyleSheet.create({
   // Tab text
   tabText: {
     fontSize: 14,
-    fontWeight: '500',
+    fontWeight: '600',
     color: Colors.textSecondary,
     textAlign: 'center',
   },
   activeTabText: {
-    color: Colors.background, // Dark text on orange background
-    fontWeight: '600',
+    color: Colors.background,
+    fontWeight: '700',
   },
   
-  // Active dot indicator (optional extra visual cue)
-  activeDot: {
-    position: 'absolute',
-    bottom: 2,
-    width: 4,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: Colors.background,
-    opacity: 0.7,
+  // Count badge
+  countBadge: {
+    backgroundColor: Colors.surfaceLight,
+    borderRadius: 10,
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    marginLeft: 6,
+    minWidth: 18,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  activeCountBadge: {
+    backgroundColor: 'rgba(13, 17, 23, 0.3)',
+    borderColor: 'transparent',
+  },
+  countText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: Colors.textMuted,
+  },
+  activeCountText: {
+    color: Colors.background,
   },
 });
 

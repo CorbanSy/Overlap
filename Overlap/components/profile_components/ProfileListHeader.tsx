@@ -2,10 +2,10 @@
 import React from 'react';
 import { View, StyleSheet } from 'react-native';
 import CollectionHeader from './headers/CollectionHeader';
-import TabBar from '../TabBar'; // Direct import of TabBar
+import TabBar from './TabBar'; // Direct import of TabBar
 import SearchSection from './sections/SearchSection';
 import AddCollectionSection from './sections/AddCollectionSection';
-import { SharedCollection } from './profileTypes';
+import { SharedCollection, SharedActivity } from './profileTypes';
 
 interface ProfileListHeaderProps {
   activeTab: string;
@@ -17,6 +17,9 @@ interface ProfileListHeaderProps {
   searchQuery: string;
   setSearchQuery: (query: string) => void;
   resultCount: number;
+  // Add these new props for the counts
+  likedActivities: SharedActivity[];
+  collections: SharedCollection[];
 }
 
 const ProfileListHeader: React.FC<ProfileListHeaderProps> = ({
@@ -29,6 +32,8 @@ const ProfileListHeader: React.FC<ProfileListHeaderProps> = ({
   searchQuery,
   setSearchQuery,
   resultCount,
+  likedActivities,
+  collections,
 }) => {
   return (
     <View style={styles.headerContainer}>
@@ -36,7 +41,9 @@ const ProfileListHeader: React.FC<ProfileListHeaderProps> = ({
       <View style={styles.tabBarContainer}>
         <TabBar 
           activeTab={activeTab} 
-          onTabPress={setActiveTab} 
+          onTabPress={setActiveTab}
+          likedCount={likedActivities.length}
+          collectionsCount={collections.length}
         />
       </View>
       

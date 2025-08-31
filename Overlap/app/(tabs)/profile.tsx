@@ -780,6 +780,8 @@ function ProfileScreen() {
               searchQuery={searchQuery}
               setSearchQuery={setSearchQuery}
               resultCount={filteredData.length}
+              likedActivities={likedActivities}      // <-- add
+              collections={collections} 
             />
             
             {/* Search Results Header */}
