@@ -73,10 +73,10 @@ const ProfileListHeader: React.FC<ProfileListHeaderProps> = ({
 
 const styles = StyleSheet.create({
   headerContainer: {
-    paddingBottom: 16,
+    paddingBottom: 4,
   },
   tabBarContainer: {
-    marginBottom: 16,
+    marginBottom: 4,
   },
 });
 

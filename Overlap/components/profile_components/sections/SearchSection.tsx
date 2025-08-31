@@ -39,7 +39,7 @@ const SearchSection: React.FC<SearchSectionProps> = ({
 
 const styles = StyleSheet.create({
   searchSection: {
-    marginBottom: 8, // Reduced since SearchBar already has margin
+    marginBottom: 1, // Reduced since SearchBar already has margin
   },
 });
 
