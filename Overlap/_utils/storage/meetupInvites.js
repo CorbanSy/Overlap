@@ -32,7 +32,76 @@ export async function getPendingMeetupInvites() {
     where("status", "==", "pending")
   );
   const querySnapshot = await getDocs(invitesQuery);
-  return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  
+  // Fetch full meetup data for each invite
+  const invitesWithMeetupData = await Promise.all(
+    querySnapshot.docs.map(async (inviteDoc) => {
+      const inviteData = inviteDoc.data();
+      
+      try {
+        // Get the full meetup data
+        const meetupRef = doc(db, "meetups", inviteData.meetupId);
+        const meetupSnap = await getDoc(meetupRef);
+        
+        if (meetupSnap.exists()) {
+          const meetupData = meetupSnap.data();
+          
+          // Get creator name
+          let creatorName = 'Unknown Host';
+          if (meetupData.creatorId) {
+            try {
+              const creatorRef = doc(db, 'userDirectory', meetupData.creatorId);
+              const creatorSnap = await getDoc(creatorRef);
+              if (creatorSnap.exists()) {
+                const creatorData = creatorSnap.data();
+                creatorName = creatorData.displayName || creatorData.emailLower || 'Unknown Host';
+              }
+            } catch (error) {
+              console.warn('Failed to fetch creator data:', error);
+            }
+          }
+          
+          // Return combined invite + meetup data
+          return {
+            id: inviteDoc.id,
+            ...inviteData,
+            // Meetup details
+            title: meetupData.eventName,
+            eventName: meetupData.eventName,
+            description: meetupData.description,
+            category: meetupData.category,
+            date: meetupData.date,
+            time: meetupData.time,
+            location: meetupData.location,
+            groupSize: meetupData.groupSize,
+            priceRange: meetupData.priceRange,
+            collections: meetupData.collections,
+            friends: meetupData.friends,
+            code: meetupData.code,
+            creatorName: creatorName,
+          };
+        } else {
+          // Meetup was deleted, return basic invite data
+          return {
+            id: inviteDoc.id,
+            ...inviteData,
+            title: 'Meetup (Deleted)',
+            creatorName: 'Unknown Host',
+          };
+        }
+      } catch (error) {
+        console.error('Error fetching meetup data for invite:', error);
+        return {
+          id: inviteDoc.id,
+          ...inviteData,
+          title: 'Meetup (Error Loading)',
+          creatorName: 'Unknown Host',
+        };
+      }
+    })
+  );
+  
+  return invitesWithMeetupData;
 }
 
 // UNIFIED: Single acceptMeetupInvite function using batches for atomic operations

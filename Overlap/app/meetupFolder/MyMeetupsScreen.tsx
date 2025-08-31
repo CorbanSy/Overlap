@@ -28,6 +28,7 @@ import { useRouter } from 'expo-router';
 import { getAuth } from 'firebase/auth';
 import { getUserCollections } from '../../_utils/storage/likesCollections';
 import CollectionSelectionModal from '../../components/meetup_components/modals/CollectionSelectionModal';
+import { Colors } from '../../constants/colors'; // Import your Colors from constants
 
 type TabKey = 'active' | 'host' | 'participant' | 'all';
 
@@ -63,22 +64,6 @@ interface Props {
   /** Which tab to open on mount; passed by meetupHome stat cards */
   initialTab?: TabKey;
 }
-
-const COLORS = {
-  background: '#0D1117',
-  surface: '#161B22',
-  surfaceElevated: '#21262D',
-  primary: '#238636',
-  primaryHover: '#2EA043',
-  text: '#FFFFFF',
-  textSecondary: '#8B949E',
-  textTertiary: '#6E7681',
-  accent: '#F85149',
-  border: 'rgba(240,246,252,0.1)',
-  success: '#2EA043',
-  warning: '#FB8500',
-  turbo: '#FF6B35',
-} as const;
 
 const SPACING = { xs: 4, sm: 8, md: 12, lg: 16, xl: 20, xxl: 24 } as const;
 
@@ -426,7 +411,7 @@ const MyMeetupsScreen: React.FC<Props> = ({ onBack, initialTab = 'active' }) => 
     return (
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.centerContainer}>
-          <ActivityIndicator size="large" color={COLORS.primary} />
+          <ActivityIndicator size="large" color={Colors.primary} />
           <Text style={styles.loadingText}>Loading your meetups...</Text>
         </View>
       </SafeAreaView>
@@ -437,7 +422,7 @@ const MyMeetupsScreen: React.FC<Props> = ({ onBack, initialTab = 'active' }) => 
     return (
       <SafeAreaView style={styles.safeArea}>
         <View style={styles.centerContainer}>
-          <Ionicons name="alert-circle-outline" size={48} color={COLORS.accent} />
+          <Ionicons name="alert-circle-outline" size={48} color={Colors.error} />
           <Text style={styles.errorText}>{error}</Text>
           <TouchableOpacity style={styles.retryButton} onPress={handleRetry}>
             <Text style={styles.retryButtonText}>Try Again</Text>
@@ -493,7 +478,7 @@ const MyMeetupsScreen: React.FC<Props> = ({ onBack, initialTab = 'active' }) => 
   // --- Empty state for current tab ---
   const EmptyForTab = () => (
     <View style={styles.emptyStateContainer}>
-      <Ionicons name="calendar-outline" size={64} color={COLORS.textTertiary} />
+      <Ionicons name="calendar-outline" size={64} color={Colors.textMuted} />
       <Text style={styles.emptyStateTitle}>
         {searchQuery
           ? 'No matching meetups'
@@ -527,14 +512,14 @@ const MyMeetupsScreen: React.FC<Props> = ({ onBack, initialTab = 'active' }) => 
   // --- Main UI ---
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'bottom']}>
-      <StatusBar barStyle="light-content" backgroundColor={COLORS.background} />
+      <StatusBar barStyle="light-content" backgroundColor={Colors.background} />
 
       <View style={styles.container}>
         {/* Header */}
         <View style={[styles.header, { paddingTop: SPACING.md + insets.top }]}>
           <View style={styles.headerContent}>
             <TouchableOpacity style={styles.backIconButton} onPress={onBack} activeOpacity={0.7}>
-              <Ionicons name="chevron-back" size={24} color={COLORS.text} />
+              <Ionicons name="chevron-back" size={24} color={Colors.text} />
             </TouchableOpacity>
 
             <View style={styles.headerText}>
@@ -550,7 +535,7 @@ const MyMeetupsScreen: React.FC<Props> = ({ onBack, initialTab = 'active' }) => 
             <View style={styles.headerActions}>
               {!showSearchBar && (
                 <TouchableOpacity style={styles.iconButton} onPress={handleSearchPress} activeOpacity={0.7}>
-                  <Ionicons name="search" size={20} color={COLORS.textSecondary} />
+                  <Ionicons name="search" size={20} color={Colors.textSecondary} />
                 </TouchableOpacity>
               )}
               <TouchableOpacity
@@ -559,7 +544,7 @@ const MyMeetupsScreen: React.FC<Props> = ({ onBack, initialTab = 'active' }) => 
                 disabled={refreshing}
                 activeOpacity={0.7}
               >
-                <Ionicons name="refresh" size={20} color={refreshing ? COLORS.textTertiary : COLORS.textSecondary} />
+                <Ionicons name="refresh" size={20} color={refreshing ? Colors.textMuted : Colors.textSecondary} />
               </TouchableOpacity>
             </View>
           </View>
@@ -569,18 +554,18 @@ const MyMeetupsScreen: React.FC<Props> = ({ onBack, initialTab = 'active' }) => 
         {showSearchBar && (
           <View style={styles.searchContainer}>
             <View style={styles.searchInputContainer}>
-              <Ionicons name="search" size={16} color={COLORS.textTertiary} />
+              <Ionicons name="search" size={16} color={Colors.textMuted} />
               <TextInput
                 style={styles.searchInput}
                 placeholder="Search meetups..."
-                placeholderTextColor={COLORS.textTertiary}
+                placeholderTextColor={Colors.textMuted}
                 value={searchQuery}
                 onChangeText={setSearchQuery}
                 autoFocus
               />
               {searchQuery.length > 0 && (
                 <TouchableOpacity onPress={handleClearSearch} activeOpacity={0.7}>
-                  <Ionicons name="close-circle" size={16} color={COLORS.textTertiary} />
+                  <Ionicons name="close-circle" size={16} color={Colors.textMuted} />
                 </TouchableOpacity>
               )}
             </View>
@@ -661,8 +646,8 @@ const MyMeetupsScreen: React.FC<Props> = ({ onBack, initialTab = 'active' }) => 
             <RefreshControl
               refreshing={refreshing}
               onRefresh={onRefresh}
-              colors={[COLORS.primary]}
-              tintColor={COLORS.primary}
+              colors={[Colors.primary]}
+              tintColor={Colors.primary}
             />
           }
           showsVerticalScrollIndicator={false}
@@ -699,7 +684,7 @@ const MyMeetupsScreen: React.FC<Props> = ({ onBack, initialTab = 'active' }) => 
 };
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: COLORS.background },
+  safeArea: { flex: 1, backgroundColor: Colors.background },
   container: { flex: 1 },
   centerContainer: {
     flex: 1,
@@ -710,39 +695,39 @@ const styles = StyleSheet.create({
   },
 
   header: {
-    backgroundColor: COLORS.background,
+    backgroundColor: Colors.background,
     paddingHorizontal: SPACING.lg,
     paddingTop: SPACING.md,
     paddingBottom: SPACING.lg,
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
+    borderBottomColor: Colors.border,
   },
   headerContent: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   backIconButton: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: COLORS.surface,
+    backgroundColor: Colors.surface,
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: Colors.border,
   },
   headerText: { flex: 1, alignItems: 'center', paddingHorizontal: SPACING.lg },
-  title: { fontSize: 24, fontWeight: '700', color: COLORS.text, marginBottom: 2, letterSpacing: -0.3 },
-  subtitle: { fontSize: 14, color: COLORS.textSecondary, textAlign: 'center' },
-  liveIndicator: { color: COLORS.success, fontWeight: '600' },
+  title: { fontSize: 24, fontWeight: '700', color: Colors.text, marginBottom: 2, letterSpacing: -0.3 },
+  subtitle: { fontSize: 14, color: Colors.textSecondary, textAlign: 'center' },
+  liveIndicator: { color: Colors.success, fontWeight: '600' },
 
   headerActions: { flexDirection: 'row', gap: SPACING.sm },
   iconButton: {
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: COLORS.surface,
+    backgroundColor: Colors.surface,
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: Colors.border,
   },
 
   searchContainer: {
@@ -751,24 +736,24 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.md,
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
+    borderBottomColor: Colors.border,
     gap: SPACING.sm,
   },
   searchInputContainer: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: COLORS.surface,
+    backgroundColor: Colors.surface,
     borderRadius: 12,
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.sm,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: Colors.border,
     gap: SPACING.sm,
   },
-  searchInput: { flex: 1, color: COLORS.text, fontSize: 16, fontWeight: '400' },
+  searchInput: { flex: 1, color: Colors.text, fontSize: 16, fontWeight: '400' },
   cancelButton: { paddingVertical: SPACING.sm, paddingHorizontal: SPACING.md },
-  cancelButtonText: { color: COLORS.primary, fontSize: 16, fontWeight: '500' },
+  cancelButtonText: { color: Colors.primary, fontSize: 16, fontWeight: '500' },
 
   // Tabs (variable width, fill across the row)
   tabsContainer: {
@@ -778,9 +763,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.lg,
     paddingTop: SPACING.md,
     paddingBottom: SPACING.sm,
-    backgroundColor: COLORS.background,
+    backgroundColor: Colors.background,
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
+    borderBottomColor: Colors.border,
     flexWrap: 'nowrap',
   },
   tabPill: {
@@ -792,38 +777,38 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.sm,
     borderRadius: 999,
-    backgroundColor: COLORS.surface,
+    backgroundColor: Colors.surface,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: Colors.border,
   },
   tabPillSelected: {
-    backgroundColor: COLORS.primary,
+    backgroundColor: Colors.primary,
     borderColor: 'transparent',
   },
-  tabText: { color: COLORS.textSecondary, fontWeight: '600' },
-  tabTextSelected: { color: COLORS.background },
+  tabText: { color: Colors.textSecondary, fontWeight: '600' },
+  tabTextSelected: { color: Colors.background },
   tabBadge: {
     minWidth: 22,
     height: 22,
     borderRadius: 11,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: COLORS.surfaceElevated,
+    backgroundColor: Colors.surfaceLight,
     paddingHorizontal: 6,
     marginLeft: 6,
   },
   tabBadgeSelected: { backgroundColor: 'rgba(0,0,0,0.2)' },
-  tabBadgeText: { color: COLORS.textTertiary, fontSize: 12, fontWeight: '700' },
-  tabBadgeTextSelected: { color: COLORS.background },
+  tabBadgeText: { color: Colors.textMuted, fontSize: 12, fontWeight: '700' },
+  tabBadgeTextSelected: { color: Colors.background },
 
   searchResultsInfo: {
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.sm,
-    backgroundColor: COLORS.surfaceElevated,
+    backgroundColor: Colors.surfaceLight,
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
+    borderBottomColor: Colors.border,
   },
-  searchResultsText: { fontSize: 14, color: COLORS.textSecondary, fontStyle: 'italic' },
+  searchResultsText: { fontSize: 14, color: Colors.textSecondary, fontStyle: 'italic' },
 
   emptyStateContainer: {
     flex: 1,
@@ -833,40 +818,40 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.xl,
     gap: SPACING.lg,
   },
-  emptyStateTitle: { fontSize: 20, fontWeight: '600', color: COLORS.textSecondary, textAlign: 'center' },
-  emptyStateSubtitle: { fontSize: 14, color: COLORS.textTertiary, textAlign: 'center', lineHeight: 20 },
+  emptyStateTitle: { fontSize: 20, fontWeight: '600', color: Colors.textSecondary, textAlign: 'center' },
+  emptyStateSubtitle: { fontSize: 14, color: Colors.textMuted, textAlign: 'center', lineHeight: 20 },
   clearSearchButton: {
-    backgroundColor: COLORS.surface,
+    backgroundColor: Colors.surface,
     borderRadius: 8,
     paddingVertical: SPACING.sm,
     paddingHorizontal: SPACING.md,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: Colors.border,
   },
-  clearSearchText: { color: COLORS.primary, fontSize: 14, fontWeight: '500' },
+  clearSearchText: { color: Colors.primary, fontSize: 14, fontWeight: '500' },
 
   backButton: {
-    backgroundColor: COLORS.surface,
+    backgroundColor: Colors.surface,
     borderRadius: 12,
     paddingVertical: SPACING.md,
     paddingHorizontal: SPACING.xl,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: Colors.border,
     minWidth: 160,
     alignItems: 'center',
   },
-  backButtonText: { fontSize: 16, fontWeight: '500', color: COLORS.text },
+  backButtonText: { fontSize: 16, fontWeight: '500', color: Colors.text },
   retryButton: {
-    backgroundColor: COLORS.primary,
+    backgroundColor: Colors.primary,
     borderRadius: 12,
     paddingVertical: SPACING.md,
     paddingHorizontal: SPACING.xl,
     minWidth: 160,
     alignItems: 'center',
   },
-  retryButtonText: { fontSize: 16, fontWeight: '600', color: COLORS.text },
-  loadingText: { fontSize: 16, color: COLORS.textSecondary },
-  errorText: { fontSize: 16, color: COLORS.accent, textAlign: 'center', lineHeight: 22 },
+  retryButtonText: { fontSize: 16, fontWeight: '600', color: Colors.text },
+  loadingText: { fontSize: 16, color: Colors.textSecondary },
+  errorText: { fontSize: 16, color: Colors.error, textAlign: 'center', lineHeight: 22 },
 });
 
 export default MyMeetupsScreen;

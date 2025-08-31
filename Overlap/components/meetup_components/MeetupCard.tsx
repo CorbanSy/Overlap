@@ -15,9 +15,8 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { getAuth, onAuthStateChanged, User } from 'firebase/auth';
+import { Colors } from '../../constants/colors'; // Import your Colors from constants
 
-// ───────────────────────────────────────────────────────────────────────────────
-// Types
 // ───────────────────────────────────────────────────────────────────────────────
 interface Friend {
   uid: string;
@@ -75,26 +74,8 @@ interface MeetupCardProps {
 }
 
 // ───────────────────────────────────────────────────────────────────────────────
-// UI constants - Cleaner color palette
+// UI constants
 // ───────────────────────────────────────────────────────────────────────────────
-const COLORS = {
-  background: '#0F0F0F',
-  card: '#1A1A1A',
-  surface: '#262626',
-  surfaceHover: '#2D2D2D',
-  primary: '#00D9FF',
-  primaryHover: '#00B8D4',
-  accent: '#FFB800',
-  danger: '#FF453A',
-  success: '#32D74B',
-  text: '#FFFFFF',
-  textSecondary: '#A1A1A6',
-  textTertiary: '#6D6D70',
-  border: 'rgba(255,255,255,0.08)',
-  divider: 'rgba(255,255,255,0.05)',
-  overlay: 'rgba(0,0,0,0.6)',
-} as const;
-
 const SPACING = {
   xs: 4,
   sm: 8,
@@ -462,7 +443,7 @@ const MeetupCard: React.FC<MeetupCardProps> = ({
                 <Image source={{ uri: preview }} style={styles.collectionPreviewImage} />
               ) : (
                 <View style={styles.collectionPreviewPlaceholder}>
-                  <Ionicons name="folder-outline" size={20} color={COLORS.accent} />
+                  <Ionicons name="folder-outline" size={20} color={Colors.primary} />
                 </View>
               )}
             </View>
@@ -483,7 +464,7 @@ const MeetupCard: React.FC<MeetupCardProps> = ({
               accessibilityLabel={`Remove collection ${label}`}
               accessibilityRole="button"
             >
-              <Ionicons name="close" size={12} color={COLORS.danger} />
+              <Ionicons name="close" size={12} color={Colors.error} />
             </TouchableOpacity>
           )}
         </View>
@@ -507,7 +488,7 @@ const MeetupCard: React.FC<MeetupCardProps> = ({
               accessibilityLabel={`Remove ${friend.name || friend.email || 'friend'}`}
               accessibilityRole="button"
             >
-              <Ionicons name="close" size={12} color={COLORS.danger} />
+              <Ionicons name="close" size={12} color={Colors.error} />
             </TouchableOpacity>
           )}
 
@@ -560,19 +541,19 @@ const MeetupCard: React.FC<MeetupCardProps> = ({
           <View style={styles.badgeRow}>
             {meetup.date && (
               <View style={styles.badge}>
-                <Ionicons name="calendar-outline" size={12} color={COLORS.primary} />
+                <Ionicons name="calendar-outline" size={12} color={Colors.primary} />
                 <Text style={styles.badgeText}>{formatDate(meetup.date)}</Text>
               </View>
             )}
             {meetup.time && (
               <View style={styles.badge}>
-                <Ionicons name="time-outline" size={12} color={COLORS.primary} />
+                <Ionicons name="time-outline" size={12} color={Colors.primary} />
                 <Text style={styles.badgeText}>{formatTime(meetup.time)}</Text>
               </View>
             )}
             {meetup.location && (
               <View style={[styles.badge, { maxWidth: 120 }]}>
-                <Ionicons name="location-outline" size={12} color={COLORS.primary} />
+                <Ionicons name="location-outline" size={12} color={Colors.primary} />
                 <Text numberOfLines={1} style={styles.badgeText}>{meetup.location}</Text>
               </View>
             )}
@@ -591,7 +572,7 @@ const MeetupCard: React.FC<MeetupCardProps> = ({
                 <Ionicons 
                   name={meetup.ongoing ? 'stop' : 'play'} 
                   size={16} 
-                  color={COLORS.background} 
+                  color={Colors.background} 
                 />
                 <Text style={styles.primaryButtonText}>
                   {meetup.ongoing ? 'Stop' : 'Start'}
@@ -604,7 +585,7 @@ const MeetupCard: React.FC<MeetupCardProps> = ({
                   onPress={handleTurboMode}
                   activeOpacity={0.8}
                 >
-                  <Ionicons name="flash" size={14} color={COLORS.accent} />
+                  <Ionicons name="flash" size={14} color={Colors.primary} />
                   <Text style={styles.turboButtonText}>Turbo</Text>
                 </TouchableOpacity>
               )}
@@ -617,7 +598,7 @@ const MeetupCard: React.FC<MeetupCardProps> = ({
                 <Ionicons 
                   name={expanded ? 'chevron-up' : 'chevron-down'} 
                   size={18} 
-                  color={COLORS.textSecondary} 
+                  color={Colors.textSecondary} 
                 />
               </TouchableOpacity>
             </View>
@@ -629,7 +610,7 @@ const MeetupCard: React.FC<MeetupCardProps> = ({
                   onPress={handleJoin}
                   activeOpacity={0.8}
                 >
-                  <Ionicons name="enter-outline" size={16} color={COLORS.background} />
+                  <Ionicons name="enter-outline" size={16} color={Colors.background} />
                   <Text style={styles.joinButtonText}>Join Live</Text>
                 </TouchableOpacity>
               )}
@@ -642,7 +623,7 @@ const MeetupCard: React.FC<MeetupCardProps> = ({
                 <Ionicons 
                   name={expanded ? 'chevron-up' : 'chevron-down'} 
                   size={18} 
-                  color={COLORS.textSecondary} 
+                  color={Colors.textSecondary} 
                 />
               </TouchableOpacity>
             </View>
@@ -653,15 +634,15 @@ const MeetupCard: React.FC<MeetupCardProps> = ({
       {/* Quick stats */}
       <View style={styles.statsRow}>
         <View style={styles.stat}>
-          <Ionicons name="people-outline" size={14} color={COLORS.textTertiary} />
+          <Ionicons name="people-outline" size={14} color={Colors.textMuted} />
           <Text style={styles.statText}>{participantCount}</Text>
         </View>
         <View style={styles.stat}>
-          <Ionicons name="folder-outline" size={14} color={COLORS.textTertiary} />
+          <Ionicons name="folder-outline" size={14} color={Colors.textMuted} />
           <Text style={styles.statText}>{collections.length}</Text>
         </View>
         <View style={styles.stat}>
-          <Ionicons name="person-outline" size={14} color={COLORS.textTertiary} />
+          <Ionicons name="person-outline" size={14} color={Colors.textMuted} />
           <Text style={styles.statText}>{filteredFriends.length}</Text>
         </View>
         <View style={styles.stat}>
@@ -700,7 +681,7 @@ const MeetupCard: React.FC<MeetupCardProps> = ({
                     onPress={handleAddCollection}
                     activeOpacity={0.7}
                   >
-                    <Ionicons name="add" size={16} color={COLORS.primary} />
+                    <Ionicons name="add" size={16} color={Colors.primary} />
                   </TouchableOpacity>
                 )}
               </View>
@@ -748,7 +729,7 @@ const MeetupCard: React.FC<MeetupCardProps> = ({
                     onPress={handleAddFriend}
                     activeOpacity={0.7}
                   >
-                    <Ionicons name="add" size={16} color={COLORS.primary} />
+                    <Ionicons name="add" size={16} color={Colors.primary} />
                   </TouchableOpacity>
                 )}
               </View>
@@ -819,7 +800,7 @@ const MeetupCard: React.FC<MeetupCardProps> = ({
                   onPress={onEdit}
                   activeOpacity={0.7}
                 >
-                  <Ionicons name="pencil-outline" size={16} color={COLORS.primary} />
+                  <Ionicons name="pencil-outline" size={16} color={Colors.primary} />
                   <Text style={styles.editButtonText}>Edit</Text>
                 </TouchableOpacity>
               )}
@@ -829,7 +810,7 @@ const MeetupCard: React.FC<MeetupCardProps> = ({
                   onPress={handleRemove}
                   activeOpacity={0.7}
                 >
-                  <Ionicons name="trash-outline" size={16} color={COLORS.danger} />
+                  <Ionicons name="trash-outline" size={16} color={Colors.error} />
                   <Text style={styles.deleteButtonText}>Remove</Text>
                 </TouchableOpacity>
               )}
@@ -846,14 +827,14 @@ const MeetupCard: React.FC<MeetupCardProps> = ({
 // ───────────────────────────────────────────────────────────────────────────────
 const styles = StyleSheet.create({
   cardContainer: {
-    backgroundColor: COLORS.card,
+    backgroundColor: Colors.surface,
     borderRadius: 20,
     padding: SPACING.xl,
     marginBottom: SPACING.lg,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: Colors.border,
     position: 'relative',
-    shadowColor: COLORS.background,
+    shadowColor: Colors.background,
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.1,
     shadowRadius: 24,
@@ -867,7 +848,7 @@ const styles = StyleSheet.create({
   },
 
   errorText: {
-    color: COLORS.danger,
+    color: Colors.error,
     fontSize: 14,
     fontWeight: '500',
   },
@@ -878,7 +859,7 @@ const styles = StyleSheet.create({
     left: SPACING.lg,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: COLORS.success,
+    backgroundColor: Colors.success,
     paddingHorizontal: SPACING.sm,
     paddingVertical: 4,
     borderRadius: 12,
@@ -897,11 +878,11 @@ const styles = StyleSheet.create({
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: COLORS.background,
+    backgroundColor: Colors.background,
   },
 
   liveText: {
-    color: COLORS.background,
+    color: Colors.background,
     fontSize: 10,
     fontWeight: '700',
     letterSpacing: 0.5,
@@ -920,7 +901,7 @@ const styles = StyleSheet.create({
   },
 
   title: {
-    color: COLORS.text,
+    color: Colors.text,
     fontSize: 22,
     fontWeight: '700',
     lineHeight: 28,
@@ -936,17 +917,17 @@ const styles = StyleSheet.create({
   badge: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: COLORS.surface,
+    backgroundColor: Colors.surfaceLight,
     paddingHorizontal: SPACING.sm,
     paddingVertical: 4,
     borderRadius: 8,
     gap: 4,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: Colors.border,
   },
 
   badgeText: {
-    color: COLORS.textSecondary,
+    color: Colors.textSecondary,
     fontSize: 12,
     fontWeight: '500',
   },
@@ -970,7 +951,7 @@ const styles = StyleSheet.create({
   primaryButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: COLORS.primary,
+    backgroundColor: Colors.primary,
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.sm,
     borderRadius: 16,
@@ -978,11 +959,11 @@ const styles = StyleSheet.create({
   },
 
   primaryButtonStop: {
-    backgroundColor: COLORS.danger,
+    backgroundColor: Colors.error,
   },
 
   primaryButtonText: {
-    color: COLORS.background,
+    color: Colors.background,
     fontSize: 14,
     fontWeight: '700',
   },
@@ -990,7 +971,7 @@ const styles = StyleSheet.create({
   joinButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: COLORS.success,
+    backgroundColor: Colors.success,
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.sm,
     borderRadius: 16,
@@ -998,7 +979,7 @@ const styles = StyleSheet.create({
   },
 
   joinButtonText: {
-    color: COLORS.background,
+    color: Colors.background,
     fontSize: 14,
     fontWeight: '700',
   },
@@ -1006,9 +987,9 @@ const styles = StyleSheet.create({
   turboButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(255, 184, 0, 0.1)',
+    backgroundColor: Colors.surfaceLight,
     borderWidth: 1,
-    borderColor: COLORS.accent,
+    borderColor: Colors.primary,
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.sm,
     borderRadius: 16,
@@ -1016,17 +997,17 @@ const styles = StyleSheet.create({
   },
 
   turboButtonText: {
-    color: COLORS.accent,
+    color: Colors.primary,
     fontSize: 12,
     fontWeight: '700',
   },
 
   expandButton: {
-    backgroundColor: COLORS.surface,
+    backgroundColor: Colors.surfaceLight,
     borderRadius: 12,
     padding: SPACING.sm,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: Colors.border,
   },
 
   statsRow: {
@@ -1044,19 +1025,19 @@ const styles = StyleSheet.create({
   },
 
   statText: {
-    color: COLORS.textTertiary,
+    color: Colors.textMuted,
     fontSize: 13,
     fontWeight: '500',
   },
 
   priceText: {
-    color: COLORS.accent,
+    color: Colors.primary,
     fontSize: 13,
     fontWeight: '700',
   },
 
   previewDescription: {
-    color: COLORS.textSecondary,
+    color: Colors.textSecondary,
     fontSize: 15,
     lineHeight: 22,
     marginBottom: SPACING.sm,
@@ -1083,36 +1064,36 @@ const styles = StyleSheet.create({
   },
 
   sectionTitle: {
-    color: COLORS.text,
+    color: Colors.text,
     fontSize: 18,
     fontWeight: '600',
   },
 
   countBadge: {
-    backgroundColor: COLORS.surface,
+    backgroundColor: Colors.surfaceLight,
     borderRadius: 10,
     paddingHorizontal: SPACING.sm,
     paddingVertical: 2,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: Colors.border,
   },
 
   countBadgeText: {
-    color: COLORS.textSecondary,
+    color: Colors.textSecondary,
     fontSize: 12,
     fontWeight: '600',
   },
 
   addButton: {
-    backgroundColor: 'rgba(0, 217, 255, 0.1)',
+    backgroundColor: Colors.surfaceLight,
     borderWidth: 1,
-    borderColor: COLORS.primary,
+    borderColor: Colors.primary,
     borderRadius: 10,
     padding: SPACING.sm,
   },
 
   description: {
-    color: COLORS.textSecondary,
+    color: Colors.textSecondary,
     fontSize: 15,
     lineHeight: 22,
   },
@@ -1130,24 +1111,24 @@ const styles = StyleSheet.create({
     position: 'absolute',
     top: 6,
     right: 6,
-    backgroundColor: COLORS.card,
+    backgroundColor: Colors.surface,
     borderRadius: 12,
     width: 24,
     height: 24,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: COLORS.danger,
+    borderColor: Colors.error,
     zIndex: 1,
   },
 
   collectionCard: {
-    backgroundColor: COLORS.surface,
+    backgroundColor: Colors.surfaceLight,
     borderRadius: 16,
     padding: SPACING.md,
     width: 140,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: Colors.border,
   },
 
   collectionPreview: {
@@ -1155,7 +1136,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     marginBottom: SPACING.sm,
     overflow: 'hidden',
-    backgroundColor: COLORS.card,
+    backgroundColor: Colors.surface,
   },
 
   collectionPreviewImage: {
@@ -1174,13 +1155,13 @@ const styles = StyleSheet.create({
   },
 
   collectionTitle: {
-    color: COLORS.text,
+    color: Colors.text,
     fontSize: 14,
     fontWeight: '600',
   },
 
   collectionCount: {
-    color: COLORS.textTertiary,
+    color: Colors.textMuted,
     fontSize: 12,
     fontWeight: '500',
   },
@@ -1194,13 +1175,13 @@ const styles = StyleSheet.create({
   friendCard: {
     width: 90,
     height: 100,
-    backgroundColor: COLORS.surface,
+    backgroundColor: Colors.surfaceLight,
     borderRadius: 16,
     padding: SPACING.sm,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: Colors.border,
     position: 'relative',
   },
 
@@ -1212,7 +1193,7 @@ const styles = StyleSheet.create({
   },
 
   friendName: {
-    color: COLORS.text,
+    color: Colors.text,
     fontSize: 11,
     textAlign: 'center',
     lineHeight: 14,
@@ -1220,7 +1201,7 @@ const styles = StyleSheet.create({
   },
 
   emptyText: {
-    color: COLORS.textTertiary,
+    color: Colors.textMuted,
     fontSize: 14,
     fontStyle: 'italic',
     textAlign: 'center',
@@ -1229,17 +1210,17 @@ const styles = StyleSheet.create({
 
   toggleButton: {
     alignSelf: 'center',
-    backgroundColor: COLORS.surface,
+    backgroundColor: Colors.surfaceLight,
     borderRadius: 12,
     paddingVertical: SPACING.sm,
     paddingHorizontal: SPACING.md,
     marginTop: SPACING.sm,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: Colors.border,
   },
 
   toggleButtonText: {
-    color: COLORS.primary,
+    color: Colors.primary,
     fontSize: 13,
     fontWeight: '600',
   },
@@ -1254,17 +1235,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: SPACING.sm,
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.divider,
+    borderBottomColor: Colors.border,
   },
 
   detailLabel: {
-    color: COLORS.textTertiary,
+    color: Colors.textMuted,
     fontSize: 13,
     fontWeight: '500',
   },
 
   detailValue: {
-    color: COLORS.text,
+    color: Colors.text,
     fontSize: 13,
     fontWeight: '600',
     textAlign: 'right',
@@ -1278,15 +1259,15 @@ const styles = StyleSheet.create({
     gap: SPACING.md,
     paddingTop: SPACING.md,
     borderTopWidth: 1,
-    borderTopColor: COLORS.divider,
+    borderTopColor: Colors.border,
   },
 
   editButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(0, 217, 255, 0.1)',
+    backgroundColor: Colors.surfaceLight,
     borderWidth: 1,
-    borderColor: COLORS.primary,
+    borderColor: Colors.primary,
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.sm,
     borderRadius: 12,
@@ -1294,7 +1275,7 @@ const styles = StyleSheet.create({
   },
 
   editButtonText: {
-    color: COLORS.primary,
+    color: Colors.primary,
     fontSize: 14,
     fontWeight: '600',
   },
@@ -1302,9 +1283,9 @@ const styles = StyleSheet.create({
   deleteButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(255, 69, 58, 0.1)',
+    backgroundColor: Colors.surfaceLight,
     borderWidth: 1,
-    borderColor: COLORS.danger,
+    borderColor: Colors.error,
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.sm,
     borderRadius: 12,
@@ -1312,10 +1293,10 @@ const styles = StyleSheet.create({
   },
 
   deleteButtonText: {
-    color: COLORS.danger,
+    color: Colors.error,
     fontSize: 14,
     fontWeight: '600',
   },
 });
 
-export default MeetupCard;
+export default MeetupCard; 
