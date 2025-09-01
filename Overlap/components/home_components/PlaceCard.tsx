@@ -42,6 +42,89 @@ interface PlaceCardProps {
   imageHeight?: number;
 }
 
+// Enhanced function to check if place is currently open
+const checkIfPlaceIsOpen = (place: Place): { isOpen: boolean; status: string; nextChange?: string } => {
+  if (!place.openingHours?.length) {
+    return { isOpen: true, status: 'Hours Unknown' };
+  }
+
+  const now = new Date();
+  const currentDay = now.getDay();
+  const currentHour = now.getHours();
+  const currentMinute = now.getMinutes();
+  const currentTime = currentHour * 60 + currentMinute;
+
+  const todayHours = place.openingHours[currentDay];
+  
+  if (!todayHours || todayHours.toLowerCase().includes('closed')) {
+    return { isOpen: false, status: 'Closed' };
+  }
+
+  // Parse hours like "9:00 AM – 9:00 PM"
+  const timeMatch = todayHours.match(/(\d{1,2}):(\d{2})\s*(AM|PM).*?(\d{1,2}):(\d{2})\s*(AM|PM)/i);
+  
+  if (!timeMatch) {
+    return { isOpen: true, status: 'Open' };
+  }
+
+  const [, openHour, openMin, openPeriod, closeHour, closeMin, closePeriod] = timeMatch;
+  
+  // Convert to 24-hour format
+  let openTime = parseInt(openHour) * 60 + parseInt(openMin);
+  let closeTime = parseInt(closeHour) * 60 + parseInt(closeMin);
+  
+  if (openPeriod.toLowerCase() === 'pm' && parseInt(openHour) !== 12) {
+    openTime += 12 * 60;
+  }
+  if (closePeriod.toLowerCase() === 'pm' && parseInt(closeHour) !== 12) {
+    closeTime += 12 * 60;
+  }
+  if (openPeriod.toLowerCase() === 'am' && parseInt(openHour) === 12) {
+    openTime -= 12 * 60;
+  }
+  if (closePeriod.toLowerCase() === 'am' && parseInt(closeHour) === 12) {
+    closeTime -= 12 * 60;
+  }
+
+  const isOpen = currentTime >= openTime && currentTime < closeTime;
+  const minutesToClose = closeTime - currentTime;
+
+  if (isOpen) {
+    if (minutesToClose <= 30) {
+      return { 
+        isOpen: true, 
+        status: 'Closing Soon',
+        nextChange: `Closes at ${closeHour}:${closeMin} ${closePeriod}`
+      };
+    }
+    return { 
+      isOpen: true, 
+      status: 'Open',
+      nextChange: `Closes at ${closeHour}:${closeMin} ${closePeriod}`
+    };
+  } else {
+    return { 
+      isOpen: false, 
+      status: 'Closed',
+      nextChange: `Opens at ${openHour}:${openMin} ${openPeriod}`
+    };
+  }
+};
+
+const formatHoursForDisplay = (
+  hours: string[],
+  status: string
+): string => {
+  if (!hours.length) return `${status}: Hours not available`;
+
+  const today = new Date().getDay();
+  const todayHours = hours[today];
+
+  if (!todayHours) return `${status}: Hours not available`;
+
+  return `${status}: ${todayHours}`;
+};
+
 export default function PlaceCard({ 
   place, 
   userLocation, 
@@ -81,16 +164,14 @@ export default function PlaceCard({
     return '$'.repeat(place.priceLevel);
   }, [place.priceLevel]);
 
-  const isOpenNow = useMemo(() => {
-    if (!place.openingHours) return null;
-    
-    const now = new Date();
-    const currentDay = now.getDay();
-    const todayHours = place.openingHours[currentDay];
-    
-    if (!todayHours || todayHours.includes('Closed')) return false;
-    return true; // Simplified - could implement actual time checking
-  }, [place.openingHours]);
+  // Updated to use enhanced open status check
+  const openStatus = useMemo(() => {
+    return checkIfPlaceIsOpen(place);
+  }, [place]);
+
+  const displayHours = useMemo(() => {
+    return formatHoursForDisplay(place.openingHours || [], openStatus.status);
+  }, [place.openingHours, openStatus.status]);
 
   const displayTypes = useMemo(() => {
     if (!showTypes || !place.types?.length) return null;
@@ -120,6 +201,14 @@ export default function PlaceCard({
     event.stopPropagation();
     onSavePress(place);
   }, [onSavePress, place]);
+
+  // Helper function to get status color
+  const getStatusColor = () => {
+    if (openStatus.status === 'Open') return '#4CAF50';
+    if (openStatus.status === 'Closing Soon') return '#FF9800';
+    if (openStatus.status === 'Closed') return '#FF5722';
+    return '#9E9E9E';
+  };
 
   // Render functions
   const renderImages = () => {
@@ -205,19 +294,6 @@ export default function PlaceCard({
     </View>
   );
 
-  const renderStatusBadge = () => {
-    if (isOpenNow === null) return null;
-    
-    return (
-      <View style={[styles.statusBadge, isOpenNow ? styles.openBadge : styles.closedBadge]}>
-        <View style={[styles.statusDot, isOpenNow ? styles.openDot : styles.closedDot]} />
-        <Text style={styles.statusText}>
-          {isOpenNow ? 'Open' : 'Closed'}
-        </Text>
-      </View>
-    );
-  };
-
   const renderRatingStars = () => {
     const stars = [];
     const fullStars = Math.floor(place.rating);
@@ -246,6 +322,22 @@ export default function PlaceCard({
     );
   };
 
+  // NEW: Render hours section with internal status
+  const renderHoursSection = () => {
+    if (!place.openingHours?.length) return null;
+
+    return (
+      <View style={styles.hoursSection}>
+        <View style={styles.hoursRow}>
+          <Ionicons name="time-outline" size={14} color="#AAAAAA" style={styles.hoursIcon} />
+          <Text style={styles.hoursText} numberOfLines={1}>
+            {displayHours}
+          </Text>
+        </View>
+      </View>
+    );
+  };
+
   return (
     <TouchableOpacity 
       style={styles.placeCard} 
@@ -255,7 +347,7 @@ export default function PlaceCard({
       <View style={styles.imageContainer}>
         {renderImages()}
         {renderActionButtons()}
-        {renderStatusBadge()}
+        {/* REMOVED: Status badge overlay - no longer needed */}
       </View>
       
       <View style={styles.placeInfo}>
@@ -284,20 +376,10 @@ export default function PlaceCard({
           )}
         </View>
         
-        {displayTypes && (
-          <View style={styles.typesRow}>
-            {displayTypes.map((type, index) => (
-              <View key={index} style={styles.typeTag}>
-                <Text style={styles.typeText}>{type}</Text>
-              </View>
-            ))}
-            {place.types && place.types.length > 2 && (
-              <Text style={styles.moreTypes}>
-                +{place.types.length - 2} more
-              </Text>
-            )}
-          </View>
-        )}
+        {/* REMOVED: Types section - keywords like "Amusement park" or "Establishment" removed */}
+
+        {/* NEW: Hours section with internal status */}
+        {renderHoursSection()}
       </View>
     </TouchableOpacity>
   );
@@ -318,6 +400,14 @@ const styles = StyleSheet.create({
     },
     shadowOpacity: 0.15,
     shadowRadius: 4,
+  },
+  hoursRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  hoursIcon: {
+    marginRight: 4,
   },
   imageContainer: {
     position: 'relative',
@@ -382,39 +472,6 @@ const styles = StyleSheet.create({
   savedButton: {
     backgroundColor: 'rgba(76, 175, 80, 0.2)',
   },
-  statusBadge: {
-    position: 'absolute',
-    top: 12,
-    left: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
-    gap: 4,
-  },
-  openBadge: {
-    backgroundColor: 'rgba(76, 175, 80, 0.9)',
-  },
-  closedBadge: {
-    backgroundColor: 'rgba(244, 67, 54, 0.9)',
-  },
-  statusDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-  },
-  openDot: {
-    backgroundColor: '#FFF',
-  },
-  closedDot: {
-    backgroundColor: '#FFF',
-  },
-  statusText: {
-    color: '#FFF',
-    fontSize: 11,
-    fontWeight: '600',
-  },
   placeInfo: {
     padding: 16,
   },
@@ -469,6 +526,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     flexWrap: 'wrap',
     gap: 6,
+    marginBottom: 8,
   },
   typeTag: {
     backgroundColor: '#2A2E35',
@@ -484,6 +542,37 @@ const styles = StyleSheet.create({
   moreTypes: {
     color: '#666',
     fontSize: 11,
+    fontStyle: 'italic',
+  },
+  // NEW: Hours section styles
+  hoursSection: {
+    marginTop: 8,
+  },
+  hoursHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+    gap: 8,
+  },
+  internalStatusBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+  },
+  internalStatusText: {
+    fontSize: 9,
+    fontWeight: '600',
+    color: '#FFFFFF',
+    textTransform: 'uppercase',
+  },
+  hoursText: {
+    fontSize: 12,
+    color: '#CCCCCC',
+    marginBottom: 2,
+  },
+  nextChangeText: {
+    fontSize: 10,
+    color: '#AAAAAA',
     fontStyle: 'italic',
   },
 });

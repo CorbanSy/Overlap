@@ -147,13 +147,148 @@ const calculatePlaceScore = (place: Place, currentCategory: string): number => {
   return score;
 };
 
-const checkIfPlaceIsOpen = (place: Place): boolean => {
-  if (!place.openingHours?.length) return true;
+const checkIfPlaceIsOpen = (place: Place): { isOpen: boolean; status: string; nextChange?: string } => {
+  if (!place.openingHours?.length) {
+    return { isOpen: true, status: 'Hours Unknown' };
+  }
+
   const now = new Date();
   const currentDay = now.getDay();
+  const currentHour = now.getHours();
+  const currentMinute = now.getMinutes();
+  const currentTime = currentHour * 60 + currentMinute;
+
   const todayHours = place.openingHours[currentDay];
-  if (!todayHours || todayHours.includes('Closed')) return false;
-  return true;
+  
+  if (!todayHours || todayHours.toLowerCase().includes('closed')) {
+    // Check if it opens later today or tomorrow
+    const tomorrowDay = (currentDay + 1) % 7;
+    const tomorrowHours = place.openingHours[tomorrowDay];
+    
+    if (tomorrowHours && !tomorrowHours.toLowerCase().includes('closed')) {
+      const openMatch = tomorrowHours.match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
+      if (openMatch) {
+        const [, openHour, openMin, openPeriod] = openMatch;
+        return { 
+          isOpen: false, 
+          status: 'Closed',
+          nextChange: `Opens tomorrow at ${openHour}:${openMin} ${openPeriod}`
+        };
+      }
+    }
+    
+    return { isOpen: false, status: 'Closed' };
+  }
+
+  // Parse hours like "9:00 AM – 9:00 PM" or "9:00 AM - 9:00 PM"
+  const timeMatch = todayHours.match(/(\d{1,2}):(\d{2})\s*(AM|PM).*?(\d{1,2}):(\d{2})\s*(AM|PM)/i);
+  
+  if (!timeMatch) {
+    // Try to match 24-hour format like "09:00 - 21:00"
+    const time24Match = todayHours.match(/(\d{1,2}):(\d{2})\s*[-–]\s*(\d{1,2}):(\d{2})/);
+    
+    if (!time24Match) {
+      return { isOpen: true, status: 'Open' };
+    }
+    
+    const [, openHour, openMin, closeHour, closeMin] = time24Match;
+    const openTime = parseInt(openHour) * 60 + parseInt(openMin);
+    const closeTime = parseInt(closeHour) * 60 + parseInt(closeMin);
+    
+    const isOpen = currentTime >= openTime && currentTime < closeTime;
+    const minutesToClose = closeTime - currentTime;
+    const minutesToOpen = openTime - currentTime;
+
+    if (isOpen) {
+      if (minutesToClose <= 30) {
+        return { 
+          isOpen: true, 
+          status: 'Closing Soon',
+          nextChange: `Closes at ${closeHour}:${closeMin}`
+        };
+      }
+      return { 
+        isOpen: true, 
+        status: 'Open',
+        nextChange: `Closes at ${closeHour}:${closeMin}`
+      };
+    } else {
+      return { 
+        isOpen: false, 
+        status: 'Closed',
+        nextChange: minutesToOpen > 0 ? `Opens at ${openHour}:${openMin}` : undefined
+      };
+    }
+  }
+
+  const [, openHour, openMin, openPeriod, closeHour, closeMin, closePeriod] = timeMatch;
+  
+  // Convert to 24-hour format
+  let openTime = parseInt(openHour) * 60 + parseInt(openMin);
+  let closeTime = parseInt(closeHour) * 60 + parseInt(closeMin);
+  
+  if (openPeriod.toLowerCase() === 'pm' && parseInt(openHour) !== 12) {
+    openTime += 12 * 60;
+  }
+  if (closePeriod.toLowerCase() === 'pm' && parseInt(closeHour) !== 12) {
+    closeTime += 12 * 60;
+  }
+  if (openPeriod.toLowerCase() === 'am' && parseInt(openHour) === 12) {
+    openTime -= 12 * 60;
+  }
+  if (closePeriod.toLowerCase() === 'am' && parseInt(closeHour) === 12) {
+    closeTime -= 12 * 60;
+  }
+
+  // Handle cases where closing time is next day (like 11 PM to 2 AM)
+  if (closeTime < openTime) {
+    closeTime += 24 * 60;
+  }
+
+  const isOpen = currentTime >= openTime && currentTime < closeTime;
+  const minutesToClose = closeTime - currentTime;
+  const minutesToOpen = openTime - currentTime;
+
+  if (isOpen) {
+    if (minutesToClose <= 30) {
+      return { 
+        isOpen: true, 
+        status: 'Closing Soon',
+        nextChange: `Closes at ${closeHour}:${closeMin} ${closePeriod}`
+      };
+    }
+    return { 
+      isOpen: true, 
+      status: 'Open',
+      nextChange: `Closes at ${closeHour}:${closeMin} ${closePeriod}`
+    };
+  } else {
+    if (minutesToOpen > 0 && minutesToOpen < 24 * 60) {
+      return { 
+        isOpen: false, 
+        status: 'Closed',
+        nextChange: `Opens at ${openHour}:${openMin} ${openPeriod}`
+      };
+    }
+    
+    // If it won't open today, check tomorrow
+    const tomorrowDay = (currentDay + 1) % 7;
+    const tomorrowHours = place.openingHours[tomorrowDay];
+    
+    if (tomorrowHours && !tomorrowHours.toLowerCase().includes('closed')) {
+      const tomorrowMatch = tomorrowHours.match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
+      if (tomorrowMatch) {
+        const [, tomorrowOpenHour, tomorrowOpenMin, tomorrowOpenPeriod] = tomorrowMatch;
+        return { 
+          isOpen: false, 
+          status: 'Closed',
+          nextChange: `Opens tomorrow at ${tomorrowOpenHour}:${tomorrowOpenMin} ${tomorrowOpenPeriod}`
+        };
+      }
+    }
+    
+    return { isOpen: false, status: 'Closed' };
+  }
 };
 
 // Custom debounce hook
