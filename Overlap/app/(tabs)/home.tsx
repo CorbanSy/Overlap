@@ -1,4 +1,4 @@
-// home.tsx (optimized for performance)
+// home.tsx (updated for collaborative collections)
 import React, { useState, useEffect, useCallback, useRef, useMemo, useDeferredValue } from 'react';
 import { View, StyleSheet, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -24,18 +24,26 @@ import { useRouter } from 'expo-router';
 import { useFilters } from '../../context/FiltersContext';
 import VennLoader from '../../components/vennloader';
 import { getProfileData } from '../../_utils/storage/userProfile';
-import { likePlace, addToCollection } from '../../_utils/storage/likesCollections';
+import { likePlace } from '../../_utils/storage/likesCollections';
 import { storeReviewsForPlace } from '../../_utils/storage/reviews';
 import { fetchPlaceDetails } from '../../_utils/storage/places';
 import { PLACE_CATEGORIES } from '../../_utils/placeCategories';
+
+// Import collaborative collections utilities
+import { 
+  subscribeToUserCollections,
+  addActivityToCollaborativeCollection 
+} from '../../_utils/storage/collaborativeCollections';
 
 // Import components
 import {
   HomeSearchHeader,
   HomeFilterBar,
   HomePlacesList,
-  CollectionModal
 } from '../../components/home_components';
+
+// Import the new collaborative collection modal
+import CollectionSelectionModal from '../../components/profile_components/modals/CollectionSelectionModal';
 
 // Import filter modals
 import {
@@ -65,6 +73,22 @@ interface Place {
   openingHours?: string[];
   priceLevel?: number;
   distanceKm?: number; // Pre-calculated distance
+  formatted_address?: string;
+  phoneNumber?: string;
+  website?: string;
+  description?: string;
+}
+
+// Collaborative Collection interface
+interface CollaborativeCollection {
+  id: string;
+  title: string;
+  description?: string;
+  activities?: any[];
+  userRole: string;
+  privacy: string;
+  allowMembersToAdd: boolean;
+  totalActivities: number;
 }
 
 // Constants
@@ -181,15 +205,13 @@ export default function HomeScreen() {
   // Pagination cursor
   const [lastDoc, setLastDoc] = useState<QueryDocumentSnapshot<DocumentData> | null>(null);
 
-  // User data state
+  // User data state - UPDATED for collaborative collections
   const [userLocation, setUserLocation] = useState<UserLocation | null>(null);
   const [userLikes, setUserLikes] = useState<Record<string, boolean>>({});
-  const [userSaves, setUserSaves] = useState<Record<string, boolean>>({});
-  const [userCollections, setUserCollections] = useState<Record<string, any>>({});
+  const [userCollections, setUserCollections] = useState<CollaborativeCollection[]>([]);
 
   // Debounced user data to reduce render frequency
   const debouncedUserLikes = useDebouncedValue(userLikes, DEBOUNCE_DELAY);
-  const debouncedUserSaves = useDebouncedValue(userSaves, DEBOUNCE_DELAY);
 
   // Modal state
   const [collectionModalVisible, setCollectionModalVisible] = useState(false);
@@ -205,6 +227,7 @@ export default function HomeScreen() {
   const fuseRef = useRef<Fuse<Place> | null>(null);
   const flatListRef = useRef<any>(null);
   const inFlightRef = useRef(false);
+  const collectionsUnsubscribeRef = useRef<(() => void) | null>(null);
 
   // Memo
   const showHomeLoader = useMemo(() => loading && places.length === 0, [loading, places.length]);
@@ -276,13 +299,14 @@ export default function HomeScreen() {
     setupLocation();
   }, []);
 
-  // Listen to likes & collections with error handling
+  // UPDATED: Listen to likes & collaborative collections with error handling
   useEffect(() => {
     if (!user) return;
 
     const unsubscribers: (() => void)[] = [];
     
     try {
+      // Listen to likes (unchanged)
       const likesUnsub = onSnapshot(
         collection(db, 'users', user.uid, 'likes'),
         (snap) => {
@@ -297,31 +321,25 @@ export default function HomeScreen() {
       );
       unsubscribers.push(likesUnsub);
 
-      const savesUnsub = onSnapshot(
-        collection(db, 'users', user.uid, 'collections'),
-        (snap) => {
-          const newSaves: Record<string, boolean> = {};
-          const collections: Record<string, any> = {};
-          snap.forEach((docSnap) => {
-            const data = docSnap.data();
-            newSaves[docSnap.id] = true;
-            collections[docSnap.id] = { id: docSnap.id, ...data };
-          });
-          setUserSaves(newSaves);
-          setUserCollections(collections);
-        },
-        (error) => {
-          console.error('Error listening to collections:', error);
-          setError('Failed to sync collections');
-        }
-      );
-      unsubscribers.push(savesUnsub);
+      // UPDATED: Listen to collaborative collections
+      const collectionsUnsub = subscribeToUserCollections((collections) => {
+        setUserCollections(collections);
+      });
+      collectionsUnsubscribeRef.current = collectionsUnsub;
+      unsubscribers.push(collectionsUnsub);
+
     } catch (err) {
       console.error('Error setting up Firebase listeners:', err);
       setError('Failed to sync user data');
     }
 
-    return () => unsubscribers.forEach(u => u());
+    return () => {
+      unsubscribers.forEach(u => u());
+      if (collectionsUnsubscribeRef.current) {
+        collectionsUnsubscribeRef.current();
+        collectionsUnsubscribeRef.current = null;
+      }
+    };
   }, [user]);
 
   // Build Firestore query with server-side prefilters
@@ -485,9 +503,11 @@ export default function HomeScreen() {
     return sortedPlaces.map((place) => ({
       ...place,
       liked: !!debouncedUserLikes[place.id],
-      saved: !!debouncedUserSaves[place.id],
+      saved: userCollections.some(col => 
+        col.activities?.some((activity: any) => activity.id === place.id)
+      ),
     }));
-  }, [sortedPlaces, debouncedUserLikes, debouncedUserSaves]);
+  }, [sortedPlaces, debouncedUserLikes, userCollections]);
 
   // Insert ExploreMore cards
   const getFinalData = useCallback(() => {
@@ -543,15 +563,34 @@ export default function HomeScreen() {
     setCollectionModalVisible(true);
   }, []);
 
+  // UPDATED: Add place to collaborative collection
   const addPlaceToCollection = useCallback(async (collectionId: string) => {
     if (!user || !selectedPlaceForCollection) return;
+    
     try {
-      await addToCollection(collectionId, selectedPlaceForCollection);
+      // Transform the place data to match the SharedActivity interface
+      const activityData = {
+        id: selectedPlaceForCollection.id,
+        name: selectedPlaceForCollection.name,
+        title: selectedPlaceForCollection.name,
+        rating: selectedPlaceForCollection.rating,
+        types: selectedPlaceForCollection.types || [],
+        photoUrls: selectedPlaceForCollection.photos || [],
+        formatted_address: selectedPlaceForCollection.formatted_address || '',
+        phoneNumber: selectedPlaceForCollection.phoneNumber || '',
+        website: selectedPlaceForCollection.website || '',
+        description: selectedPlaceForCollection.description || '',
+        openingHours: selectedPlaceForCollection.openingHours || [],
+        userRatingsTotal: selectedPlaceForCollection.userRatingsTotal,
+      };
+      
+      await addActivityToCollaborativeCollection(collectionId, activityData);
       setCollectionModalVisible(false);
       setSelectedPlaceForCollection(null);
+      Alert.alert('Success', 'Place added to collection!');
     } catch (error) {
       console.error('Failed to add to collection:', error);
-      Alert.alert('Error', 'Failed to add place to collection');
+      Alert.alert('Error', error.message || 'Failed to add place to collection');
     }
   }, [user, selectedPlaceForCollection]);
 
@@ -666,7 +705,7 @@ export default function HomeScreen() {
         </View>
       )}
 
-      {/* Modals */}
+      {/* Filter Modals */}
       <DistanceFilterModal
         visible={distanceModalVisible}
         onClose={() => setDistanceModalVisible(false)}
@@ -695,7 +734,8 @@ export default function HomeScreen() {
         onApply={applyPriceFilter}
       />
 
-      <CollectionModal
+      {/* UPDATED: Collaborative Collection Selection Modal */}
+      <CollectionSelectionModal
         visible={collectionModalVisible}
         collections={userCollections}
         onClose={() => setCollectionModalVisible(false)}

@@ -441,7 +441,8 @@ const styles = StyleSheet.create({
   cardContainer: {
     width: '48%',
     aspectRatio: 1,
-    marginBottom: 12,
+    marginBottom: 12, // Increased from 12 to 20
+    marginHorizontal: '1%', // Add horizontal margin for better spacing
   },
   card: {
     flex: 1,
