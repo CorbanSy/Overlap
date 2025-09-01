@@ -1,4 +1,4 @@
-// components/meetup_components/CollectionsCard.tsx
+// components/meetup_components/CollectionsCard.tsx - Updated for collaborative collections
 import React, { useState } from 'react';
 import {
   View,
@@ -24,10 +24,18 @@ const Colors = {
   white: '#FFFFFF',
 };
 
+// Updated CollectionType to match collaborative collections
 type CollectionType = { 
   id: string; 
-  title?: string; 
-  activities?: any[]; 
+  title: string;
+  description?: string;
+  activities?: any[];
+  userRole: string;
+  privacy: string;
+  allowMembersToAdd: boolean;
+  totalActivities: number;
+  members?: { [key: string]: any };
+  owner?: string;
 };
 
 interface CollectionsCardProps {
@@ -39,8 +47,34 @@ interface CollectionsCardProps {
 
 // Simplified Collection Display Component for Meetup View
 const MeetupCollectionCard: React.FC<{ collection: CollectionType }> = ({ collection }) => {
-  const activityCount = collection.activities?.length || 0;
+  const activityCount = collection.totalActivities || collection.activities?.length || 0;
   const previewActivities = collection.activities?.slice(0, 3) || [];
+  
+  // Get privacy icon
+  const getPrivacyIcon = () => {
+    switch (collection.privacy) {
+      case 'public':
+        return 'globe-outline';
+      case 'friends':
+        return 'people-outline';
+      case 'private':
+      default:
+        return 'lock-closed-outline';
+    }
+  };
+
+  // Get role color
+  const getRoleColor = () => {
+    switch (collection.userRole) {
+      case 'owner':
+        return Colors.primary;
+      case 'collaborator':
+        return Colors.success;
+      case 'viewer':
+      default:
+        return Colors.textMuted;
+    }
+  };
   
   return (
     <View style={styles.meetupCollectionCard}>
@@ -59,9 +93,9 @@ const MeetupCollectionCard: React.FC<{ collection: CollectionType }> = ({ collec
                   }
                 ]}
               >
-                {activity.image ? (
+                {activity.photoUrls?.[0] || activity.image ? (
                   <Image 
-                    source={{ uri: activity.image }} 
+                    source={{ uri: activity.photoUrls?.[0] || activity.image }} 
                     style={styles.cardPreviewImage}
                   />
                 ) : (
@@ -81,14 +115,22 @@ const MeetupCollectionCard: React.FC<{ collection: CollectionType }> = ({ collec
       
       {/* Collection Info */}
       <View style={styles.collectionHeader}>
-        <Ionicons name="folder" size={14} color={Colors.primary} />
+        <Ionicons name={getPrivacyIcon()} size={12} color={Colors.textMuted} />
         <Text style={styles.collectionTitle} numberOfLines={1}>
           {collection.title || 'Untitled Collection'}
         </Text>
       </View>
+      
       <Text style={styles.activityCount}>
         {activityCount} {activityCount === 1 ? 'activity' : 'activities'}
       </Text>
+      
+      {/* User Role Badge */}
+      <View style={styles.roleBadge}>
+        <Text style={[styles.roleText, { color: getRoleColor() }]}>
+          {collection.userRole}
+        </Text>
+      </View>
     </View>
   );
 };
@@ -100,6 +142,13 @@ const CollectionsCard: React.FC<CollectionsCardProps> = ({
   onRemoveCollection,
 }) => {
   const [showCollectionsRow, setShowCollectionsRow] = useState(false);
+
+  // Filter collections where user can add activities (for meetups)
+  const availableCollections = collectionsList.filter(collection => 
+    collection.userRole === 'owner' || 
+    collection.userRole === 'collaborator' || 
+    (collection.userRole === 'viewer' && collection.allowMembersToAdd)
+  );
 
   return (
     <View style={styles.card}>
@@ -133,12 +182,15 @@ const CollectionsCard: React.FC<CollectionsCardProps> = ({
       {/* Collections Selection */}
       {showCollectionsRow && (
         <View style={styles.selectionContainer}>
-          {collectionsList.length === 0 ? (
+          {availableCollections.length === 0 ? (
             <View style={styles.emptyState}>
               <Ionicons name="folder-open-outline" size={32} color={Colors.textMuted} />
-              <Text style={styles.emptyStateText}>No collections yet</Text>
+              <Text style={styles.emptyStateText}>No collections available</Text>
               <Text style={styles.emptyStateSubtext}>
-                Create collections in your profile to add them here
+                {collectionsList.length === 0 
+                  ? 'Create collections in your profile to add them here'
+                  : 'You need owner or collaborator access to use collections in meetups'
+                }
               </Text>
             </View>
           ) : (
@@ -147,7 +199,7 @@ const CollectionsCard: React.FC<CollectionsCardProps> = ({
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={styles.collectionsRow}
             >
-              {collectionsList.map((collection) => {
+              {availableCollections.map((collection) => {
                 const isSelected = selectedCollections.some((c) => c.id === collection.id);
                 
                 return (
@@ -185,7 +237,7 @@ const CollectionsCard: React.FC<CollectionsCardProps> = ({
           </Text>
           <View style={styles.selectedGrid}>
             {selectedCollections.map((collection) => {
-              const activityCount = collection.activities?.length || 0;
+              const activityCount = collection.totalActivities || collection.activities?.length || 0;
               const previewActivities = collection.activities?.slice(0, 3) || [];
               
               return (
@@ -202,9 +254,9 @@ const CollectionsCard: React.FC<CollectionsCardProps> = ({
                               { zIndex: previewActivities.length - index }
                             ]}
                           >
-                            {activity.image ? (
+                            {activity.photoUrls?.[0] || activity.image ? (
                               <Image 
-                                source={{ uri: activity.image }} 
+                                source={{ uri: activity.photoUrls?.[0] || activity.image }} 
                                 style={styles.previewImage}
                               />
                             ) : (
@@ -228,7 +280,7 @@ const CollectionsCard: React.FC<CollectionsCardProps> = ({
                       {collection.title}
                     </Text>
                     <Text style={styles.selectedItemSubtext}>
-                      {activityCount} {activityCount === 1 ? 'activity' : 'activities'}
+                      {activityCount} {activityCount === 1 ? 'activity' : 'activities'} • {collection.userRole}
                     </Text>
                   </View>
                   
@@ -297,7 +349,7 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   collectionWrapper: {
-    width: 120,
+    width: 130, // Slightly wider for role badge
   },
   collectionContainer: {
     position: 'relative',
@@ -335,7 +387,7 @@ const styles = StyleSheet.create({
     padding: 12,
     borderWidth: 1,
     borderColor: Colors.border,
-    minHeight: 100,
+    minHeight: 110, // Slightly taller for role badge
     justifyContent: 'space-between',
   },
   cardPreviewSection: {
@@ -396,6 +448,19 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: Colors.textMuted,
     fontWeight: '500',
+    marginBottom: 4,
+  },
+  roleBadge: {
+    backgroundColor: Colors.primary + '20',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    alignSelf: 'flex-start',
+  },
+  roleText: {
+    fontSize: 10,
+    fontWeight: '600',
+    textTransform: 'capitalize',
   },
   
   // Empty State
@@ -414,6 +479,7 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: Colors.textMuted,
     textAlign: 'center',
+    paddingHorizontal: 16,
   },
   
   // Selected Section

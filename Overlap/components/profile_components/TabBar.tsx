@@ -1,4 +1,4 @@
-// components/TabBar.tsx - COMPLETE IMPROVED VERSION
+// components/TabBar.tsx - Enhanced with Info Buttons
 import React, { useRef, useEffect, useState } from 'react';
 import { 
   View, 
@@ -26,13 +26,15 @@ interface TabBarProps {
   onTabPress: (tab: string) => void;
   likedCount?: number;
   collectionsCount?: number;
+  onInfoPress?: (tab: string) => void; // New prop for info button handling
 }
 
 const TabBar: React.FC<TabBarProps> = ({ 
   activeTab, 
   onTabPress, 
   likedCount = 0, 
-  collectionsCount = 0 
+  collectionsCount = 0,
+  onInfoPress
 }) => {
   const slideAnim = useRef(new Animated.Value(0)).current;
   const scaleAnim = useRef(new Animated.Value(1)).current;
@@ -66,8 +68,8 @@ const TabBar: React.FC<TabBarProps> = ({
       
       Animated.spring(slideAnim, {
         toValue: activeIndex * tabWidth + 4,
-        tension: 100,
-        friction: 8,
+        tension: 50,
+        friction: 12,
         useNativeDriver: false,
       }).start();
     }
@@ -97,6 +99,12 @@ const TabBar: React.FC<TabBarProps> = ({
     ]).start();
     
     onTabPress(tab);
+  };
+
+  const handleInfoPress = (tab: string, event: any) => {
+    // Prevent tab switching when info button is pressed
+    event.stopPropagation();
+    onInfoPress?.(tab);
   };
 
   const handleLayout = (event: any) => {
@@ -143,6 +151,24 @@ const TabBar: React.FC<TabBarProps> = ({
             activeOpacity={0.8}
           >
             <View style={styles.tabContent}>
+              {/* Info Button */}
+              {onInfoPress && (
+                <TouchableOpacity
+                  style={[
+                    styles.infoButton,
+                    isActive && styles.activeInfoButton
+                  ]}
+                  onPress={(event) => handleInfoPress(tab.key, event)}
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <Ionicons 
+                    name="information-circle-outline" 
+                    size={12} 
+                    color={isActive ? Colors.background : Colors.textMuted} 
+                  />
+                </TouchableOpacity>
+              )}
+              
               {/* Icon */}
               <Ionicons 
                 name={isActive ? tab.activeIcon : tab.icon} 
@@ -223,6 +249,23 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    gap: 4,
+  },
+  
+  // Info button
+  infoButton: {
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: Colors.surfaceLight,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  activeInfoButton: {
+    backgroundColor: 'rgba(13, 17, 23, 0.3)',
+    borderColor: 'transparent',
   },
   
   // Tab icon

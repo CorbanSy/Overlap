@@ -31,6 +31,8 @@ interface ProfileListHeaderProps {
   collections: SharedCollection[];
   // Add the onMembersPress prop
   onMembersPress?: (collection: CollaborativeCollection) => void;
+  // Add the new info press handler
+  onTabInfoPress?: (tabType: string) => void;
 }
 
 const ProfileListHeader: React.FC<ProfileListHeaderProps> = ({
@@ -46,16 +48,18 @@ const ProfileListHeader: React.FC<ProfileListHeaderProps> = ({
   likedActivities,
   collections,
   onMembersPress,
+  onTabInfoPress,
 }) => {
   return (
     <View style={styles.headerContainer}>
       {/* Tab selector with animated TabBar component */}
       <View style={styles.tabBarContainer}>
-        <TabBar 
-          activeTab={activeTab} 
+        <TabBar
+          activeTab={activeTab}
           onTabPress={setActiveTab}
           likedCount={likedActivities.length}
           collectionsCount={collections.length}
+          onInfoPress={onTabInfoPress}
         />
       </View>
       

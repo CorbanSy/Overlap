@@ -29,10 +29,13 @@ interface Friend {
 interface Collection {
   id: string;
   title?: string;
-  name?: string;
+  name?: string;  // Keep for backward compatibility
   activityCount?: number;
+  totalActivities?: number;  // From collaborative collections
   previewUrl?: string | null;
   activities?: any[];
+  userRole?: string;  // From collaborative collections
+  privacy?: string;   // From collaborative collections
 }
 
 interface Meetup {
@@ -432,7 +435,8 @@ const MeetupCard: React.FC<MeetupCardProps> = ({
   const renderCollectionItem = useCallback(
     ({ item }: { item: Collection }) => {
       const label = item.title || item.name || 'Untitled';
-      const count = item.activityCount ?? (Array.isArray(item.activities) ? item.activities.length : 0);
+      // Handle both activityCount and totalActivities
+      const count = item.activityCount ?? item.totalActivities ?? (Array.isArray(item.activities) ? item.activities.length : 0);
       const preview = item.previewUrl || item.activities?.[0]?.image || item.activities?.[0]?.photoUrls?.[0] || null;
 
       return (
@@ -453,6 +457,12 @@ const MeetupCard: React.FC<MeetupCardProps> = ({
               <Text style={styles.collectionCount}>
                 {count} {count === 1 ? 'activity' : 'activities'}
               </Text>
+              {/* Optional: Show user role for collaborative collections */}
+              {item.userRole && (
+                <Text style={[styles.collectionCount, { fontSize: 10, color: Colors.primary }]}>
+                  {item.userRole}
+                </Text>
+              )}
             </View>
           </View>
 
@@ -472,7 +482,7 @@ const MeetupCard: React.FC<MeetupCardProps> = ({
     },
     [isHost, onRemoveCollection, handleRemoveCollection]
   );
-
+  
   const renderFriendCard = useCallback(
     (friend: Friend, index: number) => {
       const displayName =

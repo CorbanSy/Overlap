@@ -1,4 +1,4 @@
-// app/(tabs)/meetupFolder/create.tsx
+// app/(tabs)/meetupFolder/create.tsx - Updated for collaborative collections
 import React, { useEffect, useState } from 'react';
 import {
   ScrollView,
@@ -14,6 +14,9 @@ import { collection, doc, getDoc, getDocs, addDoc } from 'firebase/firestore';
 
 import { db } from '../../FirebaseConfig';
 import { createMeetup } from '../../_utils/storage/meetups';
+
+// Import collaborative collections utilities
+import { subscribeToUserCollections } from '../../_utils/storage/collaborativeCollections';
 
 // Import meetup components
 import EventDetailsCard from '../../components/meetup_components/EventDetailsCard';
@@ -41,9 +44,22 @@ const Colors = {
   overlay: 'rgba(13, 17, 23, 0.8)',
 };
 
-// Types
+// Types - Updated for collaborative collections
 type Friend = { uid: string; email?: string; name?: string; avatarUrl?: string };
-type CollectionType = { id: string; title?: string; activities?: any[] };
+
+// Updated CollectionType to match collaborative collections interface
+type CollectionType = { 
+  id: string; 
+  title: string;
+  description?: string;
+  activities?: any[];
+  userRole: string;
+  privacy: string;
+  allowMembersToAdd: boolean;
+  totalActivities: number;
+  members?: { [key: string]: any };
+  owner?: string;
+};
 
 // Helper functions
 const createMeetupInvite = async (friendId: string, meetupId: string) => {
@@ -102,7 +118,7 @@ const CreateMeetupScreen = ({ onBack }: { onBack: () => void }) => {
   const [locationOption, setLocationOption] = useState<'own' | 'specific'>('own');
   const [specificLocation, setSpecificLocation] = useState('');
 
-  // Collections State
+  // Collections State - Updated for collaborative collections
   const [selectedCollections, setSelectedCollections] = useState<CollectionType[]>([]);
   const [collectionsList, setCollectionsList] = useState<CollectionType[]>([]);
 
@@ -117,6 +133,9 @@ const CreateMeetupScreen = ({ onBack }: { onBack: () => void }) => {
   // Auth State
   const auth = getAuth();
   const [user, setUser] = useState<any>(null);
+
+  // Collection subscription reference
+  const collectionsUnsubscribeRef = React.useRef<(() => void) | null>(null);
 
   // Auth listener
   useEffect(() => {
@@ -143,26 +162,50 @@ const CreateMeetupScreen = ({ onBack }: { onBack: () => void }) => {
     })();
   }, [user]);
 
-  // Load collections
+  // UPDATED: Load collaborative collections with real-time updates
   useEffect(() => {
     if (!user) return;
-    (async () => {
-      try {
-        const ref = collection(db, 'users', user.uid, 'collections');
-        const qs = await getDocs(ref);
-        const cols = qs.docs.map((d) => ({
-          id: d.id,
-          ...d.data(),
-          activities: d.data().activities || [],
-        })) as CollectionType[];
-        setCollectionsList(cols);
-      } catch (e) {
-        console.error('Error fetching collections:', e);
-        // Set empty array on error to prevent crashes
-        setCollectionsList([]);
-      }
-    })();
+
+    try {
+      console.log('Setting up collaborative collections subscription for meetup creation...');
+      
+      // Set up real-time subscription to collaborative collections
+      const unsubscribe = subscribeToUserCollections((collections) => {
+        console.log('Received collaborative collections for meetup:', collections.length);
+        
+        // Filter to only show collections where user can access activities
+        const availableCollections = collections.filter(col => 
+          col.activities && col.activities.length > 0
+        );
+        
+        setCollectionsList(availableCollections as CollectionType[]);
+      });
+
+      collectionsUnsubscribeRef.current = unsubscribe;
+
+      // Cleanup function
+      return () => {
+        if (collectionsUnsubscribeRef.current) {
+          collectionsUnsubscribeRef.current();
+          collectionsUnsubscribeRef.current = null;
+        }
+      };
+    } catch (e) {
+      console.error('Error setting up collections subscription:', e);
+      // Set empty array on error to prevent crashes
+      setCollectionsList([]);
+    }
   }, [user]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (collectionsUnsubscribeRef.current) {
+        collectionsUnsubscribeRef.current();
+        collectionsUnsubscribeRef.current = null;
+      }
+    };
+  }, []);
 
   // Event Handlers
   const toggleFriend = (friend: Friend) => {
@@ -205,6 +248,7 @@ const CreateMeetupScreen = ({ onBack }: { onBack: () => void }) => {
       return;
     }
 
+    // Prepare meetup data with collaborative collections
     const meetupData = {
       eventName,
       category: selectedCategory,
@@ -215,11 +259,19 @@ const CreateMeetupScreen = ({ onBack }: { onBack: () => void }) => {
       description,
       friends: selectedFriends,
       location: locationOption === 'own' ? 'my location' : specificLocation,
-      collections: selectedCollections,
+      collections: selectedCollections.map(col => ({
+        id: col.id,
+        title: col.title,
+        userRole: col.userRole,
+        activityCount: col.activities?.length || 0,
+        // Include relevant activities data for the meetup
+        activities: col.activities || []
+      })),
       code: meetupCode,
     };
 
     try {
+      console.log('Creating meetup with collaborative collections:', selectedCollections.length);
       const meetupId = await createMeetup(meetupData as any);
       await Promise.all(selectedFriends.map((f) => createMeetupInvite(f.uid, meetupId)));
       Alert.alert('Success', `Meetup created successfully!`);
@@ -275,7 +327,7 @@ const CreateMeetupScreen = ({ onBack }: { onBack: () => void }) => {
         setSpecificLocation={setSpecificLocation}
       />
 
-      {/* Collections Card */}
+      {/* Collections Card - Now with collaborative collections */}
       <CollectionsCard
         collectionsList={collectionsList}
         selectedCollections={selectedCollections}

@@ -38,6 +38,7 @@ import EnhancedNewCollectionModal from '../../components/profile_components/moda
 import CollectionInvitationsModal from '../../components/profile_components/modals/CollectionInvitationsModal';
 import CollaborativeCollectionCard from '../../components/profile_components/CollaborativeCollectionCard';
 import CollectionSelectionModal from '../../components/profile_components/modals/CollectionSelectionModal'; 
+import { ProfileTabInfoModal, PROFILE_TAB_INFO_CONTENT } from '../../components/profile_components/ProfileTabInfoModal';
 
 import { unlikePlace } from '../../_utils/storage/likesCollections';
 import { saveProfileData, getProfileData } from '../../_utils/storage/userProfile';
@@ -513,6 +514,11 @@ function ProfileScreen() {
     }
   };
 
+  const [activeTabInfoModal, setActiveTabInfoModal] = useState<string | null>(null);
+  const handleTabInfoPress = (tabType: string) => {
+    setActiveTabInfoModal(tabType);
+  };
+
   const handleDeleteCollaborativeCollection = async (collection: CollaborativeCollection) => {
     if (!user || !collection.id) return;
     
@@ -753,6 +759,7 @@ function ProfileScreen() {
                 setSelectedCollectionForMembers(collection);
                 setIsCollectionMembersModalVisible(true);
               }}
+              onTabInfoPress={handleTabInfoPress}
             />
             
             {renderSearchHeader()}
@@ -794,7 +801,14 @@ function ProfileScreen() {
         onSelectCollection={handleAddToCollaborativeCollection}
         onClose={() => setIsCollectionModalVisible(false)}
       />
-
+      
+      {/* Profile Tab Info Modal */}
+      <ProfileTabInfoModal
+        visible={!!activeTabInfoModal}
+        tabType={activeTabInfoModal}
+        onClose={() => setActiveTabInfoModal(null)}
+      />
+      
       {/* Collection Members Management Modal */}
       <EnhancedCollectionMembersModal
         visible={isCollectionMembersModalVisible}
