@@ -1,4 +1,4 @@
-// app/(tabs)/profile.tsx - Complete integration with collaborative collections
+// app/(tabs)/profile.tsx
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   SafeAreaView,
@@ -33,14 +33,12 @@ import ProfileListHeader from '../../components/profile_components/ProfileListHe
 import SettingsDropdown from '../../components/profile_components/modals/SettingsDropdown';
 import ActivityCard from '../../components/profile_components/ActivityCard';
 
-// New collaborative components
+import EnhancedCollectionMembersModal from '../../components/profile_components/modals/EnhancedCollectionMembersModal';
 import EnhancedNewCollectionModal from '../../components/profile_components/modals/EnhancedNewCollectionModal';
-import CollectionMembersModal from '../../components/profile_components/modals/CollectionMembersModal';
 import CollectionInvitationsModal from '../../components/profile_components/modals/CollectionInvitationsModal';
 import CollaborativeCollectionCard from '../../components/profile_components/CollaborativeCollectionCard';
-import CollectionSelectionModal from '../../components/profile_components/modals/CollectionSelectionModal';
+import CollectionSelectionModal from '../../components/profile_components/modals/CollectionSelectionModal'; 
 
-// Utility imports
 import { unlikePlace } from '../../_utils/storage/likesCollections';
 import { saveProfileData, getProfileData } from '../../_utils/storage/userProfile';
 import { Colors } from '../../constants/colors';
@@ -751,6 +749,10 @@ function ProfileScreen() {
               resultCount={filteredData.length}
               likedActivities={likedActivities}
               collections={collections}
+              onMembersPress={(collection) => {
+                setSelectedCollectionForMembers(collection);
+                setIsCollectionMembersModalVisible(true);
+              }}
             />
             
             {renderSearchHeader()}
@@ -794,11 +796,14 @@ function ProfileScreen() {
       />
 
       {/* Collection Members Management Modal */}
-      <CollectionMembersModal
+      <EnhancedCollectionMembersModal
         visible={isCollectionMembersModalVisible}
         onClose={() => setIsCollectionMembersModalVisible(false)}
-        collectionId={selectedCollectionForMembers?.id || ''}
+        collection={selectedCollectionForMembers}
         isOwner={selectedCollectionForMembers?.userRole === COLLECTION_ROLES.OWNER}
+        onCollectionUpdated={() => {
+          // This could trigger a refresh if needed
+        }}
       />
 
       {/* Collection Invitations Modal */}

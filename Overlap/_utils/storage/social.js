@@ -578,3 +578,77 @@ export async function reportUser(reportedUserId, reason, description = '') {
   // Automatically block the reported user
   await blockUser(reportedUserId);
 }
+
+export async function getUserFriends() {
+  const user = auth.currentUser;
+  if (!user) throw new Error("No user is signed in");
+
+  try {
+    // Get friends from the user's friends subcollection
+    const friendsRef = collection(db, 'users', user.uid, 'friends');
+    const friendsSnapshot = await getDocs(friendsRef);
+    
+    if (friendsSnapshot.empty) {
+      return [];
+    }
+
+    // Get detailed info for each friend from userDirectory
+    const friendDetails = await Promise.all(
+      friendsSnapshot.docs.map(async (friendDoc) => {
+        const friendId = friendDoc.id;
+        
+        try {
+          // Get friend's directory info
+          const dirSnap = await getDoc(doc(db, 'userDirectory', friendId));
+          
+          if (dirSnap.exists()) {
+            const dirData = dirSnap.data();
+            return {
+              uid: friendId,
+              userId: friendId, // for compatibility
+              displayName: dirData.displayName || '',
+              name: dirData.displayName || dirData.usernamePublic || '',
+              email: dirData.emailLower || '',
+              username: dirData.usernamePublic || '',
+              avatarUrl: dirData.avatarUrl || '',
+              friendshipDate: friendDoc.data().createdAt || new Date(),
+            };
+          } else {
+            // Fallback if directory doesn't exist
+            return {
+              uid: friendId,
+              userId: friendId,
+              displayName: 'Unknown User',
+              name: 'Unknown User',
+              email: '',
+              username: '',
+              avatarUrl: '',
+              friendshipDate: friendDoc.data().createdAt || new Date(),
+            };
+          }
+        } catch (error) {
+          console.error(`Error fetching friend details for ${friendId}:`, error);
+          return {
+            uid: friendId,
+            userId: friendId,
+            displayName: 'Unknown User',
+            name: 'Unknown User',
+            email: '',
+            username: '',
+            avatarUrl: '',
+            friendshipDate: friendDoc.data().createdAt || new Date(),
+          };
+        }
+      })
+    );
+
+    // Filter out any null results and sort by display name
+    return friendDetails
+      .filter(friend => friend !== null)
+      .sort((a, b) => (a.displayName || '').localeCompare(b.displayName || ''));
+      
+  } catch (error) {
+    console.error('Error getting user friends:', error);
+    return [];
+  }
+}

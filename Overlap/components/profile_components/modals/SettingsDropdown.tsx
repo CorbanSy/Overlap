@@ -26,16 +26,19 @@ interface MenuItem {
   icon: string;
   label: string;
   color: string;
+  badge?: number;
 }
 
 interface SettingsDropdownProps {
   visible: boolean;
   onSelectOption: (option: string) => void;
+  pendingInvitationsCount?: number;
 }
 
 const SettingsDropdown: React.FC<SettingsDropdownProps> = ({
   visible,
   onSelectOption,
+  pendingInvitationsCount = 0,
 }) => {
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnim = useRef(new Animated.Value(-10)).current;
@@ -65,6 +68,13 @@ const SettingsDropdown: React.FC<SettingsDropdownProps> = ({
   const menuItems: MenuItem[] = [
     { key: 'Account', icon: 'person-outline', label: 'Account', color: Colors.text },
     { key: 'Edit Profile', icon: 'create-outline', label: 'Edit Profile', color: Colors.text },
+    { 
+      key: 'Collection Invitations', 
+      icon: 'mail-outline', 
+      label: 'Collection Invitations', 
+      color: Colors.text,
+      badge: pendingInvitationsCount > 0 ? pendingInvitationsCount : undefined
+    },
     { key: 'Notifications', icon: 'notifications-outline', label: 'Notifications', color: Colors.text },
     { key: 'Privacy', icon: 'lock-closed-outline', label: 'Privacy', color: Colors.text },
     { key: 'Friends', icon: 'people-outline', label: 'Friends', color: Colors.text },
@@ -91,7 +101,14 @@ const SettingsDropdown: React.FC<SettingsDropdownProps> = ({
           ]}
           onPress={() => onSelectOption(item.key)}
         >
-          <Ionicons name={item.icon as any} size={20} color={item.color} />
+          <View style={styles.iconContainer}>
+            <Ionicons name={item.icon as any} size={20} color={item.color} />
+            {item.badge && (
+              <View style={styles.badge}>
+                <Text style={styles.badgeText}>{item.badge}</Text>
+              </View>
+            )}
+          </View>
           <Text style={[styles.settingsText, { color: item.color }]}>
             {item.label}
           </Text>
@@ -110,7 +127,7 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.surface,
     borderRadius: 12,
     paddingVertical: 8,
-    width: 180,
+    width: 200, // Slightly wider to accommodate badges
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.25,
@@ -131,11 +148,35 @@ const styles = StyleSheet.create({
   lastSettingsItem: {
     borderBottomWidth: 0,
   },
+  iconContainer: {
+    position: 'relative',
+    marginRight: 12,
+    width: 20,
+    height: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
   settingsText: {
     flex: 1,
     fontSize: 15,
     fontWeight: '500',
-    marginLeft: 12,
+  },
+  badge: {
+    position: 'absolute',
+    top: -6,
+    right: -6,
+    backgroundColor: Colors.primary,
+    borderRadius: 10,
+    minWidth: 16,
+    height: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+  },
+  badgeText: {
+    color: Colors.background,
+    fontSize: 10,
+    fontWeight: '700',
   },
 });
 

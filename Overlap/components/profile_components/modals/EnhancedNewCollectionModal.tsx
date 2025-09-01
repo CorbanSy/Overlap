@@ -1,35 +1,22 @@
-// components/profile_components/modals/EnhancedNewCollectionModal.tsx
-import React, { useRef, useEffect, useState } from 'react';
+// components/profile_components/EnhancedNewCollectionModal.tsx
+import React, { useState } from 'react';
 import {
   Modal,
   View,
   Text,
   TouchableOpacity,
   TextInput,
-  Animated,
   StyleSheet,
-  Switch,
+  Alert,
+  ScrollView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { COLLECTION_PRIVACY } from '../../../_utils/storage/collaborativeCollections';
-
-const Colors = {
-  primary: '#F5A623',
-  background: '#0D1117',
-  surface: '#1B1F24',
-  surfaceLight: '#333333',
-  border: '#333333',
-  text: '#FFFFFF',
-  textSecondary: '#AAAAAA',
-  textMuted: '#888888',
-  white: '#FFFFFF',
-  overlay: 'rgba(13, 17, 23, 0.8)',
-};
+import { Colors } from '../../../constants/colors';
 
 interface EnhancedNewCollectionModalProps {
   visible: boolean;
   onClose: () => void;
-  onCreateCollection: (data: {
+  onCreateCollection: (collectionData: {
     title: string;
     description: string;
     privacy: string;
@@ -42,204 +29,215 @@ const EnhancedNewCollectionModal: React.FC<EnhancedNewCollectionModalProps> = ({
   onClose,
   onCreateCollection,
 }) => {
-  const slideAnim = useRef(new Animated.Value(0)).current;
-  const scaleAnim = useRef(new Animated.Value(0.9)).current;
-  
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [privacy, setPrivacy] = useState(COLLECTION_PRIVACY.PRIVATE);
+  const [privacy, setPrivacy] = useState('private');
   const [allowMembersToAdd, setAllowMembersToAdd] = useState(true);
+  const [isCreating, setIsCreating] = useState(false);
 
-  useEffect(() => {
-    if (visible) {
-      Animated.parallel([
-        Animated.timing(slideAnim, {
-          toValue: 1,
-          duration: 300,
-          useNativeDriver: true,
-        }),
-        Animated.spring(scaleAnim, {
-          toValue: 1,
-          tension: 100,
-          friction: 8,
-          useNativeDriver: true,
-        }),
-      ]).start();
-    } else {
-      // Reset form when modal closes
-      setTitle('');
-      setDescription('');
-      setPrivacy(COLLECTION_PRIVACY.PRIVATE);
-      setAllowMembersToAdd(true);
-      
-      Animated.parallel([
-        Animated.timing(slideAnim, {
-          toValue: 0,
-          duration: 200,
-          useNativeDriver: true,
-        }),
-        Animated.timing(scaleAnim, {
-          toValue: 0.9,
-          duration: 200,
-          useNativeDriver: true,
-        }),
-      ]).start();
-    }
-  }, [visible]);
+  const resetForm = () => {
+    setTitle('');
+    setDescription('');
+    setPrivacy('private');
+    setAllowMembersToAdd(true);
+    setIsCreating(false);
+  };
 
-  const handleCreate = () => {
-    if (!title.trim()) return;
-    
-    onCreateCollection({
-      title: title.trim(),
-      description: description.trim(),
-      privacy,
-      allowMembersToAdd
-    });
-    
+  const handleClose = () => {
+    resetForm();
     onClose();
   };
 
-  const getPrivacyLabel = (privacyLevel: string) => {
-    switch (privacyLevel) {
-      case COLLECTION_PRIVACY.PUBLIC:
-        return 'Public - Anyone can find and join';
-      case COLLECTION_PRIVACY.FRIENDS:
-        return 'Friends Only - Only friends can join';
-      case COLLECTION_PRIVACY.PRIVATE:
-        return 'Private - Invite only';
-      default:
-        return 'Private';
+  const handleCreate = async () => {
+    if (!title.trim()) {
+      Alert.alert('Error', 'Please enter a collection name');
+      return;
+    }
+
+    if (isCreating) return;
+
+    try {
+      setIsCreating(true);
+      
+      await onCreateCollection({
+        title: title.trim(),
+        description: description.trim(),
+        privacy,
+        allowMembersToAdd,
+      });
+
+      resetForm();
+    } catch (error) {
+      console.error('Error creating collection:', error);
+      Alert.alert('Error', 'Failed to create collection. Please try again.');
+    } finally {
+      setIsCreating(false);
     }
   };
 
-  const getPrivacyIcon = (privacyLevel: string) => {
-    switch (privacyLevel) {
-      case COLLECTION_PRIVACY.PUBLIC:
-        return 'globe-outline';
-      case COLLECTION_PRIVACY.FRIENDS:
-        return 'people-outline';
-      case COLLECTION_PRIVACY.PRIVATE:
-        return 'lock-closed-outline';
-      default:
-        return 'lock-closed-outline';
-    }
-  };
+  const privacyOptions = [
+    {
+      value: 'private',
+      label: 'Private',
+      description: 'Only you and invited members can see this collection',
+      icon: 'lock-closed-outline',
+    },
+    {
+      value: 'friends',
+      label: 'Friends Only',
+      description: 'Your friends can see and request to join this collection',
+      icon: 'people-outline',
+    },
+    {
+      value: 'public',
+      label: 'Public',
+      description: 'Anyone can discover and request to join this collection',
+      icon: 'globe-outline',
+    },
+  ];
+
+  const renderPrivacyOption = (option: typeof privacyOptions[0]) => (
+    <TouchableOpacity
+      key={option.value}
+      style={[
+        styles.privacyOption,
+        privacy === option.value && styles.privacyOptionSelected
+      ]}
+      onPress={() => setPrivacy(option.value)}
+    >
+      <View style={styles.privacyOptionContent}>
+        <View style={styles.privacyOptionHeader}>
+          <Ionicons 
+            name={option.icon} 
+            size={18} 
+            color={privacy === option.value ? Colors.primary : Colors.textSecondary}
+          />
+          <Text style={[
+            styles.privacyOptionLabel,
+            privacy === option.value && styles.privacyOptionLabelSelected
+          ]}>
+            {option.label}
+          </Text>
+        </View>
+        <Text style={styles.privacyOptionDescription}>
+          {option.description}
+        </Text>
+      </View>
+      
+      <View style={[
+        styles.radioButton,
+        privacy === option.value && styles.radioButtonSelected
+      ]}>
+        {privacy === option.value && (
+          <View style={styles.radioButtonInner} />
+        )}
+      </View>
+    </TouchableOpacity>
+  );
 
   return (
-    <Modal visible={visible} transparent animationType="fade">
+    <Modal visible={visible} transparent animationType="slide">
       <View style={styles.modalOverlay}>
-        <Animated.View
-          style={[
-            styles.modalContainer,
-            {
-              opacity: slideAnim,
-              transform: [{ scale: scaleAnim }],
-            },
-          ]}
-        >
+        <View style={styles.modalContainer}>
           <View style={styles.modalHeader}>
-            <Text style={styles.modalTitle}>Create Collection</Text>
-            <TouchableOpacity style={styles.closeButton} onPress={onClose}>
+            <Text style={styles.modalTitle}>Create New Collection</Text>
+            <TouchableOpacity style={styles.closeButton} onPress={handleClose}>
               <Ionicons name="close" size={24} color={Colors.textMuted} />
             </TouchableOpacity>
           </View>
-          
-          <View style={styles.modalContent}>
+
+          <ScrollView style={styles.modalContent} showsVerticalScrollIndicator={false}>
+            {/* Collection Name */}
             <View style={styles.inputGroup}>
               <Text style={styles.inputLabel}>Collection Name *</Text>
               <TextInput
                 style={styles.input}
-                placeholder="Enter collection name"
-                placeholderTextColor={Colors.textMuted}
                 value={title}
                 onChangeText={setTitle}
+                placeholder="Enter collection name"
+                placeholderTextColor={Colors.textMuted}
                 maxLength={50}
               />
+              <Text style={styles.characterCount}>{title.length}/50</Text>
             </View>
-            
+
+            {/* Description */}
             <View style={styles.inputGroup}>
               <Text style={styles.inputLabel}>Description</Text>
               <TextInput
                 style={[styles.input, styles.textArea]}
-                placeholder="Add a description for your collection"
-                placeholderTextColor={Colors.textMuted}
                 value={description}
                 onChangeText={setDescription}
+                placeholder="Describe your collection (optional)"
+                placeholderTextColor={Colors.textMuted}
                 multiline
                 numberOfLines={3}
                 maxLength={200}
+                textAlignVertical="top"
               />
+              <Text style={styles.characterCount}>{description.length}/200</Text>
             </View>
 
+            {/* Privacy Settings */}
             <View style={styles.inputGroup}>
-              <Text style={styles.inputLabel}>Privacy</Text>
+              <Text style={styles.inputLabel}>Privacy Setting</Text>
               <View style={styles.privacyContainer}>
-                {Object.values(COLLECTION_PRIVACY).map((privacyLevel) => (
-                  <TouchableOpacity
-                    key={privacyLevel}
-                    style={[
-                      styles.privacyOption,
-                      privacy === privacyLevel && styles.privacyOptionSelected
-                    ]}
-                    onPress={() => setPrivacy(privacyLevel)}
-                  >
-                    <Ionicons 
-                      name={getPrivacyIcon(privacyLevel)} 
-                      size={20} 
-                      color={privacy === privacyLevel ? Colors.primary : Colors.textMuted} 
-                    />
-                    <View style={styles.privacyTextContainer}>
-                      <Text style={[
-                        styles.privacyText,
-                        privacy === privacyLevel && styles.privacyTextSelected
-                      ]}>
-                        {privacyLevel.charAt(0).toUpperCase() + privacyLevel.slice(1)}
-                      </Text>
-                      <Text style={styles.privacyDescription}>
-                        {getPrivacyLabel(privacyLevel).split(' - ')[1]}
-                      </Text>
-                    </View>
-                    {privacy === privacyLevel && (
-                      <Ionicons name="checkmark-circle" size={20} color={Colors.primary} />
-                    )}
-                  </TouchableOpacity>
-                ))}
+                {privacyOptions.map(renderPrivacyOption)}
               </View>
             </View>
 
+            {/* Member Permissions */}
             <View style={styles.inputGroup}>
-              <View style={styles.switchContainer}>
+              <Text style={styles.inputLabel}>Member Permissions</Text>
+              <TouchableOpacity
+                style={styles.switchContainer}
+                onPress={() => setAllowMembersToAdd(!allowMembersToAdd)}
+              >
                 <View style={styles.switchLabelContainer}>
-                  <Text style={styles.inputLabel}>Allow members to add activities</Text>
+                  <Text style={styles.switchLabel}>Allow members to add activities</Text>
                   <Text style={styles.switchDescription}>
                     Let collaborators add new places to this collection
                   </Text>
                 </View>
-                <Switch
-                  value={allowMembersToAdd}
-                  onValueChange={setAllowMembersToAdd}
-                  trackColor={{ false: Colors.border, true: Colors.primary + '40' }}
-                  thumbColor={allowMembersToAdd ? Colors.primary : Colors.textMuted}
-                />
-              </View>
+                <View style={[styles.switch, allowMembersToAdd && styles.switchActive]}>
+                  <View style={[styles.switchThumb, allowMembersToAdd && styles.switchThumbActive]} />
+                </View>
+              </TouchableOpacity>
             </View>
-          </View>
-          
-          <View style={styles.modalActions}>
-            <TouchableOpacity style={styles.secondaryButton} onPress={onClose}>
-              <Text style={styles.secondaryButtonText}>Cancel</Text>
-            </TouchableOpacity>
+          </ScrollView>
+
+          {/* Action Buttons */}
+          <View style={styles.modalFooter}>
             <TouchableOpacity 
-              style={[styles.primaryButton, !title.trim() && styles.disabledButton]} 
-              onPress={handleCreate}
-              disabled={!title.trim()}
+              style={[styles.button, styles.cancelButton]} 
+              onPress={handleClose}
+              disabled={isCreating}
             >
-              <Ionicons name="add" size={20} color={Colors.white} style={{ marginRight: 8 }} />
-              <Text style={styles.primaryButtonText}>Create</Text>
+              <Text style={styles.cancelButtonText}>Cancel</Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity 
+              style={[
+                styles.button, 
+                styles.createButton,
+                (!title.trim() || isCreating) && styles.createButtonDisabled
+              ]} 
+              onPress={handleCreate}
+              disabled={!title.trim() || isCreating}
+            >
+              {isCreating ? (
+                <View style={styles.loadingContainer}>
+                  <Text style={styles.createButtonText}>Creating...</Text>
+                </View>
+              ) : (
+                <>
+                  <Ionicons name="add" size={18} color={Colors.white} />
+                  <Text style={styles.createButtonText}>Create Collection</Text>
+                </>
+              )}
             </TouchableOpacity>
           </View>
-        </Animated.View>
+        </View>
       </View>
     </Modal>
   );
@@ -249,20 +247,15 @@ const styles = StyleSheet.create({
   modalOverlay: {
     flex: 1,
     backgroundColor: Colors.overlay,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 20,
+    justifyContent: 'center', // instead of flex-end
   },
+
   modalContainer: {
+    flex: 1, // take up all available vertical space
     backgroundColor: Colors.surface,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
     width: '100%',
-    maxWidth: 400,
-    borderRadius: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 20 },
-    shadowOpacity: 0.3,
-    shadowRadius: 30,
-    elevation: 30,
   },
   modalHeader: {
     flexDirection: 'row',
@@ -288,10 +281,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   modalContent: {
-    padding: 20,
+    flex: 1,
+    paddingHorizontal: 20,
+    paddingTop: 20,
   },
+  
+  // Input Styles
   inputGroup: {
-    marginBottom: 20,
+    marginBottom: 24,
   },
   inputLabel: {
     fontSize: 14,
@@ -314,92 +311,167 @@ const styles = StyleSheet.create({
     height: 80,
     textAlignVertical: 'top',
   },
+  characterCount: {
+    fontSize: 12,
+    color: Colors.textMuted,
+    textAlign: 'right',
+    marginTop: 4,
+  },
+  
+  // Privacy Options
   privacyContainer: {
-    gap: 8,
+    gap: 12,
   },
   privacyOption: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: Colors.surfaceLight,
+    borderRadius: 8,
+    padding: 16,
     borderWidth: 1,
     borderColor: Colors.border,
-    borderRadius: 8,
-    padding: 12,
   },
   privacyOptionSelected: {
     borderColor: Colors.primary,
     backgroundColor: Colors.primary + '10',
   },
-  privacyTextContainer: {
+  privacyOptionContent: {
     flex: 1,
-    marginLeft: 12,
   },
-  privacyText: {
-    fontSize: 16,
-    fontWeight: '500',
-    color: Colors.text,
+  privacyOptionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 4,
+    gap: 8,
   },
-  privacyTextSelected: {
+  privacyOptionLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: Colors.textSecondary,
+  },
+  privacyOptionLabelSelected: {
     color: Colors.primary,
   },
-  privacyDescription: {
+  privacyOptionDescription: {
     fontSize: 12,
     color: Colors.textMuted,
-    marginTop: 2,
+    lineHeight: 16,
   },
+  radioButton: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: Colors.border,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginLeft: 12,
+  },
+  radioButtonSelected: {
+    borderColor: Colors.primary,
+  },
+  radioButtonInner: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: Colors.primary,
+  },
+  
+  // Switch Styles
   switchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    backgroundColor: Colors.surfaceLight,
+    borderRadius: 8,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: Colors.border,
   },
   switchLabelContainer: {
     flex: 1,
   },
+  switchLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: Colors.textSecondary,
+    marginBottom: 4,
+  },
   switchDescription: {
     fontSize: 12,
     color: Colors.textMuted,
-    marginTop: 2,
+    lineHeight: 16,
   },
-  modalActions: {
+  switch: {
+    width: 50,
+    height: 30,
+    borderRadius: 15,
+    backgroundColor: Colors.border,
+    justifyContent: 'center',
+    paddingHorizontal: 2,
+    marginLeft: 12,
+  },
+  switchActive: {
+    backgroundColor: Colors.primary,
+  },
+  switchThumb: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: Colors.white,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  switchThumbActive: {
+    alignSelf: 'flex-end',
+  },
+  
+  // Footer Styles
+  modalFooter: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
     paddingHorizontal: 20,
     paddingVertical: 20,
     gap: 12,
+    borderTopWidth: 1,
+    borderTopColor: Colors.border,
   },
-  primaryButton: {
+  button: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: Colors.primary,
     paddingVertical: 14,
     borderRadius: 10,
+    gap: 6,
   },
-  primaryButtonText: {
-    color: Colors.white,
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  secondaryButton: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
+  cancelButton: {
     backgroundColor: Colors.surfaceLight,
-    paddingVertical: 14,
-    borderRadius: 10,
     borderWidth: 1,
     borderColor: Colors.border,
   },
-  secondaryButtonText: {
+  cancelButtonText: {
     color: Colors.textSecondary,
     fontSize: 16,
     fontWeight: '500',
   },
-  disabledButton: {
-    backgroundColor: Colors.surfaceLight,
-    opacity: 0.6,
+  createButton: {
+    backgroundColor: Colors.primary,
+  },
+  createButtonDisabled: {
+    backgroundColor: Colors.textMuted,
+    opacity: 0.5,
+  },
+  createButtonText: {
+    color: Colors.white,
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  loadingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
   },
 });
 

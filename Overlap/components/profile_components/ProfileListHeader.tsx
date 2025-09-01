@@ -7,10 +7,19 @@ import SearchSection from './sections/SearchSection';
 import AddCollectionSection from './sections/AddCollectionSection';
 import { SharedCollection, SharedActivity } from './profileTypes';
 
+interface CollaborativeCollection extends SharedCollection {
+  owner?: string;
+  userRole?: string;
+  members?: { [key: string]: any };
+  privacy?: string;
+  allowMembersToAdd?: boolean;
+  totalActivities?: number;
+}
+
 interface ProfileListHeaderProps {
   activeTab: string;
   setActiveTab: (tab: string) => void;
-  selectedCollection: SharedCollection | null;
+  selectedCollection: CollaborativeCollection | null;
   onClearSelectedCollection: () => void;
   setIsModalVisible: (visible: boolean) => void;
   toggleSettingsMenu: () => void;
@@ -20,6 +29,8 @@ interface ProfileListHeaderProps {
   // Add these new props for the counts
   likedActivities: SharedActivity[];
   collections: SharedCollection[];
+  // Add the onMembersPress prop
+  onMembersPress?: (collection: CollaborativeCollection) => void;
 }
 
 const ProfileListHeader: React.FC<ProfileListHeaderProps> = ({
@@ -34,6 +45,7 @@ const ProfileListHeader: React.FC<ProfileListHeaderProps> = ({
   resultCount,
   likedActivities,
   collections,
+  onMembersPress,
 }) => {
   return (
     <View style={styles.headerContainer}>
@@ -65,6 +77,7 @@ const ProfileListHeader: React.FC<ProfileListHeaderProps> = ({
         <CollectionHeader 
           selectedCollection={selectedCollection}
           onBackPress={onClearSelectedCollection}
+          onMembersPress={() => onMembersPress?.(selectedCollection)}
         />
       )}
     </View>
