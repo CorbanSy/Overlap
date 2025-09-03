@@ -32,7 +32,7 @@ const storage = getStorage();
 setGlobalOptions({ region: "us-west2", memory: "2GiB", timeoutSeconds: 540 }); // keep region with your Firestore
 
 // Use an env var in prod: set in "firebase functions:secrets:set GOOGLE_MAPS_API_KEY"
-const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY || "YOUR_API_KEY_HERE";
+const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY || "AIzaSyB6fvIePcBwSZQvyXtZvW-9XCbcKMf2I7o";
 const REHOST_PHOTOS = true;   // flip to false if you prefer using Google photo URLs directly
 const MAX_PHOTOS = 3;
 const MAX_REVIEWS = 5;
